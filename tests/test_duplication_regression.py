@@ -219,9 +219,13 @@ class TestDuplicationErrorHandling:
         
         status_code_tests = [
             (200, "success_response", "json"),
-            (401, "authentication_failed", "error"),
-            (403, "premium_feature_required", "error"),
+            (400, "validation_failed", "error"),
+            (401, "authentication_error", "error"),
+            (402, "subscription_required", "error"),
+            (403, "facebook_connection_required", "error"),
+            (404, "resource_not_found", "error"),
             (429, "rate_limit_exceeded", "error"),
+            (502, "meta_api_error", "error"),
             (500, "duplication_failed", "error"),
         ]
         
@@ -233,10 +237,34 @@ class TestDuplicationErrorHandling:
                 
                 if status_code == 200:
                     mock_response.json.return_value = {"success": True, "id": "new_123"}
+                elif status_code == 400:
+                    mock_response.json.return_value = {"errors": ["Invalid parameter"], "warnings": []}
+                elif status_code == 401:
+                    mock_response.json.side_effect = Exception("No JSON")
+                    mock_response.text = "Unauthorized"
+                elif status_code == 402:
+                    mock_response.json.return_value = {
+                        "message": "This feature is not available in your current plan",
+                        "upgrade_url": "https://pipeboard.co/upgrade",
+                        "suggestion": "Please upgrade your account to access this feature"
+                    }
+                elif status_code == 403:
+                    mock_response.json.return_value = {
+                        "message": "You need to connect your Facebook account first",
+                        "details": {
+                            "login_flow_url": "/connections",
+                            "auth_flow_url": "/api/meta/auth"
+                        }
+                    }
+                elif status_code == 404:
+                    mock_response.json.side_effect = Exception("No JSON")
+                    mock_response.text = "Not Found"
                 elif status_code == 429:
                     mock_response.headers.get.return_value = "60"
                     mock_response.json.side_effect = Exception("No JSON")
                     mock_response.text = "Rate limited"
+                elif status_code == 502:
+                    mock_response.json.return_value = {"message": "Facebook API error"}
                 else:
                     mock_response.json.side_effect = Exception("No JSON")
                     mock_response.text = f"Error {status_code}"
@@ -249,7 +277,18 @@ class TestDuplicationErrorHandling:
                 result_json = json.loads(result)
                 
                 if response_type == "error":
-                    assert result_json["error"] == expected_error_type
+                    if status_code == 401:
+                        assert result_json["error"] == expected_error_type
+                    elif status_code == 403:
+                        assert result_json["error"] == expected_error_type
+                    elif status_code == 400:
+                        assert result_json["error"] == expected_error_type
+                    elif status_code == 404:
+                        assert result_json["error"] == expected_error_type
+                    elif status_code == 502:
+                        assert result_json["error"] == expected_error_type
+                    else:
+                        assert result_json["error"] == expected_error_type
                 else:
                     assert "success" in result_json or "id" in result_json
     
@@ -358,6 +397,55 @@ class TestDuplicationParameterHandling:
                 }
             )
     
+    @pytest.mark.asyncio
+    async def test_adset_duplication_parameter_forwarding(self, enable_feature):
+        """Test that ad set duplication forwards all parameters correctly including new_targeting."""
+        duplication = enable_feature
+        
+        with patch("meta_ads_mcp.core.duplication._forward_duplication_request") as mock_forward:
+            mock_forward.return_value = '{"success": true}'
+            
+            # Test with all parameters including new_targeting
+            result = await duplication.duplicate_adset(
+                adset_id="987654321",
+                access_token="test_token",
+                target_campaign_id="campaign_123",
+                name_suffix=" - Targeted Copy",
+                include_ads=False,
+                include_creatives=True,
+                new_daily_budget=200.00,
+                new_targeting={
+                    "age_min": 25,
+                    "age_max": 45,
+                    "geo_locations": {
+                        "countries": ["US", "CA"]
+                    }
+                },
+                new_status="ACTIVE"
+            )
+            
+            # Verify parameters were forwarded correctly
+            mock_forward.assert_called_once_with(
+                "adset",
+                "987654321",
+                "test_token",
+                {
+                    "target_campaign_id": "campaign_123",
+                    "name_suffix": " - Targeted Copy",
+                    "include_ads": False,
+                    "include_creatives": True,
+                    "new_daily_budget": 200.00,
+                    "new_targeting": {
+                        "age_min": 25,
+                        "age_max": 45,
+                        "geo_locations": {
+                            "countries": ["US", "CA"]
+                        }
+                    },
+                    "new_status": "ACTIVE"
+                }
+            )
+    
     def test_estimated_components_calculation(self, enable_feature):
         """Test that estimated components are calculated correctly."""
         duplication = enable_feature
@@ -430,12 +518,17 @@ class TestDuplicationIntegration:
                         mock_response.status_code = 200
                         mock_response.json.return_value = {
                             "success": True,
+                            "original_campaign_id": "123456789",
                             "new_campaign_id": "987654321",
                             "duplicated_components": {
-                                "campaigns": 1,
-                                "ad_sets": 3,
-                                "ads": 8,
-                                "creatives": 8
+                                "campaign": {"id": "987654321", "name": "Test Campaign - Copy"},
+                                "ad_sets": [{"id": "111", "name": "Ad Set 1 - Copy"}],
+                                "ads": [{"id": "222", "name": "Ad 1 - Copy"}],
+                                "creatives": [{"id": "333", "name": "Creative 1 - Copy"}]
+                            },
+                            "warnings": [],
+                            "subscription": {
+                                "status": "active"
                             }
                         }
                         mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
@@ -459,8 +552,8 @@ class TestDuplicationIntegration:
                         assert "duplicated_components" in actual_result
     
     @pytest.mark.asyncio
-    async def test_premium_feature_upgrade_flow(self, enable_feature):
-        """Test premium feature upgrade message flow."""
+    async def test_facebook_connection_error_flow(self, enable_feature):
+        """Test Facebook connection required error flow."""
         duplication = enable_feature
         
         # Mock the auth system completely to bypass the @meta_api_tool decorator checks
@@ -474,10 +567,16 @@ class TestDuplicationIntegration:
                     mock_meta_config.get_app_id.return_value = "valid_app_id"
                     
                     with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
-                        # Mock 403 response (premium feature required)
+                        # Mock 403 response (Facebook connection required)
                         mock_response = MagicMock()
                         mock_response.status_code = 403
-                        mock_response.json.return_value = {"error": "premium_feature"}
+                        mock_response.json.return_value = {
+                            "message": "You need to connect your Facebook account first",
+                            "details": {
+                                "login_flow_url": "/connections",
+                                "auth_flow_url": "/api/meta/auth"
+                            }
+                        }
                         mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
                         
                         result = await duplication.duplicate_campaign(
@@ -492,12 +591,55 @@ class TestDuplicationIntegration:
                         else:
                             actual_result = result_json
                             
-                        assert actual_result["error"] == "premium_feature_required"
-                        assert "premium feature" in actual_result["message"]
-                        assert "upgrade_url" in actual_result["details"]
-                        assert actual_result["details"]["upgrade_url"] == "https://pipeboard.co/upgrade"
-                        assert "request_parameters" in actual_result
-                        assert "preview" in actual_result
+                        assert actual_result["success"] is False
+                        assert actual_result["error"] == "facebook_connection_required"
+                        assert actual_result["message"] == "You need to connect your Facebook account first"
+                        assert "details" in actual_result
+                        assert actual_result["details"]["login_flow_url"] == "/connections"
+    
+    @pytest.mark.asyncio
+    async def test_subscription_required_error_flow(self, enable_feature):
+        """Test subscription required error flow."""
+        duplication = enable_feature
+        
+        # Mock the auth system completely to bypass the @meta_api_tool decorator checks
+        with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
+            with patch("meta_ads_mcp.core.auth.auth_manager") as mock_auth_manager:
+                with patch("meta_ads_mcp.core.auth.meta_config") as mock_meta_config:
+                    # Setup complete auth mocking
+                    mock_get_token.return_value = "valid_token"
+                    mock_auth_manager.app_id = "valid_app_id"
+                    mock_auth_manager.use_pipeboard = False
+                    mock_meta_config.get_app_id.return_value = "valid_app_id"
+                    
+                    with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+                        # Mock 402 response (subscription required)
+                        mock_response = MagicMock()
+                        mock_response.status_code = 402
+                        mock_response.json.return_value = {
+                            "message": "This feature is not available in your current plan",
+                            "upgrade_url": "https://pipeboard.co/upgrade",
+                            "suggestion": "Please upgrade your account to access this feature"
+                        }
+                        mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+                        
+                        result = await duplication.duplicate_campaign(
+                            campaign_id="123456789",
+                            access_token="valid_token"
+                        )
+                        
+                        # The @meta_api_tool decorator wraps the result in a data field
+                        result_json = json.loads(result)
+                        if "data" in result_json:
+                            actual_result = json.loads(result_json["data"])
+                        else:
+                            actual_result = result_json
+                            
+                        assert actual_result["success"] is False
+                        assert actual_result["error"] == "subscription_required"
+                        assert actual_result["message"] == "This feature is not available in your current plan"
+                        assert actual_result["upgrade_url"] == "https://pipeboard.co/upgrade"
+                        assert actual_result["suggestion"] == "Please upgrade your account to access this feature"
 
 
 class TestDuplicationTokenHandling:

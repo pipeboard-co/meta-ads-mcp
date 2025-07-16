@@ -28,7 +28,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads campaign with all its ad sets and ads.
 
-        **This is a premium feature available with Pipeboard Pro.**
+        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
         
         Args:
             campaign_id: Meta Ads campaign ID to duplicate
@@ -65,12 +65,13 @@ if ENABLE_DUPLICATION:
         include_ads: bool = True,
         include_creatives: bool = True,
         new_daily_budget: Optional[float] = None,
+        new_targeting: Optional[Dict[str, Any]] = None,
         new_status: Optional[str] = "PAUSED"
     ) -> str:
         """
         Duplicate a Meta Ads ad set with its ads.
 
-        **This is a premium feature available with Pipeboard Pro.**
+        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
         
         Args:
             adset_id: Meta Ads ad set ID to duplicate
@@ -79,6 +80,7 @@ if ENABLE_DUPLICATION:
             include_ads: Whether to duplicate ads within the ad set
             include_creatives: Whether to duplicate ad creatives
             new_daily_budget: Override the daily budget for the new ad set
+            new_targeting: Override targeting settings for the new ad set
             new_status: Status for the new ad set (ACTIVE or PAUSED)
         """
         return await _forward_duplication_request(
@@ -91,6 +93,7 @@ if ENABLE_DUPLICATION:
                 "include_ads": include_ads,
                 "include_creatives": include_creatives,
                 "new_daily_budget": new_daily_budget,
+                "new_targeting": new_targeting,
                 "new_status": new_status
             }
         )
@@ -109,7 +112,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads ad.
 
-        **This is a premium feature available with Pipeboard Pro.**
+        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
         
         Args:
             ad_id: Meta Ads ad ID to duplicate
@@ -147,7 +150,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads creative.
 
-        **This is a premium feature available with Pipeboard Pro.**
+        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
         
         Args:
             creative_id: Meta Ads creative ID to duplicate
@@ -218,61 +221,88 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
             if response.status_code == 200:
                 result = response.json()
                 return json.dumps(result, indent=2)
-            elif response.status_code == 403:
-                # Premium feature upgrade message
-                return json.dumps({
-                    "error": "premium_feature_required",
-                    "message": f"Professional {resource_type} duplication is a premium feature",
-                    "details": {
-                        "feature": f"Meta Ads {resource_type.title()} Duplication",
-                        "description": f"Duplicate {resource_type}s with advanced options and bulk operations",
-                        "benefits": [
-                            "Preserve all targeting and optimization settings",
-                            "Bulk duplication across campaigns",
-                            "Advanced naming and organization options",
-                            "Cross-account duplication support",
-                            "Performance-based automatic duplication",
-                            "Template system for reusable patterns",
-                            "Compliance validation (DSA, youth targeting)",
-                            "White-label client reporting"
-                        ],
-                        "upgrade_url": "https://pipeboard.co/upgrade",
-                        "contact_email": "info@pipeboard.co",
-                        "early_access": "Contact us for early access and special pricing"
-                    },
-                    "request_parameters": {
-                        "resource_type": resource_type,
-                        "resource_id": resource_id,
-                        **clean_options
-                    },
-                    "preview": {
-                        "would_duplicate": {
-                            "resource_type": resource_type,
-                            "resource_id": resource_id,
-                            "new_name": f"Original Name{options.get('name_suffix', ' - Copy')}",
-                            "status": options.get('new_status', 'PAUSED')
-                        },
-                        "estimated_components": _get_estimated_components(resource_type, options),
-                        "supported_features": [
-                            "Name customization",
-                            "Budget modification", 
-                            "Status control",
-                            "Cross-campaign/adset movement",
-                            "Creative text modifications",
-                            "Schedule preservation",
-                            "Targeting duplication",
-                            "Performance tracking"
-                        ]
-                    }
-                }, indent=2)
+            elif response.status_code == 400:
+                # Validation failed
+                try:
+                    error_data = response.json()
+                    return json.dumps({
+                        "success": False,
+                        "error": "validation_failed",
+                        "errors": error_data.get("errors", [response.text]),
+                        "warnings": error_data.get("warnings", [])
+                    }, indent=2)
+                except:
+                    return json.dumps({
+                        "success": False,
+                        "error": "validation_failed",
+                        "errors": [response.text],
+                        "warnings": []
+                    }, indent=2)
             elif response.status_code == 401:
                 return json.dumps({
-                    "error": "authentication_failed",
-                    "message": "Invalid or expired access token",
-                    "details": {
-                        "suggestion": "Please reconnect your Meta Ads account",
-                        "status_code": response.status_code
-                    }
+                    "success": False,
+                    "error": "authentication_error",
+                    "message": "Invalid or expired API token"
+                }, indent=2)
+            elif response.status_code == 402:
+                try:
+                    error_data = response.json()
+                    return json.dumps({
+                        "success": False,
+                        "error": "subscription_required",
+                        "message": error_data.get("message", "This feature is not available in your current plan"),
+                        "upgrade_url": error_data.get("upgrade_url", "https://pipeboard.co/upgrade"),
+                        "suggestion": error_data.get("suggestion", "Please upgrade your account to access this feature")
+                    }, indent=2)
+                except:
+                    return json.dumps({
+                        "success": False,
+                        "error": "subscription_required",
+                        "message": "This feature is not available in your current plan",
+                        "upgrade_url": "https://pipeboard.co/upgrade",
+                        "suggestion": "Please upgrade your account to access this feature"
+                    }, indent=2)
+            elif response.status_code == 403:
+                try:
+                    error_data = response.json()
+                    # Check if this is a premium feature error
+                    if error_data.get("error") == "premium_feature":
+                        return json.dumps({
+                            "success": False,
+                            "error": "premium_feature_required",
+                            "message": error_data.get("message", "This is a premium feature that requires subscription"),
+                            "details": error_data.get("details", {
+                                "upgrade_url": "https://pipeboard.co/upgrade",
+                                "suggestion": "Please upgrade your account to access this feature"
+                            })
+                        }, indent=2)
+                    else:
+                        # Default to facebook connection required
+                        return json.dumps({
+                            "success": False,
+                            "error": "facebook_connection_required",
+                            "message": error_data.get("message", "You need to connect your Facebook account first"),
+                            "details": error_data.get("details", {
+                                "login_flow_url": "/connections",
+                                "auth_flow_url": "/api/meta/auth"
+                            })
+                        }, indent=2)
+                except:
+                    return json.dumps({
+                        "success": False,
+                        "error": "facebook_connection_required",
+                        "message": "You need to connect your Facebook account first",
+                        "details": {
+                            "login_flow_url": "/connections",
+                            "auth_flow_url": "/api/meta/auth"
+                        }
+                    }, indent=2)
+            elif response.status_code == 404:
+                return json.dumps({
+                    "success": False,
+                    "error": "resource_not_found",
+                    "message": f"{resource_type.title()} not found or access denied",
+                    "suggestion": f"Verify the {resource_type} ID and your Facebook account permissions"
                 }, indent=2)
             elif response.status_code == 429:
                 return json.dumps({
@@ -283,6 +313,24 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
                         "retry_after": response.headers.get("Retry-After", "60")
                     }
                 }, indent=2)
+            elif response.status_code == 502:
+                try:
+                    error_data = response.json()
+                    return json.dumps({
+                        "success": False,
+                        "error": "meta_api_error",
+                        "message": error_data.get("message", "Facebook API error"),
+                        "recoverable": True,
+                        "suggestion": "Please wait 5 minutes before retrying"
+                    }, indent=2)
+                except:
+                    return json.dumps({
+                        "success": False,
+                        "error": "meta_api_error",
+                        "message": "Facebook API error",
+                        "recoverable": True,
+                        "suggestion": "Please wait 5 minutes before retrying"
+                    }, indent=2)
             else:
                 error_detail = response.text
                 try:

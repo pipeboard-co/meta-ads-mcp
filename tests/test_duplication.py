@@ -42,8 +42,9 @@ async def test_forward_duplication_request_no_token():
 async def test_forward_duplication_request_with_token():
     """Test that _forward_duplication_request makes HTTP request with proper headers."""
     from meta_ads_mcp.core.duplication import _forward_duplication_request
+    from unittest.mock import Mock
     
-    mock_response = AsyncMock()
+    mock_response = Mock()
     mock_response.status_code = 403
     mock_response.json.return_value = {"error": "premium_feature"}
     
