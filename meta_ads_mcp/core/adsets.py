@@ -208,8 +208,8 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
         bid_strategy: Bid strategy (e.g., 'LOWEST_COST_WITH_BID_CAP')
         bid_amount: Bid amount in account currency (in cents for USD)
         status: Update ad set status (ACTIVE, PAUSED, etc.)
-        targeting: Targeting specifications including targeting_automation
-                  (e.g. {"targeting_automation":{"advantage_audience":1}})
+        targeting: Complete targeting specifications (will replace existing targeting)
+                  (e.g. {"targeting_automation":{"advantage_audience":1}, "geo_locations": {"countries": ["US"]}})
         optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'APP_INSTALLS', etc.)
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
@@ -234,38 +234,11 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
         params['optimization_goal'] = optimization_goal
         
     if targeting is not None:
-        # Get current ad set details to preserve existing targeting settings
-        current_details_json = await get_adset_details(adset_id=adset_id, access_token=access_token)
-        current_details = json.loads(current_details_json)
-        
-        # Check if the current ad set has targeting information
-        current_targeting = current_details.get('targeting', {})
-        
-        if 'targeting_automation' in targeting:
-            # Only update targeting_automation while preserving other targeting settings
-            if current_targeting:
-                merged_targeting = current_targeting.copy()
-                merged_targeting['targeting_automation'] = targeting['targeting_automation']
-                # Ensure proper JSON encoding for targeting
-                if isinstance(merged_targeting, dict):
-                    params['targeting'] = json.dumps(merged_targeting)
-                else:
-                    params['targeting'] = merged_targeting  # Already a string
-            else:
-                # If there's no existing targeting, we need to create a basic one
-                # Meta requires at least a geo_locations setting
-                basic_targeting = {
-                    'targeting_automation': targeting['targeting_automation'],
-                    'geo_locations': {'countries': ['US']}  # Using US as default location
-                }
-                params['targeting'] = json.dumps(basic_targeting)
+        # Ensure proper JSON encoding for targeting
+        if isinstance(targeting, dict):
+            params['targeting'] = json.dumps(targeting)
         else:
-            # Full targeting replacement
-            # Ensure proper JSON encoding for targeting
-            if isinstance(targeting, dict):
-                params['targeting'] = json.dumps(targeting)
-            else:
-                params['targeting'] = targeting  # Already a string
+            params['targeting'] = targeting  # Already a string
     
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
