@@ -5,9 +5,6 @@ from typing import Optional, Dict, Any, List
 from .api import meta_api_tool, make_api_request
 from .accounts import get_ad_accounts
 from .server import mcp_server
-import asyncio
-from .callback_server import start_callback_server, shutdown_callback_server, update_confirmation
-import urllib.parse
 
 
 @mcp_server.tool()
@@ -219,22 +216,22 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
     if not adset_id:
         return json.dumps({"error": "No ad set ID provided"}, indent=2)
     
-    changes = {}
+    params = {}
     
     if frequency_control_specs is not None:
-        changes['frequency_control_specs'] = frequency_control_specs
+        params['frequency_control_specs'] = frequency_control_specs
     
     if bid_strategy is not None:
-        changes['bid_strategy'] = bid_strategy
+        params['bid_strategy'] = bid_strategy
         
     if bid_amount is not None:
-        changes['bid_amount'] = bid_amount
+        params['bid_amount'] = str(bid_amount)
         
     if status is not None:
-        changes['status'] = status
+        params['status'] = status
         
     if optimization_goal is not None:
-        changes['optimization_goal'] = optimization_goal
+        params['optimization_goal'] = optimization_goal
         
     if targeting is not None:
         # Get current ad set details to preserve existing targeting settings
@@ -249,7 +246,11 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
             if current_targeting:
                 merged_targeting = current_targeting.copy()
                 merged_targeting['targeting_automation'] = targeting['targeting_automation']
-                changes['targeting'] = merged_targeting
+                # Ensure proper JSON encoding for targeting
+                if isinstance(merged_targeting, dict):
+                    params['targeting'] = json.dumps(merged_targeting)
+                else:
+                    params['targeting'] = merged_targeting  # Already a string
             else:
                 # If there's no existing targeting, we need to create a basic one
                 # Meta requires at least a geo_locations setting
@@ -257,48 +258,29 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
                     'targeting_automation': targeting['targeting_automation'],
                     'geo_locations': {'countries': ['US']}  # Using US as default location
                 }
-                changes['targeting'] = basic_targeting
+                params['targeting'] = json.dumps(basic_targeting)
         else:
             # Full targeting replacement
-            changes['targeting'] = targeting
+            # Ensure proper JSON encoding for targeting
+            if isinstance(targeting, dict):
+                params['targeting'] = json.dumps(targeting)
+            else:
+                params['targeting'] = targeting  # Already a string
     
-    if not changes:
+    if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
+
+    endpoint = f"{adset_id}"
     
-    # Get current ad set details for comparison
-    current_details_json = await get_adset_details(adset_id=adset_id, access_token=access_token)
-    current_details = json.loads(current_details_json)
-    
-    # Start the callback server if not already running
     try:
-        port = start_callback_server()
-        
-        # Generate confirmation URL with properly encoded parameters
-        changes_json = json.dumps(changes)
-        encoded_changes = urllib.parse.quote(changes_json)
-        confirmation_url = f"http://localhost:{port}/confirm-update?adset_id={adset_id}&token={access_token}&changes={encoded_changes}"
+        # Use POST method for updates as per Meta API documentation
+        data = await make_api_request(endpoint, access_token, params, method="POST")
+        return json.dumps(data, indent=2)
     except Exception as e:
+        error_msg = str(e)
+        # Include adset_id in error for better context
         return json.dumps({
-            "error": "Callback server disabled",
-            "message": f"Cannot create confirmation URL: {str(e)}",
-            "suggestion": "Manual update confirmation not available when META_ADS_DISABLE_CALLBACK_SERVER is set",
-            "adset_id": adset_id,
-            "proposed_changes": changes
-        }, indent=2)
-    
-    # Reset the update confirmation
-    update_confirmation.clear()
-    update_confirmation.update({"approved": False})
-    
-    # Return the confirmation link
-    response = {
-        "message": "Please confirm the ad set update",
-        "confirmation_url": confirmation_url,
-        "markdown_link": f"[Click here to confirm ad set update]({confirmation_url})",
-        "current_details": current_details,
-        "proposed_changes": changes,
-        "instructions_for_llm": "You must present this link as clickable Markdown to the user using the markdown_link format provided.",
-        "note": "Click the link to confirm and apply your ad set updates. Refresh the browser page if it doesn't load immediately."
-    }
-    
-    return json.dumps(response, indent=2) 
+            "error": f"Failed to update ad set {adset_id}",
+            "details": error_msg,
+            "params_sent": params
+        }, indent=2) 
