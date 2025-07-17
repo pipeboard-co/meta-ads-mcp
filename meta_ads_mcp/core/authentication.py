@@ -90,14 +90,23 @@ async def get_login_link(access_token: str = None) -> str:
         # IMPORTANT: Start the callback server first by calling our helper function
         # This ensures the server is ready before we provide the URL to the user
         logger.info("Starting callback server for authentication")
-        port = start_callback_server()
-        logger.info(f"Callback server started on port {port}")
-        
-        # Generate direct login URL
-        auth_manager.redirect_uri = f"http://localhost:{port}/callback"  # Ensure port is set correctly
-        logger.info(f"Setting redirect URI to {auth_manager.redirect_uri}")
-        login_url = auth_manager.get_auth_url()
-        logger.info(f"Generated login URL: {login_url}")
+        try:
+            port = start_callback_server()
+            logger.info(f"Callback server started on port {port}")
+            
+            # Generate direct login URL
+            auth_manager.redirect_uri = f"http://localhost:{port}/callback"  # Ensure port is set correctly
+            logger.info(f"Setting redirect URI to {auth_manager.redirect_uri}")
+            login_url = auth_manager.get_auth_url()
+            logger.info(f"Generated login URL: {login_url}")
+        except Exception as e:
+            logger.error(f"Failed to start callback server: {e}")
+            return json.dumps({
+                "error": "Callback server disabled",
+                "message": str(e),
+                "suggestion": "Use Pipeboard authentication (set PIPEBOARD_API_TOKEN) or provide a direct access token",
+                "authentication_method": "meta_oauth_disabled"
+            }, indent=2)
         
         # Check if we can exchange for long-lived tokens
         token_exchange_supported = bool(META_APP_SECRET)

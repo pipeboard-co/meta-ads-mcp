@@ -216,22 +216,27 @@ class AuthManager:
             return self.token_info.access_token
         
         # Start the callback server if not already running
-        port = start_callback_server()
-        
-        # Update redirect URI with the actual port
-        self.redirect_uri = f"http://localhost:{port}/callback"
-        
-        # Generate the auth URL
-        auth_url = self.get_auth_url()
-        
-        # Open browser with auth URL
-        logger.info(f"Opening browser with URL: {auth_url}")
-        webbrowser.open(auth_url)
-        
-        # We don't wait for the token here anymore
-        # The token will be processed by the callback server
-        # Just return None to indicate we've started the flow
-        return None
+        try:
+            port = start_callback_server()
+            
+            # Update redirect URI with the actual port
+            self.redirect_uri = f"http://localhost:{port}/callback"
+            
+            # Generate the auth URL
+            auth_url = self.get_auth_url()
+            
+            # Open browser with auth URL
+            logger.info(f"Opening browser with URL: {auth_url}")
+            webbrowser.open(auth_url)
+            
+            # We don't wait for the token here anymore
+            # The token will be processed by the callback server
+            # Just return None to indicate we've started the flow
+            return None
+        except Exception as e:
+            logger.error(f"Failed to start callback server: {e}")
+            logger.info("Callback server disabled. OAuth authentication flow cannot be used.")
+            return None
     
     def get_access_token(self) -> Optional[str]:
         """
@@ -477,7 +482,14 @@ def login():
     
     try:
         # Start the callback server first
-        port = start_callback_server()
+        try:
+            port = start_callback_server()
+        except Exception as callback_error:
+            print(f"Error: {callback_error}")
+            print("Callback server is disabled. Please use alternative authentication methods:")
+            print("- Set PIPEBOARD_API_TOKEN environment variable for Pipeboard authentication")
+            print("- Or provide a direct META_ACCESS_TOKEN environment variable")
+            return
         
         # Get the auth URL and open the browser
         auth_url = auth_manager.get_auth_url()

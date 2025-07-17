@@ -917,7 +917,16 @@ def start_callback_server() -> int:
     
     Returns:
         Port number the server is running on
+    
+    Raises:
+        Exception: If callback server is disabled via META_ADS_DISABLE_CALLBACK_SERVER environment variable
     """
+    # Check if callback server is disabled via environment variable
+    if os.environ.get("META_ADS_DISABLE_CALLBACK_SERVER"):
+        logger.info("Callback server disabled via META_ADS_DISABLE_CALLBACK_SERVER environment variable")
+        print("Callback server is disabled. OAuth authentication flow cannot be used.")
+        raise Exception("Callback server disabled via META_ADS_DISABLE_CALLBACK_SERVER environment variable. Use alternative authentication methods.")
+    
     global callback_server_thread, callback_server_running, callback_server_port, callback_server_instance, server_shutdown_timer
     
     with callback_server_lock:

@@ -270,12 +270,21 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
     current_details = json.loads(current_details_json)
     
     # Start the callback server if not already running
-    port = start_callback_server()
-    
-    # Generate confirmation URL with properly encoded parameters
-    changes_json = json.dumps(changes)
-    encoded_changes = urllib.parse.quote(changes_json)
-    confirmation_url = f"http://localhost:{port}/confirm-update?adset_id={adset_id}&token={access_token}&changes={encoded_changes}"
+    try:
+        port = start_callback_server()
+        
+        # Generate confirmation URL with properly encoded parameters
+        changes_json = json.dumps(changes)
+        encoded_changes = urllib.parse.quote(changes_json)
+        confirmation_url = f"http://localhost:{port}/confirm-update?adset_id={adset_id}&token={access_token}&changes={encoded_changes}"
+    except Exception as e:
+        return json.dumps({
+            "error": "Callback server disabled",
+            "message": f"Cannot create confirmation URL: {str(e)}",
+            "suggestion": "Manual update confirmation not available when META_ADS_DISABLE_CALLBACK_SERVER is set",
+            "adset_id": adset_id,
+            "proposed_changes": changes
+        }, indent=2)
     
     # Reset the update confirmation
     update_confirmation.clear()
