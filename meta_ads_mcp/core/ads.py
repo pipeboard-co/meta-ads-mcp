@@ -38,26 +38,27 @@ async def get_ads(access_token: str = None, account_id: str = None, limit: int =
         else:
             return json.dumps({"error": "No account ID specified and no accounts found for user"}, indent=2)
     
+    # Prioritize adset_id over campaign_id - use adset-specific endpoint
+    if adset_id:
+        endpoint = f"{adset_id}/ads"
+        params = {
+            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "limit": limit
+        }
     # Use campaign-specific endpoint if campaign_id is provided
-    if campaign_id:
+    elif campaign_id:
         endpoint = f"{campaign_id}/ads"
         params = {
             "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
             "limit": limit
         }
-        # Adset ID can still be used to filter within the campaign
-        if adset_id:
-            params["adset_id"] = adset_id
     else:
-        # Default to account-level endpoint if no campaign_id
+        # Default to account-level endpoint if no specific filters
         endpoint = f"{account_id}/ads"
         params = {
             "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
             "limit": limit
         }
-        # Adset ID can filter at the account level if no campaign specified
-        if adset_id:
-            params["adset_id"] = adset_id
 
     data = await make_api_request(endpoint, access_token, params)
     

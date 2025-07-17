@@ -231,13 +231,22 @@ class HTTPTransportTester:
             )
             all_results[scenario["name"]] = results
         
+        # Run specific get_ads filtering tests
+        print("\n🧪 Testing get_ads filtering functionality")
+        print("="*50)
+        ads_filter_results = self.test_get_ads_filtering()
+        all_results["get_ads_filtering"] = ads_filter_results
+        
         # Summary
         print("\n🏁 TEST SUITE COMPLETED")
         print("="*30)
         
         all_passed = True
         for scenario_name, results in all_results.items():
-            scenario_success = all(results.values())
+            if isinstance(results, dict):
+                scenario_success = all(results.values())
+            else:
+                scenario_success = results
             status = "✅ SUCCESS" if scenario_success else "❌ FAILED"
             print(f"{scenario_name}: {status}")
             if not scenario_success:
@@ -250,9 +259,71 @@ class HTTPTransportTester:
             print("   • MCP protocol compliance: Complete")
             print("   • Authentication integration: Working")
             print("   • All tools accessible via HTTP")
+            print("   • get_ads filtering: Working correctly")
             print("   • Ready for production use")
         
         return all_passed
+
+    def test_get_ads_filtering(self) -> Dict[str, bool]:
+        """Test get_ads function with different filtering parameters"""
+        results = {}
+        
+        # Test with basic auth headers for these tests
+        auth_headers = {"Authorization": "Bearer test_pipeboard_token_12345"}
+        
+        # Test 1: get_ads without filters (should use account endpoint)
+        print("🔍 Testing get_ads without filters")
+        result1 = self.test_tool_call("get_ads", {
+            "account_id": "act_123456789",
+            "limit": 5
+        }, auth_headers)
+        results["no_filters"] = result1["success"]
+        if result1["success"]:
+            print("✅ get_ads without filters successful")
+        else:
+            print(f"❌ get_ads without filters failed: {result1.get('text', 'Unknown error')}")
+        
+        # Test 2: get_ads with campaign_id filter (should use campaign endpoint)
+        print("🔍 Testing get_ads with campaign_id filter")
+        result2 = self.test_tool_call("get_ads", {
+            "account_id": "act_123456789",
+            "campaign_id": "123456789012345",
+            "limit": 5
+        }, auth_headers)
+        results["campaign_filter"] = result2["success"]
+        if result2["success"]:
+            print("✅ get_ads with campaign_id filter successful")
+        else:
+            print(f"❌ get_ads with campaign_id filter failed: {result2.get('text', 'Unknown error')}")
+        
+        # Test 3: get_ads with adset_id filter (should use adset endpoint)
+        print("🔍 Testing get_ads with adset_id filter")
+        result3 = self.test_tool_call("get_ads", {
+            "account_id": "act_123456789",
+            "adset_id": "120228975637820183",
+            "limit": 5
+        }, auth_headers)
+        results["adset_filter"] = result3["success"]
+        if result3["success"]:
+            print("✅ get_ads with adset_id filter successful")
+        else:
+            print(f"❌ get_ads with adset_id filter failed: {result3.get('text', 'Unknown error')}")
+        
+        # Test 4: get_ads with both campaign_id and adset_id (adset_id should take priority)
+        print("🔍 Testing get_ads with both campaign_id and adset_id (adset_id priority)")
+        result4 = self.test_tool_call("get_ads", {
+            "account_id": "act_123456789",
+            "campaign_id": "123456789012345",
+            "adset_id": "120228975637820183",
+            "limit": 5
+        }, auth_headers)
+        results["priority_test"] = result4["success"]
+        if result4["success"]:
+            print("✅ get_ads priority test successful")
+        else:
+            print(f"❌ get_ads priority test failed: {result4.get('text', 'Unknown error')}")
+        
+        return results
 
 
 def main():
