@@ -6,6 +6,8 @@ import httpx
 from typing import Optional, Dict, Any, List, Union
 from .server import mcp_server
 from .api import meta_api_tool
+from .auth import get_current_access_token
+from .http_auth_integration import FastMCPAuthIntegration
 
 
 # Only register the duplication functions if the environment variable is set
@@ -178,21 +180,50 @@ if ENABLE_DUPLICATION:
 
 async def _forward_duplication_request(resource_type: str, resource_id: str, access_token: str, options: Dict[str, Any]) -> str:
     """
-    Forward duplication request to the cloud-hosted MCP API.
+    Forward duplication request to the cloud-hosted MCP API using dual-header authentication.
+    
+    This implements the dual-header authentication pattern for MCP server callbacks:
+    - Authorization: Bearer <facebook_token> - Facebook access token for Meta API calls
+    - X-Pipeboard-Token: <pipeboard_token> - Pipeboard API token for authentication
     
     Args:
         resource_type: Type of resource to duplicate (campaign, adset, ad, creative)
         resource_id: ID of the resource to duplicate
-        access_token: Meta API access token from the request
+        access_token: Meta API access token (optional, will use context if not provided)
         options: Duplication options
     """
     try:
-        if not access_token:
+        # Get tokens from the request context that were set by the HTTP auth middleware
+        # In the dual-header authentication pattern:
+        # - Pipeboard token comes from X-Pipeboard-Token header (for authentication)
+        # - Facebook token comes from Authorization header (for Meta API calls)
+        
+        # Get tokens from context set by AuthInjectionMiddleware
+        pipeboard_token = FastMCPAuthIntegration.get_pipeboard_token()
+        facebook_token = FastMCPAuthIntegration.get_auth_token()
+        
+        # Use provided access_token parameter if no Facebook token found in context
+        if not facebook_token:
+            facebook_token = access_token if access_token else await get_current_access_token()
+        
+        # Validate we have both required tokens
+        if not pipeboard_token:
+            return json.dumps({
+                "error": "authentication_required",
+                "message": "Pipeboard API token not found",
+                "details": {
+                    "required": "Valid Pipeboard token via X-Pipeboard-Token header",
+                    "received_headers": "Check that the MCP server is forwarding the X-Pipeboard-Token header"
+                }
+            }, indent=2)
+            
+        if not facebook_token:
             return json.dumps({
                 "error": "authentication_required",
                 "message": "Meta Ads access token not found",
                 "details": {
-                    "required": "Valid access token from authenticated session"
+                    "required": "Valid Meta access token from authenticated session",
+                    "check": "Ensure Facebook account is connected and token is valid"
                 }
             }, indent=2)
 
@@ -200,9 +231,10 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
         base_url = "https://mcp.pipeboard.co"
         endpoint = f"{base_url}/api/meta/duplicate/{resource_type}/{resource_id}"
         
-        # Prepare the request
+        # Prepare the dual-header authentication as per API documentation
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {facebook_token}",  # Facebook token for Meta API
+            "X-Pipeboard-Token": pipeboard_token,         # Pipeboard token for auth
             "Content-Type": "application/json",
             "User-Agent": "meta-ads-mcp/1.0"
         }

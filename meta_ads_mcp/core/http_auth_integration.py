@@ -13,6 +13,7 @@ import json
 
 # Use context variables instead of thread-local storage for better async support
 _auth_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('auth_token', default=None)
+_pipeboard_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('pipeboard_token', default=None)
 
 class FastMCPAuthIntegration:
     """Direct integration with FastMCP for HTTP authentication"""
@@ -36,9 +37,32 @@ class FastMCPAuthIntegration:
         return _auth_token.get(None)
     
     @staticmethod
+    def set_pipeboard_token(token: str) -> None:
+        """Set Pipeboard token for the current context
+        
+        Args:
+            token: Pipeboard API token to use for this request
+        """
+        _pipeboard_token.set(token)
+    
+    @staticmethod
+    def get_pipeboard_token() -> Optional[str]:
+        """Get Pipeboard token for the current context
+        
+        Returns:
+            Pipeboard token if set, None otherwise
+        """
+        return _pipeboard_token.get(None)
+    
+    @staticmethod
     def clear_auth_token() -> None:
         """Clear authentication token for the current context"""
         _auth_token.set(None)
+    
+    @staticmethod
+    def clear_pipeboard_token() -> None:
+        """Clear Pipeboard token for the current context"""
+        _pipeboard_token.set(None)
     
     @staticmethod
     def extract_token_from_headers(headers: dict) -> Optional[str]:
@@ -67,6 +91,30 @@ class FastMCPAuthIntegration:
         if pipeboard_token:
             logger.debug("Found Pipeboard token in legacy headers")
             return pipeboard_token
+        
+        return None
+    
+    @staticmethod
+    def extract_pipeboard_token_from_headers(headers: dict) -> Optional[str]:
+        """Extract Pipeboard token from HTTP headers
+        
+        Args:
+            headers: HTTP request headers
+            
+        Returns:
+            Pipeboard token if found, None otherwise
+        """
+        # Check for Pipeboard token in X-Pipeboard-Token header (duplication API pattern)
+        pipeboard_token = headers.get('X-Pipeboard-Token') or headers.get('x-pipeboard-token')
+        if pipeboard_token:
+            logger.debug("Found Pipeboard token in X-Pipeboard-Token header")
+            return pipeboard_token
+        
+        # Check for legacy Pipeboard token header
+        legacy_token = headers.get('X-PIPEBOARD-API-TOKEN') or headers.get('x-pipeboard-api-token')
+        if legacy_token:
+            logger.debug("Found Pipeboard token in legacy X-PIPEBOARD-API-TOKEN header")
+            return legacy_token
         
         return None
 
@@ -203,21 +251,32 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
         logger.debug(f"HTTP Auth Middleware: Processing request to {request.url.path}")
         logger.debug(f"HTTP Auth Middleware: Request headers: {list(request.headers.keys())}")
         
-        token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
+        # Extract both types of tokens for dual-header authentication
+        auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
+        pipeboard_token = FastMCPAuthIntegration.extract_pipeboard_token_from_headers(dict(request.headers))
         
-        if token:
-            logger.debug(f"HTTP Auth Middleware: Extracted token: {token[:10]}...")
+        if auth_token:
+            logger.debug(f"HTTP Auth Middleware: Extracted auth token: {auth_token[:10]}...")
             logger.debug("Injecting auth token into request context")
-            FastMCPAuthIntegration.set_auth_token(token)
-        else:
-            logger.warning("HTTP Auth Middleware: No authentication token found in headers")
+            FastMCPAuthIntegration.set_auth_token(auth_token)
+        
+        if pipeboard_token:
+            logger.debug(f"HTTP Auth Middleware: Extracted Pipeboard token: {pipeboard_token[:10]}...")
+            logger.debug("Injecting Pipeboard token into request context")
+            FastMCPAuthIntegration.set_pipeboard_token(pipeboard_token)
+        
+        if not auth_token and not pipeboard_token:
+            logger.warning("HTTP Auth Middleware: No authentication tokens found in headers")
         
         try:
             response = await call_next(request)
             return response
         finally:
-            if token: # Clear only if a token was set for this request
+            # Clear tokens that were set for this request
+            if auth_token:
                 FastMCPAuthIntegration.clear_auth_token()
+            if pipeboard_token:
+                FastMCPAuthIntegration.clear_pipeboard_token()
 
 def setup_starlette_middleware(app):
     """Add AuthInjectionMiddleware to the Starlette app if not already present.
