@@ -26,10 +26,10 @@ export PIPEBOARD_API_TOKEN=your_pipeboard_token
 
 ### 3. Make HTTP Requests
 
-The server accepts JSON-RPC 2.0 requests at the `/mcp/` endpoint. Use the `Authorization` header to provide your token.
+The server accepts JSON-RPC 2.0 requests at the `/mcp` endpoint. Use the `Authorization` header to provide your token.
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_pipeboard_token" \
@@ -77,7 +77,7 @@ python -m meta_ads_mcp --transport streamable-http --port 9000
 
 ```bash
 curl -H "Authorization: Bearer your_pipeboard_token" \
-     -X POST http://localhost:8080/mcp/ \
+     -X POST http://localhost:8080/mcp \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
@@ -89,7 +89,7 @@ If you have a Meta Developer App, you can use a direct access token via the `X-M
 
 ```bash
 curl -H "X-META-ACCESS-TOKEN: your_meta_access_token" \
-     -X POST http://localhost:8080/mcp/ \
+     -X POST http://localhost:8080/mcp \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
@@ -100,7 +100,7 @@ curl -H "X-META-ACCESS-TOKEN: your_meta_access_token" \
 ### Server URL Structure
 
 **Base URL**: `http://localhost:8080`  
-**MCP Endpoint**: `/mcp/`
+**MCP Endpoint**: `/mcp`
 
 ### MCP Protocol Methods
 
@@ -129,7 +129,7 @@ All responses follow JSON-RPC 2.0 format:
 ### 1. Initialize Session
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_token" \
@@ -148,7 +148,7 @@ curl -X POST http://localhost:8080/mcp/ \
 ### 2. List Available Tools
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_token" \
@@ -162,7 +162,7 @@ curl -X POST http://localhost:8080/mcp/ \
 ### 3. Get Ad Accounts
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_token" \
@@ -180,7 +180,7 @@ curl -X POST http://localhost:8080/mcp/ \
 ### 4. Get Campaign Performance
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_token" \
@@ -210,7 +210,7 @@ import json
 class MetaAdsMCPClient:
     def __init__(self, base_url="http://localhost:8080", token=None):
         self.base_url = base_url
-        self.endpoint = f"{base_url}/mcp/"
+        self.endpoint = f"{base_url}/mcp"
         self.headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream"
@@ -245,7 +245,7 @@ const axios = require('axios');
 class MetaAdsMCPClient {
     constructor(baseUrl = 'http://localhost:8080', token = null) {
         this.baseUrl = baseUrl;
-        this.endpoint = `${baseUrl}/mcp/`;
+        this.endpoint = `${baseUrl}/mcp`;
         this.headers = {
             'Content-Type': 'application/json',
             'Accept': 'application/json, text/event-stream'
@@ -325,7 +325,7 @@ export META_ACCESS_TOKEN=your_access_token
 
 1. **Connection Refused**: Ensure the server is running and accessible on the specified port.
 2. **Authentication Failed**: Verify your Bearer token is valid and included in the `Authorization` header.
-3. **404 Not Found**: Make sure you're using the correct endpoint (`/mcp/`).
+3. **404 Not Found**: Make sure you're using the correct endpoint (`/mcp`).
 4. **JSON-RPC Errors**: Check that your request follows the JSON-RPC 2.0 format.
 
 ### Debug Mode
@@ -337,7 +337,7 @@ Enable verbose logging by setting the log level in your environment if the appli
 Test if the server is running by sending a `tools/list` request:
 
 ```bash
-curl -X POST http://localhost:8080/mcp/ \
+curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Authorization: Bearer your_token" \
