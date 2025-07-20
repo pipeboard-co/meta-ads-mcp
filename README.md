@@ -24,7 +24,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 
 ## Getting started with Remote MCP (Recommended)
 
-The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. No technical setup required - just connect and start analyzing your ad campaigns with AI!
+The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. Our cloud service uses streamable HTTP transport for reliable, scalable access to Meta Ads data. No technical setup required - just connect and start analyzing your ad campaigns with AI!
 
 ### For Claude Pro/Max Users
 
@@ -62,6 +62,8 @@ Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
 ## Local Installation (Technical Users Only)
 
 If you're a developer or need to customize the installation, you can run Meta Ads MCP locally. **Most marketers should use the Remote MCP above instead!** For complete technical setup instructions, see our **[Local Installation Guide](LOCAL_INSTALLATION.md)**.
+
+Meta Ads MCP also supports **streamable HTTP transport**, allowing you to run it as a standalone HTTP API for web applications and custom integrations. See **[Streamable HTTP Setup Guide](STREAMABLE_HTTP_SETUP.md)** for complete instructions.
 
 ### Quick Local Setup
 
