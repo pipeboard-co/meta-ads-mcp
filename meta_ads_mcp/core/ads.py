@@ -252,9 +252,7 @@ async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
         # If no hashes found, try to extract from the first creative we found in the API
         # Get creative for ad to try to extract hash
         creative_json = await get_ad_creatives(access_token=access_token, ad_id=ad_id)
-        # The result is wrapped by @meta_api_tool, so we need to extract the data
-        creative_wrapper = json.loads(creative_json)
-        creative_data = json.loads(creative_wrapper["data"])
+        creative_data = json.loads(creative_json)
         
         # Try to extract hash from data array
         if "data" in creative_data and creative_data["data"]:
@@ -393,9 +391,7 @@ async def save_ad_image_locally(access_token: str = None, ad_id: str = None, out
     if not image_hashes:
         # Fallback attempt (as in get_ad_image)
         creative_json = await get_ad_creatives(ad_id=ad_id, access_token=access_token) # Ensure ad_id is passed correctly
-        # The result is wrapped by @meta_api_tool, so we need to extract the data
-        creative_wrapper = json.loads(creative_json)
-        creative_data_list = json.loads(creative_wrapper["data"])
+        creative_data_list = json.loads(creative_json)
         if 'data' in creative_data_list and creative_data_list['data']:
              first_creative = creative_data_list['data'][0]
              if 'object_story_spec' in first_creative and 'link_data' in first_creative['object_story_spec'] and 'image_hash' in first_creative['object_story_spec']['link_data']:
