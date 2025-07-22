@@ -806,11 +806,74 @@ async def get_account_pages(access_token: str = None, account_id: str = None) ->
                 if page_details["data"]:
                     return json.dumps(page_details, indent=2)
         
+        # Approach 4: Extract page IDs from tracking_specs in ads
+        # Inspired by praveen92y's implementation for robust page detection
+        # This approach is often the most reliable as confirmed by community feedback
+        endpoint = f"{account_id}/ads"
+        params = {
+            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "limit": 100
+        }
+        
+        tracking_ads_data = await make_api_request(endpoint, access_token, params)
+        
+        tracking_page_ids = set()
+        if "data" in tracking_ads_data:
+            for ad in tracking_ads_data.get("data", []):
+                tracking_specs = ad.get("tracking_specs", [])
+                if isinstance(tracking_specs, list):
+                    for spec in tracking_specs:
+                        # If 'page' key exists, add all page IDs
+                        if isinstance(spec, dict) and "page" in spec:
+                            page_list = spec["page"]
+                            if isinstance(page_list, list):
+                                for page_id in page_list:
+                                    # Validate page ID format (should be numeric string)
+                                    if isinstance(page_id, (str, int)) and str(page_id).isdigit():
+                                        tracking_page_ids.add(str(page_id))
+        
+        if tracking_page_ids:
+            page_details = {"data": [], "source": "tracking_specs", "note": "Page IDs extracted from active ads - these are the most reliable for ad creation"}
+            for page_id in tracking_page_ids:
+                page_endpoint = f"{page_id}"
+                page_params = {
+                    "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+                }
+                
+                page_data = await make_api_request(page_endpoint, access_token, page_params)
+                if "id" in page_data:
+                    # Add additional context about this page ID being suitable for ads
+                    page_data["_meta"] = {
+                        "suitable_for_ads": True,
+                        "found_in_tracking_specs": True,
+                        "recommended_for_create_ad_creative": True
+                    }
+                    page_details["data"].append(page_data)
+                else:
+                    page_details["data"].append({
+                        "id": page_id, 
+                        "error": "Page details not found",
+                        "_meta": {
+                            "suitable_for_ads": True,
+                            "found_in_tracking_specs": True,
+                            "note": "Page ID exists in ads but details not accessible - you can still use this ID for ad creation"
+                        }
+                    })
+            
+            if page_details["data"]:
+                return json.dumps(page_details, indent=2)
+        
         # If all approaches failed, return empty data with a message
         return json.dumps({
             "data": [],
-            "message": "No pages found associated with this account",
-            "suggestion": "You may need to create a page or provide a page_id explicitly when creating ads"
+            "message": "No pages found associated with this account using automated methods",
+            "troubleshooting": {
+                "suggestion_1": "If you have existing ads, run 'get_ads' and look for page IDs in the 'tracking_specs' field",
+                "suggestion_2": "Use the exact page ID from existing ads' tracking_specs for creating new ad creatives",
+                "suggestion_3": "Verify your page ID format - it should be a numeric string (e.g., '123456789')",
+                "suggestion_4": "Check for digit transpositions or formatting errors in your page ID"
+            },
+            "note": "Based on community feedback, page IDs from existing ads' tracking_specs are the most reliable for ad creation"
         }, indent=2)
         
     except Exception as e:
