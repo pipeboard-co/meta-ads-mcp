@@ -10,7 +10,7 @@ import time
 
 from .api import meta_api_tool, make_api_request
 from .accounts import get_ad_accounts
-from .utils import download_image, try_multiple_download_methods, ad_creative_images
+from .utils import download_image, try_multiple_download_methods, ad_creative_images, extract_creative_image_urls
 from .server import mcp_server
 
 
@@ -179,7 +179,7 @@ async def get_ad_creatives(access_token: str = None, ad_id: str = None) -> str:
     # Add image URLs for direct viewing if available
     if 'data' in data:
         for creative in data['data']:
-            creative['image_urls_for_viewing'] = ad_creative_images(creative)
+            creative['image_urls_for_viewing'] = extract_creative_image_urls(creative)
 
     return json.dumps(data, indent=2)
 

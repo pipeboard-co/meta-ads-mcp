@@ -1,6 +1,6 @@
 """Utility functions for Meta Ads API."""
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import httpx
 import io
 from PIL import Image as PILImage
@@ -73,6 +73,64 @@ logger = setup_logging()
 
 # Global store for ad creative images
 ad_creative_images = {}
+
+
+def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
+    """
+    Extract image URLs from a creative object for direct viewing.
+    
+    Args:
+        creative: Meta Ads creative object
+        
+    Returns:
+        List of image URLs found in the creative
+    """
+    image_urls = []
+    
+    # Check for direct image_url field
+    if "image_url" in creative and creative["image_url"]:
+        image_urls.append(creative["image_url"])
+    
+    # Check for thumbnail_url field
+    if "thumbnail_url" in creative and creative["thumbnail_url"]:
+        image_urls.append(creative["thumbnail_url"])
+    
+    # Check object_story_spec for image URLs
+    if "object_story_spec" in creative:
+        story_spec = creative["object_story_spec"]
+        
+        # Check link_data for image fields
+        if "link_data" in story_spec:
+            link_data = story_spec["link_data"]
+            
+            # Check for picture field
+            if "picture" in link_data and link_data["picture"]:
+                image_urls.append(link_data["picture"])
+                
+            # Check for image_url field in link_data
+            if "image_url" in link_data and link_data["image_url"]:
+                image_urls.append(link_data["image_url"])
+        
+        # Check video_data for thumbnail (if present)
+        if "video_data" in story_spec and "image_url" in story_spec["video_data"]:
+            image_urls.append(story_spec["video_data"]["image_url"])
+    
+    # Check asset_feed_spec for multiple images
+    if "asset_feed_spec" in creative and "images" in creative["asset_feed_spec"]:
+        for image in creative["asset_feed_spec"]["images"]:
+            if "url" in image and image["url"]:
+                image_urls.append(image["url"])
+    
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_urls = []
+    for url in image_urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+    
+    return unique_urls
+
 
 async def download_image(url: str) -> Optional[bytes]:
     """
