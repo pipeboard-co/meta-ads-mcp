@@ -250,7 +250,7 @@ async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
     
     if not image_hashes:
         # If no hashes found, try to extract from the first creative we found in the API
-        # Get creative for ad to try to extract hash
+        # and also check for direct URLs as fallback
         creative_json = await get_ad_creatives(access_token=access_token, ad_id=ad_id)
         creative_data = json.loads(creative_json)
         
@@ -270,9 +270,52 @@ async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
                     images = creative["asset_feed_spec"]["images"]
                     if images and len(images) > 0 and "hash" in images[0]:
                         image_hashes.append(images[0]["hash"])
-    
-    if not image_hashes:
-        return "Error: No image hashes found in creative"
+        
+        # If still no image hashes found, try direct URL fallback approach
+        if not image_hashes:
+            print("No image hashes found, trying direct URL fallback...")
+            
+            image_url = None
+            if "data" in creative_data and creative_data["data"]:
+                creative = creative_data["data"][0]
+                
+                # Try image_urls_for_viewing first (usually higher quality)
+                if "image_urls_for_viewing" in creative and creative["image_urls_for_viewing"]:
+                    image_url = creative["image_urls_for_viewing"][0]
+                    print(f"Using image_urls_for_viewing: {image_url}")
+                # Fall back to thumbnail_url
+                elif "thumbnail_url" in creative and creative["thumbnail_url"]:
+                    image_url = creative["thumbnail_url"]
+                    print(f"Using thumbnail_url: {image_url}")
+            
+            if not image_url:
+                return "Error: No image URLs found in creative"
+            
+            # Download the image directly
+            print(f"Downloading image from direct URL: {image_url}")
+            image_bytes = await download_image(image_url)
+            
+            if not image_bytes:
+                return "Error: Failed to download image from direct URL"
+            
+            try:
+                # Convert bytes to PIL Image
+                img = PILImage.open(io.BytesIO(image_bytes))
+                
+                # Convert to RGB if needed
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+                    
+                # Create a byte stream of the image data
+                byte_arr = io.BytesIO()
+                img.save(byte_arr, format="JPEG")
+                img_bytes = byte_arr.getvalue()
+                
+                # Return as an Image object that LLM can directly analyze
+                return Image(data=img_bytes, format="jpeg")
+                
+            except Exception as e:
+                return f"Error processing image from direct URL: {str(e)}"
     
     print(f"Found image hashes: {image_hashes}")
     

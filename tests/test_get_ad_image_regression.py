@@ -1,15 +1,16 @@
-"""Regression tests for get_ad_image function JSON parsing fix.
+"""Regression tests for get_ad_image function fixes.
 
-Tests for issue where get_ad_image would throw:
-'TypeError: the JSON object must be str, bytes or bytearray, not dict'
+Tests for multiple issues that were fixed:
 
-This was caused by:
-1. Wrong parameter order when calling get_ad_creatives (ad_id, "", access_token instead of access_token=x, ad_id=y)
-2. Incorrect JSON parsing of the @meta_api_tool decorator wrapped response
+1. JSON Parsing Error: 'TypeError: the JSON object must be str, bytes or bytearray, not dict'
+   - Caused by wrong parameter order and incorrect JSON parsing
+   - Fixed by correcting parameter order and JSON parsing logic
 
-The fix:
-1. Corrected the parameter order in get_ad_creatives calls
-2. Updated JSON parsing to handle the wrapped response format: {"data": "JSON_STRING"}
+2. Missing Image Hash Support: "Error: No image hashes found in creative"
+   - Many modern creatives don't have image_hash but have direct URLs
+   - Fixed by adding direct URL fallback using image_urls_for_viewing and thumbnail_url
+
+The fixes enable get_ad_image to work with both traditional hash-based and modern URL-based creatives.
 """
 
 import pytest
@@ -185,4 +186,197 @@ class TestGetAdImageRegressionFix:
             # Verify get_ad_creatives was called with correct parameter names (not positional)
             mock_get_creatives.assert_called_once_with(ad_id="test_ad_id", access_token="test_token")
             
-            # The key regression test: this should not have raised a JSON parsing error 
+                         # The key regression test: this should not have raised a JSON parsing error
+    
+    async def test_get_ad_image_direct_url_fallback_with_image_urls_for_viewing(self):
+        """Test direct URL fallback using image_urls_for_viewing when no image_hash found."""
+        
+        # Mock responses for modern creative without image_hash
+        mock_ad_data = {
+            "account_id": "act_123456789",
+            "creative": {"id": "creative_123456789"}
+        }
+        
+        mock_creative_details = {
+            "id": "creative_123456789",
+            "name": "Modern Creative"
+            # No image_hash - this will trigger fallback
+        }
+        
+        # Mock get_ad_creatives response with direct URLs
+        mock_get_ad_creatives_response = json.dumps({
+            "data": [
+                {
+                    "id": "creative_123456789",
+                    "name": "Modern Creative",
+                    "status": "ACTIVE",
+                    "thumbnail_url": "https://example.com/thumb.jpg",
+                    "image_urls_for_viewing": [
+                        "https://example.com/full_image.jpg",
+                        "https://example.com/alt_image.jpg"
+                    ]
+                }
+            ]
+        })
+        
+        # Mock PIL Image processing
+        mock_pil_image = MagicMock()
+        mock_pil_image.mode = "RGB"
+        mock_pil_image.convert.return_value = mock_pil_image
+        
+        mock_byte_stream = MagicMock()
+        mock_byte_stream.getvalue.return_value = b"fake_jpeg_data"
+        
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.get_ad_creatives', new_callable=AsyncMock) as mock_get_creatives, \
+             patch('meta_ads_mcp.core.ads.download_image', new_callable=AsyncMock) as mock_download, \
+             patch('meta_ads_mcp.core.ads.PILImage.open') as mock_pil_open, \
+             patch('meta_ads_mcp.core.ads.io.BytesIO') as mock_bytesio:
+            
+            mock_api.side_effect = [mock_ad_data, mock_creative_details]
+            mock_get_creatives.return_value = mock_get_ad_creatives_response
+            mock_download.return_value = b"fake_image_bytes"
+            mock_pil_open.return_value = mock_pil_image
+            mock_bytesio.return_value = mock_byte_stream
+            
+            # This should use direct URL fallback successfully
+            result = await get_ad_image(access_token="test_token", ad_id="test_ad_id")
+            
+            # Verify it used the direct URL approach
+            assert result is not None
+            mock_get_creatives.assert_called_once()
+            mock_download.assert_called_once_with("https://example.com/full_image.jpg")
+    
+    async def test_get_ad_image_direct_url_fallback_with_thumbnail_url_only(self):
+        """Test direct URL fallback using thumbnail_url when image_urls_for_viewing not available."""
+        
+        # Mock responses for creative with only thumbnail_url
+        mock_ad_data = {
+            "account_id": "act_123456789",
+            "creative": {"id": "creative_123456789"}
+        }
+        
+        mock_creative_details = {
+            "id": "creative_123456789",
+            "name": "Thumbnail Only Creative"
+            # No image_hash
+        }
+        
+        # Mock get_ad_creatives response with only thumbnail_url
+        mock_get_ad_creatives_response = json.dumps({
+            "data": [
+                {
+                    "id": "creative_123456789",
+                    "name": "Thumbnail Only Creative",
+                    "status": "ACTIVE",
+                    "thumbnail_url": "https://example.com/thumb_only.jpg"
+                    # No image_urls_for_viewing
+                }
+            ]
+        })
+        
+        # Mock PIL Image processing
+        mock_pil_image = MagicMock()
+        mock_pil_image.mode = "RGB"
+        mock_pil_image.convert.return_value = mock_pil_image
+        
+        mock_byte_stream = MagicMock()
+        mock_byte_stream.getvalue.return_value = b"fake_jpeg_data"
+        
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.get_ad_creatives', new_callable=AsyncMock) as mock_get_creatives, \
+             patch('meta_ads_mcp.core.ads.download_image', new_callable=AsyncMock) as mock_download, \
+             patch('meta_ads_mcp.core.ads.PILImage.open') as mock_pil_open, \
+             patch('meta_ads_mcp.core.ads.io.BytesIO') as mock_bytesio:
+            
+            mock_api.side_effect = [mock_ad_data, mock_creative_details]
+            mock_get_creatives.return_value = mock_get_ad_creatives_response
+            mock_download.return_value = b"fake_image_bytes"
+            mock_pil_open.return_value = mock_pil_image
+            mock_bytesio.return_value = mock_byte_stream
+            
+            # This should fall back to thumbnail_url
+            result = await get_ad_image(access_token="test_token", ad_id="test_ad_id")
+            
+            # Verify it used the thumbnail URL
+            assert result is not None
+            mock_download.assert_called_once_with("https://example.com/thumb_only.jpg")
+    
+    async def test_get_ad_image_no_direct_urls_available(self):
+        """Test error handling when no direct URLs are available."""
+        
+        # Mock responses for creative without any URLs
+        mock_ad_data = {
+            "account_id": "act_123456789",
+            "creative": {"id": "creative_123456789"}
+        }
+        
+        mock_creative_details = {
+            "id": "creative_123456789",
+            "name": "No URLs Creative"
+            # No image_hash
+        }
+        
+        # Mock get_ad_creatives response without URLs
+        mock_get_ad_creatives_response = json.dumps({
+            "data": [
+                {
+                    "id": "creative_123456789", 
+                    "name": "No URLs Creative",
+                    "status": "ACTIVE"
+                    # No thumbnail_url or image_urls_for_viewing
+                }
+            ]
+        })
+        
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.get_ad_creatives', new_callable=AsyncMock) as mock_get_creatives:
+            
+            mock_api.side_effect = [mock_ad_data, mock_creative_details]
+            mock_get_creatives.return_value = mock_get_ad_creatives_response
+            
+            # This should return appropriate error
+            result = await get_ad_image(access_token="test_token", ad_id="test_ad_id")
+            
+            # Should get error about no URLs
+            assert isinstance(result, str)
+            assert "No image URLs found" in result
+    
+    async def test_get_ad_image_direct_url_download_failure(self):
+        """Test error handling when direct URL download fails."""
+        
+        # Mock responses for creative with URLs but download failure
+        mock_ad_data = {
+            "account_id": "act_123456789",
+            "creative": {"id": "creative_123456789"}
+        }
+        
+        mock_creative_details = {
+            "id": "creative_123456789",
+            "name": "Download Fail Creative"
+        }
+        
+        mock_get_ad_creatives_response = json.dumps({
+            "data": [
+                {
+                    "id": "creative_123456789",
+                    "name": "Download Fail Creative",
+                    "image_urls_for_viewing": ["https://example.com/broken_image.jpg"]
+                }
+            ]
+        })
+        
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.get_ad_creatives', new_callable=AsyncMock) as mock_get_creatives, \
+             patch('meta_ads_mcp.core.ads.download_image', new_callable=AsyncMock) as mock_download:
+            
+            mock_api.side_effect = [mock_ad_data, mock_creative_details]
+            mock_get_creatives.return_value = mock_get_ad_creatives_response
+            mock_download.return_value = None  # Simulate download failure
+            
+            # This should return download error
+            result = await get_ad_image(access_token="test_token", ad_id="test_ad_id")
+            
+            # Should get error about download failure
+            assert isinstance(result, str)
+            assert "Failed to download image from direct URL" in result 
