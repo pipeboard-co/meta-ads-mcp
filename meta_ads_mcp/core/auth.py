@@ -23,7 +23,9 @@ from .callback_server import (
 from .pipeboard_auth import pipeboard_auth_manager
 
 # Auth constants
-AUTH_SCOPE = "ads_management,ads_read,business_management,public_profile"
+# Scope includes pages_show_list and pages_read_engagement to fix issue #16
+# where get_account_pages failed for regular users due to missing page permissions
+AUTH_SCOPE = "ads_management,ads_read,business_management,public_profile,pages_show_list,pages_read_engagement"
 AUTH_REDIRECT_URI = "http://localhost:8888/callback"
 AUTH_RESPONSE_TYPE = "token"
 
