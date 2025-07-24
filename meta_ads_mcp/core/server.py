@@ -276,6 +276,8 @@ def main():
     pipeboard_api_token = os.environ.get("PIPEBOARD_API_TOKEN")
     if pipeboard_api_token:
         logger.info("Using Pipeboard authentication")
+        print("✅ Pipeboard authentication enabled")
+        print(f"   API token: {pipeboard_api_token[:8]}...{pipeboard_api_token[-4:]}")
         # Check for existing token
         token = pipeboard_auth_manager.get_access_token()
         if not token:
@@ -312,6 +314,9 @@ def main():
             except Exception as e:
                 logger.error(f"Error initiating browser-based authentication: {e}")
                 print(f"Error: Could not start authentication: {e}")
+        else:
+            print(f"✅ Valid Pipeboard access token found")
+            print(f"   Token preview: {token[:10]}...{token[-5:]}")
     
     # Transport-specific server initialization and startup
     if args.transport == "streamable-http":
@@ -336,7 +341,7 @@ def main():
         # Import all tool modules to ensure they are registered
         logger.info("Ensuring all tools are registered for HTTP transport")
         from . import accounts, campaigns, adsets, ads, insights, authentication
-        from . import ads_library, budget_schedules, reports
+        from . import ads_library, budget_schedules, reports, openai_deep_research
         
         # ✅ NEW: Setup HTTP authentication middleware
         logger.info("Setting up HTTP authentication middleware")
