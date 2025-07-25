@@ -306,6 +306,54 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token.
     - Returns: JSON string with the ID of the created budget schedule or an error message.
 
+22. `mcp_meta_ads_search_interests`
+    - Search for interest targeting options by keyword
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `query`: Search term for interests (e.g., "baseball", "cooking", "travel")
+      - `limit`: Maximum number of results to return (default: 25)
+    - Returns: Interest data with id, name, audience_size, and path fields
+
+23. `mcp_meta_ads_get_interest_suggestions`
+    - Get interest suggestions based on existing interests
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `interest_list`: List of interest names to get suggestions for (e.g., ["Basketball", "Soccer"])
+      - `limit`: Maximum number of suggestions to return (default: 25)
+    - Returns: Suggested interests with id, name, audience_size, and description fields
+
+24. `mcp_meta_ads_validate_interests`
+    - Validate interest names or IDs for targeting
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `interest_list`: List of interest names to validate (e.g., ["Japan", "Basketball"])
+      - `interest_fbid_list`: List of interest IDs to validate (e.g., ["6003700426513"])
+    - Returns: Validation results showing valid status and audience_size for each interest
+
+25. `mcp_meta_ads_search_behaviors`
+    - Get all available behavior targeting options
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `limit`: Maximum number of results to return (default: 50)
+    - Returns: Behavior targeting options with id, name, audience_size bounds, path, and description
+
+26. `mcp_meta_ads_search_demographics`
+    - Get demographic targeting options
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `demographic_class`: Type of demographics ('demographics', 'life_events', 'industries', 'income', 'family_statuses', 'user_device', 'user_os')
+      - `limit`: Maximum number of results to return (default: 50)
+    - Returns: Demographic targeting options with id, name, audience_size bounds, path, and description
+
+27. `mcp_meta_ads_search_geo_locations`
+    - Search for geographic targeting locations
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `query`: Search term for locations (e.g., "New York", "California", "Japan")
+      - `location_types`: Types of locations to search (['country', 'region', 'city', 'zip', 'geo_market', 'electoral_district'])
+      - `limit`: Maximum number of results to return (default: 25)
+    - Returns: Location data with key, name, type, and geographic hierarchy information
+
 ## Privacy and Security
 
 Meta Ads MCP follows security best practices with secure token management and automatic authentication handling. 
