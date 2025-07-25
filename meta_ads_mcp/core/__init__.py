@@ -11,6 +11,7 @@ from .server import login_cli, main
 from .auth import login
 from .ads_library import search_ads_archive
 from .budget_schedules import create_budget_schedule
+from .targeting import search_interests, get_interest_suggestions, validate_interests, search_behaviors, search_demographics, search_geo_locations
 from . import reports  # Import module to register conditional tools
 from . import duplication  # Import module to register conditional duplication tools
 from .openai_deep_research import search, fetch  # OpenAI MCP Deep Research tools
@@ -37,6 +38,12 @@ __all__ = [
     'main',
     'search_ads_archive',
     'create_budget_schedule',
+    'search_interests',
+    'get_interest_suggestions',
+    'validate_interests',
+    'search_behaviors',
+    'search_demographics',
+    'search_geo_locations',
     'search',  # OpenAI MCP Deep Research search tool
     'fetch',   # OpenAI MCP Deep Research fetch tool
 ] 

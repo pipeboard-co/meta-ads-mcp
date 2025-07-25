@@ -7,7 +7,7 @@ with the Claude LLM.
 
 from meta_ads_mcp.core.server import main
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     'get_ad_accounts',
@@ -26,7 +26,13 @@ __all__ = [
     'get_insights',
     'get_login_link',
     'login_cli',
-    'main'
+    'main',
+    'search_interests',
+    'get_interest_suggestions',
+    'validate_interests',
+    'search_behaviors',
+    'search_demographics',
+    'search_geo_locations'
 ]
 
 # Import key functions to make them available at package level
@@ -47,7 +53,13 @@ from .core import (
     get_insights,
     get_login_link,
     login_cli,
-    main
+    main,
+    search_interests,
+    get_interest_suggestions,
+    validate_interests,
+    search_behaviors,
+    search_demographics,
+    search_geo_locations
 )
 
 # Define a main function to be used as a package entry point

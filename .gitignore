@@ -30,3 +30,4 @@ debug/
 !debug/README.md
 
 internal/
+uv.lock
