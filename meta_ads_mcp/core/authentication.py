@@ -60,18 +60,22 @@ async def get_login_link(access_token: str = None) -> str:
             # If an access token was provided, this is likely a test - return success
             if access_token:
                 return json.dumps({
-                    "message": "Manual token provided",
-                    "token_status": "Provided token",
-                    "authentication_method": "manual_token"
+                    "message": "✅ Authentication Token Provided",
+                    "status": "Using provided access token for authentication",
+                    "token_info": f"Token preview: {access_token[:10]}...",
+                    "authentication_method": "manual_token",
+                    "ready_to_use": "You can now use all Meta Ads MCP tools and commands."
                 }, indent=2)
             
             # Check if Pipeboard token is working
             token = pipeboard_auth_manager.get_access_token()
             if token:
                 return json.dumps({
-                    "message": "Already authenticated via Pipeboard",
-                    "token_status": "Valid Pipeboard token",
-                    "authentication_method": "pipeboard_token"
+                    "message": "✅ Already Authenticated",
+                    "status": "You're successfully authenticated with Meta Ads via Pipeboard!",
+                    "token_info": f"Token preview: {token[:10]}...",
+                    "authentication_method": "pipeboard_token",
+                    "ready_to_use": "You can now use all Meta Ads MCP tools and commands."
                 }, indent=2)
             
             # Start Pipeboard auth flow
@@ -80,39 +84,51 @@ async def get_login_link(access_token: str = None) -> str:
             
             if login_url:
                 return json.dumps({
+                    "message": "🔗 Click to Authenticate",
                     "login_url": login_url,
-                    "markdown_link": f"[Click here to authenticate with Meta Ads via Pipeboard]({login_url})",
-                    "message": "IMPORTANT: Please use the Markdown link format in your response to allow the user to click it.",
-                    "instructions_for_llm": "You must present this link as clickable Markdown to the user using the markdown_link format provided.",
+                    "markdown_link": f"[🚀 Authenticate with Meta Ads]({login_url})",
+                    "instructions": "Click the link above to complete authentication with Meta Ads.",
                     "authentication_method": "pipeboard_oauth",
-                    "note": "After authenticating, the token will be automatically retrieved from Pipeboard."
+                    "what_happens_next": "After clicking, you'll be redirected to Meta's authentication page. Once completed, your token will be automatically saved.",
+                    "token_duration": "Your token will be valid for approximately 60 days."
                 }, indent=2)
             else:
                 return json.dumps({
-                    "error": "No login URL received from Pipeboard",
+                    "message": "❌ Authentication Error",
+                    "error": "Could not generate authentication URL from Pipeboard",
+                    "troubleshooting": [
+                        "Check that your PIPEBOARD_API_TOKEN is valid",
+                        "Ensure the Pipeboard service is accessible",
+                        "Try again in a few moments"
+                    ],
                     "authentication_method": "pipeboard_oauth_failed"
                 }, indent=2)
                 
         except Exception as e:
             logger.error(f"Error initiating Pipeboard auth flow: {e}")
             return json.dumps({
+                "message": "❌ Pipeboard Authentication Error",
                 "error": f"Failed to initiate Pipeboard authentication: {str(e)}",
-                "message": "Please check your PIPEBOARD_API_TOKEN environment variable.",
-                "authentication_method": "pipeboard"
+                "troubleshooting": [
+                    "✅ Check that PIPEBOARD_API_TOKEN environment variable is set correctly",
+                    "🌐 Verify that pipeboard.co is accessible from your network",
+                    "🔄 Try refreshing your Pipeboard API token",
+                    "⏰ Wait a moment and try again"
+                ],
+                "get_help": "Contact support if the issue persists",
+                "authentication_method": "pipeboard_error"
             }, indent=2)
     elif callback_server_disabled:
         # Production OAuth flow - use Pipeboard OAuth endpoints directly
         logger.info("Production OAuth flow - using Pipeboard OAuth endpoints")
         
         return json.dumps({
-            "authorization_endpoint": "https://pipeboard.co/oauth/authorize", 
-            "token_endpoint": "https://pipeboard.co/oauth/token",
-            "registration_endpoint": "https://pipeboard.co/oauth/register",
-            "discovery_endpoint": "/.well-known/oauth-authorization-server",
-            "message": "Production OAuth flow - use dynamic client registration",
-            "instructions": "MCP clients should use the OAuth discovery endpoint to get authorization URLs",
-            "authentication_method": "production_oauth",
-            "note": "For manual authentication, clients need to register with Pipeboard OAuth service first"
+            "message": "🔐 Authentication Required",
+            "instructions": "Please sign in to your Pipeboard account to authenticate with Meta Ads.",
+            "sign_in_url": "https://pipeboard.co/auth/signin",
+            "markdown_link": "[🚀 Sign in to Pipeboard](https://pipeboard.co/auth/signin)",
+            "what_to_do": "Click the link above to sign in to your Pipeboard account and complete authentication.",
+            "authentication_method": "production_oauth"
         }, indent=2)
     else:
         # Original Meta authentication flow (development/local)
@@ -124,12 +140,13 @@ async def get_login_link(access_token: str = None) -> str:
         if cached_token and not access_token:
             logger.info("get_login_link called with existing valid token")
             return json.dumps({
-                "message": "Already authenticated",
-                "token_status": token_status,
-                "token_preview": cached_token[:10] + "...",
+                "message": "✅ Already Authenticated", 
+                "status": "You're successfully authenticated with Meta Ads!",
+                "token_info": f"Token preview: {cached_token[:10]}...",
                 "created_at": auth_manager.token_info.created_at if hasattr(auth_manager, "token_info") else None,
                 "expires_in": auth_manager.token_info.expires_in if hasattr(auth_manager, "token_info") else None,
-                "authentication_method": "meta_oauth"
+                "authentication_method": "meta_oauth",
+                "ready_to_use": "You can now use all Meta Ads MCP tools and commands."
             }, indent=2)
         
         # IMPORTANT: Start the callback server first by calling our helper function
@@ -147,9 +164,14 @@ async def get_login_link(access_token: str = None) -> str:
         except Exception as e:
             logger.error(f"Failed to start callback server: {e}")
             return json.dumps({
-                "error": "Callback server disabled",
-                "message": str(e),
-                "suggestion": "Use Pipeboard authentication (set PIPEBOARD_API_TOKEN) or provide a direct access token",
+                "message": "❌ Local Authentication Unavailable",
+                "error": "Cannot start local callback server for authentication",
+                "reason": str(e),
+                "solutions": [
+                    "🌐 Use Pipeboard authentication: Set PIPEBOARD_API_TOKEN environment variable",
+                    "🔑 Use direct token: Set META_ACCESS_TOKEN environment variable", 
+                    "🔧 Check if another service is using the required ports"
+                ],
                 "authentication_method": "meta_oauth_disabled"
             }, indent=2)
         
@@ -159,19 +181,15 @@ async def get_login_link(access_token: str = None) -> str:
         
         # Return a special format that helps the LLM format the response properly
         response = {
+            "message": "🔗 Click to Authenticate",
             "login_url": login_url,
-            "token_status": token_status,
-            "server_status": f"Callback server running on port {port}",
-            "markdown_link": f"[Click here to authenticate with Meta Ads]({login_url})",
-            "message": "IMPORTANT: Please use the Markdown link format in your response to allow the user to click it.",
-            "instructions_for_llm": "You must present this link as clickable Markdown to the user using the markdown_link format provided.",
-            "token_exchange": "enabled" if token_exchange_supported else "disabled",
-            "token_duration": token_duration,
+            "markdown_link": f"[🚀 Authenticate with Meta Ads]({login_url})",
+            "instructions": "Click the link above to authenticate with Meta Ads.",
+            "server_info": f"Local callback server running on port {port}",
+            "token_duration": f"Your token will be valid for approximately {token_duration}",
             "authentication_method": "meta_oauth",
-            "token_exchange_message": f"Your authentication token will be valid for approximately {token_duration}." + 
-                                    (" Long-lived token exchange is enabled." if token_exchange_supported else 
-                                    " For direct Meta authentication, long-lived tokens require META_APP_SECRET. Consider using Pipeboard authentication instead (60-day tokens by default)."),
-            "note": "After authenticating, the token will be automatically saved."
+            "what_happens_next": "After clicking, you'll be redirected to Meta's authentication page. Once completed, your token will be automatically saved.",
+            "security_note": "This uses a secure local callback server for development purposes."
         }
         
         # Wait a moment to ensure the server is fully started
