@@ -1,4 +1,27 @@
-"""Authentication-specific functionality for Meta Ads API."""
+"""Authentication-specific functionality for Meta Ads API.
+
+The Meta Ads MCP server supports three authentication modes:
+
+1. **Development/Local Mode** (default)
+   - Uses local callback server on localhost:8080+ for OAuth redirect
+   - Requires META_ADS_DISABLE_CALLBACK_SERVER to NOT be set
+   - Best for local development and testing
+
+2. **Production with API Token** 
+   - Uses PIPEBOARD_API_TOKEN for server-to-server authentication
+   - Bypasses OAuth flow entirely
+   - Best for server deployments with pre-configured tokens
+
+3. **Production OAuth Flow** (NEW)
+   - Uses Pipeboard OAuth endpoints for dynamic client registration
+   - Triggered when META_ADS_DISABLE_CALLBACK_SERVER is set but no PIPEBOARD_API_TOKEN
+   - Supports MCP clients that implement OAuth 2.0 discovery
+
+Environment Variables:
+- PIPEBOARD_API_TOKEN: Enables mode 2 (token-based auth)  
+- META_ADS_DISABLE_CALLBACK_SERVER: Disables local server, enables mode 3
+- META_ACCESS_TOKEN: Direct Meta token (fallback)
+"""
 
 import json
 import asyncio
@@ -27,41 +50,49 @@ async def get_login_link(access_token: str = None) -> str:
     """
     # Check if we're using pipeboard authentication
     using_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
+    callback_server_disabled = bool(os.environ.get("META_ADS_DISABLE_CALLBACK_SERVER", ""))
     
     if using_pipeboard:
-        # Handle Pipeboard authentication
-        # Check if we have a cached token
-        cached_token = pipeboard_auth_manager.get_access_token()
-        token_status = "No token" if not cached_token else "Valid token"
-        
-        # If we already have a valid token and none was provided, just return success
-        if cached_token and not access_token:
-            logger.info("get_login_link called with existing valid Pipeboard token")
-            return json.dumps({
-                "message": "Already authenticated with Pipeboard",
-                "token_status": token_status,
-                "token_preview": cached_token[:10] + "..." if cached_token else None,
-                "authentication_method": "pipeboard"
-            }, indent=2)
-        
-        # Initiate the auth flow via Pipeboard
+        # Pipeboard token-based authentication
         try:
+            logger.info("Using Pipeboard token-based authentication")
+            
+            # If an access token was provided, this is likely a test - return success
+            if access_token:
+                return json.dumps({
+                    "message": "Manual token provided",
+                    "token_status": "Provided token",
+                    "authentication_method": "manual_token"
+                }, indent=2)
+            
+            # Check if Pipeboard token is working
+            token = pipeboard_auth_manager.get_access_token()
+            if token:
+                return json.dumps({
+                    "message": "Already authenticated via Pipeboard",
+                    "token_status": "Valid Pipeboard token",
+                    "authentication_method": "pipeboard_token"
+                }, indent=2)
+            
+            # Start Pipeboard auth flow
             auth_data = pipeboard_auth_manager.initiate_auth_flow()
-            login_url = auth_data.get("loginUrl")
+            login_url = auth_data.get('loginUrl')
             
-            # Return a special format that helps the LLM format the response properly
-            response = {
-                "login_url": login_url,
-                "token_status": token_status,
-                "markdown_link": f"[Click here to authenticate with Meta Ads via Pipeboard]({login_url})",
-                "message": "IMPORTANT: Please use the Markdown link format in your response to allow the user to click it.",
-                "instructions_for_llm": "You must present this link as clickable Markdown to the user using the markdown_link format provided.",
-                "authentication_method": "pipeboard",
-                "token_duration": "Approximately 60 days",
-                "note": "After authenticating, the token will be automatically saved."
-            }
-            
-            return json.dumps(response, indent=2)
+            if login_url:
+                return json.dumps({
+                    "login_url": login_url,
+                    "markdown_link": f"[Click here to authenticate with Meta Ads via Pipeboard]({login_url})",
+                    "message": "IMPORTANT: Please use the Markdown link format in your response to allow the user to click it.",
+                    "instructions_for_llm": "You must present this link as clickable Markdown to the user using the markdown_link format provided.",
+                    "authentication_method": "pipeboard_oauth",
+                    "note": "After authenticating, the token will be automatically retrieved from Pipeboard."
+                }, indent=2)
+            else:
+                return json.dumps({
+                    "error": "No login URL received from Pipeboard",
+                    "authentication_method": "pipeboard_oauth_failed"
+                }, indent=2)
+                
         except Exception as e:
             logger.error(f"Error initiating Pipeboard auth flow: {e}")
             return json.dumps({
@@ -69,8 +100,22 @@ async def get_login_link(access_token: str = None) -> str:
                 "message": "Please check your PIPEBOARD_API_TOKEN environment variable.",
                 "authentication_method": "pipeboard"
             }, indent=2)
+    elif callback_server_disabled:
+        # Production OAuth flow - use Pipeboard OAuth endpoints directly
+        logger.info("Production OAuth flow - using Pipeboard OAuth endpoints")
+        
+        return json.dumps({
+            "authorization_endpoint": "https://pipeboard.co/oauth/authorize", 
+            "token_endpoint": "https://pipeboard.co/oauth/token",
+            "registration_endpoint": "https://pipeboard.co/oauth/register",
+            "discovery_endpoint": "/.well-known/oauth-authorization-server",
+            "message": "Production OAuth flow - use dynamic client registration",
+            "instructions": "MCP clients should use the OAuth discovery endpoint to get authorization URLs",
+            "authentication_method": "production_oauth",
+            "note": "For manual authentication, clients need to register with Pipeboard OAuth service first"
+        }, indent=2)
     else:
-        # Original Meta authentication flow
+        # Original Meta authentication flow (development/local)
         # Check if we have a cached token
         cached_token = auth_manager.get_access_token()
         token_status = "No token" if not cached_token else "Valid token"
