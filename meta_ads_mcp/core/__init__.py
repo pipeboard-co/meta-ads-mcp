@@ -9,7 +9,7 @@ from .insights import get_insights
 from .authentication import get_login_link
 from .server import login_cli, main
 from .auth import login
-from .ads_library import search_ads_archive
+from . import ads_library  # Import module to register conditional tools
 from .budget_schedules import create_budget_schedule
 from .targeting import search_interests, get_interest_suggestions, validate_interests, search_behaviors, search_demographics, search_geo_locations
 from . import reports  # Import module to register conditional tools
@@ -36,7 +36,6 @@ __all__ = [
     'login_cli',
     'login',
     'main',
-    'search_ads_archive',
     'create_budget_schedule',
     'search_interests',
     'get_interest_suggestions',
