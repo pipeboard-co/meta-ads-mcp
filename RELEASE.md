@@ -29,15 +29,27 @@ This repository uses GitHub Actions to automatically publish releases to PyPI. H
    git push origin main
    ```
 
-3. **Create a GitHub release**:
-   - Go to https://github.com/pipeboard-co/meta-ads-mcp/releases
-   - Click "Create a new release"
-   - Tag version: `v0.3.8` (must match the version in pyproject.toml)
-   - Release title: `v0.3.8`
-   - Add release notes describing what changed
-   - Click "Publish release"
+3. **Wait for build tests to pass** (optional):
+   ```bash
+   # Check the latest test workflow run
+   gh run list --workflow=test.yml --limit 1
+   
+   # Get the run ID and wait for completion
+   RUN_ID=$(gh run list --workflow=test.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+   gh run watch $RUN_ID
+   ```
+   Note: This only tests package building and installation, not the actual pytest tests.
 
-4. **Automatic deployment**:
+4. **Create a GitHub release**:
+   ```bash
+   gh release create 0.3.8 --title "0.3.8" --generate-notes
+   ```
+   This command will:
+   - Create a release with the specified version (no "v" prefix)
+   - Auto-generate release notes from commits
+   - Automatically trigger the GitHub Action for PyPI publishing
+
+5. **Automatic deployment**:
    - The GitHub Action will automatically trigger
    - It will build the package and publish to PyPI
    - Check the "Actions" tab to monitor progress
@@ -49,10 +61,11 @@ This repository uses GitHub Actions to automatically publish releases to PyPI. H
 - **Purpose**: Builds and publishes the package to PyPI
 - **Security**: Uses trusted publishing with OIDC tokens (no API keys needed)
 
-### `test.yml` (if present)
+### `test.yml`
 - **Triggers**: On pushes and pull requests to main/master
 - **Purpose**: Tests package building and installation across Python versions
 - **Matrix**: Tests Python 3.10, 3.11, and 3.12
+- **Note**: Does not run pytest tests, only validates package structure
 
 ## Manual Deployment
 
