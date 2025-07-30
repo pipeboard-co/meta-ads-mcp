@@ -19,12 +19,12 @@ class TestDSAIntegration:
     
     @pytest.mark.asyncio
     async def test_dsa_beneficiary_complete_workflow(self):
-        """Test complete DSA beneficiary workflow from detection to creation"""
+        """Test complete DSA beneficiary workflow from account detection to ad set creation"""
         
-        # Step 1: Detect DSA requirements for European account
+        # Step 1: Get account info and detect DSA requirement
         mock_account_response = {
             "id": "act_701351919139047",
-            "name": "Test European Business Account",
+            "name": "Test European Account",
             "account_status": 1,
             "business_country_code": "DE",  # Germany - DSA compliant
             "business_city": "Berlin",
@@ -38,7 +38,12 @@ class TestDSAIntegration:
                 
                 # Get account info and verify DSA detection
                 result = await get_account_info(account_id="act_701351919139047")
-                result_data = json.loads(result)
+                
+                # Handle new return format (dictionary instead of JSON string)
+                if isinstance(result, dict):
+                    result_data = result
+                else:
+                    result_data = json.loads(result)
                 
                 # Verify DSA requirement is detected
                 assert result_data["business_country_code"] == "DE"
@@ -151,43 +156,53 @@ class TestDSAIntegration:
     async def test_dsa_beneficiary_regional_compliance_integration(self):
         """Test DSA beneficiary compliance across different regions"""
         
-        # Test European account (DSA required)
-        european_account_response = {
+        # Test 1: European account (DSA required)
+        mock_de_account_response = {
             "id": "act_de",
-            "name": "German Business Account",
+            "name": "German Account",
             "business_country_code": "DE",
-            "account_status": 1
+            "currency": "EUR"
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
             with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
-                mock_api.return_value = european_account_response
+                mock_api.return_value = mock_de_account_response
                 
                 result = await get_account_info(account_id="act_de")
-                result_data = json.loads(result)
                 
-                # Verify European account requires DSA
+                # Handle new return format (dictionary instead of JSON string)
+                if isinstance(result, dict):
+                    result_data = result
+                else:
+                    result_data = json.loads(result)
+                
+                # Verify DSA requirement for German account
                 assert result_data["business_country_code"] == "DE"
                 assert result_data["dsa_required"] == True
         
-        # Test US account (DSA not required)
-        us_account_response = {
+        # Test 2: US account (DSA not required)
+        mock_us_account_response = {
             "id": "act_us",
-            "name": "US Business Account",
+            "name": "US Account",
             "business_country_code": "US",
-            "account_status": 1
+            "currency": "USD"
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
             with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
-                mock_api.return_value = us_account_response
+                mock_api.return_value = mock_us_account_response
                 
                 result = await get_account_info(account_id="act_us")
-                result_data = json.loads(result)
                 
-                # Verify US account doesn't require DSA
+                # Handle new return format (dictionary instead of JSON string)
+                if isinstance(result, dict):
+                    result_data = result
+                else:
+                    result_data = json.loads(result)
+                
+                # Verify no DSA requirement for US account
                 assert result_data["business_country_code"] == "US"
                 assert result_data["dsa_required"] == False
     
@@ -378,3 +393,57 @@ class TestDSAIntegration:
                 # Verify ad set details are retrieved correctly
                 assert result_data["id"] == "120229746624860183"
                 assert "dsa_beneficiary" not in result_data  # Should not be present for US accounts 
+    
+    @pytest.mark.asyncio
+    async def test_account_info_requires_account_id(self):
+        """Test that get_account_info requires an account_id parameter"""
+        
+        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            mock_auth.return_value = "test_access_token"
+            
+            # Test without account_id parameter
+            result = await get_account_info()
+            
+            # Handle new return format (dictionary instead of JSON string)
+            if isinstance(result, dict):
+                result_data = result
+            else:
+                result_data = json.loads(result)
+            
+            # Verify error message for missing account_id
+            assert "error" in result_data
+            assert "Account ID is required" in result_data["error"]["message"]
+            assert "Please specify an account_id parameter" in result_data["error"]["details"]
+            assert "example" in result_data["error"]
+    
+    @pytest.mark.asyncio
+    async def test_account_info_inaccessible_account_error(self):
+        """Test that get_account_info provides helpful error for inaccessible accounts"""
+        
+        # Mock accessible accounts response
+        mock_accessible_accounts = {
+            "data": [
+                {"id": "act_123", "name": "Test Account 1"},
+                {"id": "act_456", "name": "Test Account 2"}
+            ]
+        }
+        
+        with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
+            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+                mock_auth.return_value = "test_access_token"
+                mock_api.return_value = mock_accessible_accounts
+                
+                result = await get_account_info(account_id="act_inaccessible")
+                
+                # Handle new return format (dictionary instead of JSON string)
+                if isinstance(result, dict):
+                    result_data = result
+                else:
+                    result_data = json.loads(result)
+                
+                # Verify helpful error message for inaccessible account
+                assert "error" in result_data
+                assert "not accessible to your user account" in result_data["error"]["message"]
+                assert "accessible_accounts" in result_data["error"]
+                assert "suggestion" in result_data["error"]
+                assert len(result_data["error"]["accessible_accounts"]) == 2 

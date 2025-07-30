@@ -36,28 +36,57 @@ async def get_account_info(access_token: str = None, account_id: str = None) -> 
     
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
-        account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        account_id: Meta Ads account ID (format: act_XXXXXXXXX) - REQUIRED
     """
-    # If no account ID is specified, try to get the first one for the user
     if not account_id:
-        accounts_json = await get_ad_accounts("me", json.dumps({"limit": 1}), access_token)
-        accounts_data = json.loads(accounts_json)
-        
-        if "data" in accounts_data and accounts_data["data"]:
-            account_id = accounts_data["data"][0]["id"]
-        else:
-            return json.dumps({"error": "No account ID specified and no accounts found for user"}, indent=2)
+        return {
+            "error": {
+                "message": "Account ID is required",
+                "details": "Please specify an account_id parameter",
+                "example": "Use account_id='act_123456789' or account_id='123456789'"
+            }
+        }
     
     # Ensure account_id has the 'act_' prefix for API compatibility
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
     
+    # First, check if the account is accessible to the user
+    endpoint = "me/adaccounts"
+    params = {
+        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code",
+        "limit": 50
+    }
+    accessible_accounts_data = await make_api_request(endpoint, access_token, params)
+    
+    if "data" in accessible_accounts_data:
+        accessible_account_ids = [acc["id"] for acc in accessible_accounts_data["data"]]
+        if account_id not in accessible_account_ids:
+            # Provide a helpful error message with accessible accounts
+            accessible_accounts = [
+                {"id": acc["id"], "name": acc["name"]} 
+                for acc in accessible_accounts_data["data"][:10]  # Show first 10
+            ]
+            return {
+                "error": {
+                    "message": f"Account {account_id} is not accessible to your user account",
+                    "details": "This account either doesn't exist or you don't have permission to access it",
+                    "accessible_accounts": accessible_accounts,
+                    "total_accessible_accounts": len(accessible_accounts_data["data"]),
+                    "suggestion": "Try using one of the accessible account IDs listed above"
+                }
+            }
+    
     endpoint = f"{account_id}"
     params = {
-        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,funding_source_details,business_city,business_country_code,timezone_name,owner"
+        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code,timezone_name"
     }
     
     data = await make_api_request(endpoint, access_token, params)
+    
+    # Check if the API request returned an error
+    if "error" in data:
+        return data
     
     # Add DSA requirement detection
     if "business_country_code" in data:
@@ -69,4 +98,4 @@ async def get_account_info(access_token: str = None, account_id: str = None) -> 
             data["dsa_required"] = False
             data["dsa_compliance_note"] = "This account is not subject to European DSA requirements"
     
-    return json.dumps(data, indent=2) 
+    return data 
