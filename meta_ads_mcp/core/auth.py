@@ -159,11 +159,41 @@ class AuthManager:
         try:
             with open(cache_path, "r") as f:
                 data = json.load(f)
+                
+                # Validate the cached data structure
+                required_fields = ["access_token", "created_at"]
+                if not all(field in data for field in required_fields):
+                    logger.warning("Cached token data is missing required fields")
+                    return False
+                
+                # Check if the token looks valid (basic format check)
+                if not data.get("access_token") or len(data["access_token"]) < 20:
+                    logger.warning("Cached token appears malformed")
+                    return False
+                
                 self.token_info = TokenInfo.deserialize(data)
                 
                 # Check if token is expired
                 if self.token_info.is_expired():
-                    logger.info("Cached token is expired")
+                    logger.info("Cached token is expired, removing cache file")
+                    # Remove the expired cache file
+                    try:
+                        cache_path.unlink()
+                        logger.info(f"Removed expired token cache: {cache_path}")
+                    except Exception as e:
+                        logger.warning(f"Could not remove expired cache file: {e}")
+                    self.token_info = None
+                    return False
+                
+                # Additional validation: check if token is too old (more than 60 days)
+                current_time = int(time.time())
+                if self.token_info.created_at and (current_time - self.token_info.created_at) > (60 * 24 * 3600):
+                    logger.warning("Cached token is too old (more than 60 days), removing cache file")
+                    try:
+                        cache_path.unlink()
+                        logger.info(f"Removed old token cache: {cache_path}")
+                    except Exception as e:
+                        logger.warning(f"Could not remove old cache file: {e}")
                     self.token_info = None
                     return False
                 
@@ -171,6 +201,12 @@ class AuthManager:
                 return True
         except Exception as e:
             logger.error(f"Error loading cached token: {e}")
+            # If there's any error reading the cache, try to remove the corrupted file
+            try:
+                cache_path.unlink()
+                logger.info(f"Removed corrupted token cache: {cache_path}")
+            except Exception as cleanup_error:
+                logger.warning(f"Could not remove corrupted cache file: {cleanup_error}")
             return False
     
     def _save_token_to_cache(self) -> None:
