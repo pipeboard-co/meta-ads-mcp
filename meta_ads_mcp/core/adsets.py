@@ -197,9 +197,10 @@ async def create_adset(
 @meta_api_tool
 async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, Any]] = None, bid_strategy: str = None, 
                         bid_amount: int = None, status: str = None, targeting: Dict[str, Any] = None, 
-                        optimization_goal: str = None, access_token: str = None) -> str:
+                        optimization_goal: str = None, daily_budget = None, lifetime_budget = None, 
+                        access_token: str = None) -> str:
     """
-    Update an ad set with new settings including frequency caps.
+    Update an ad set with new settings including frequency caps and budgets.
     
     Args:
         adset_id: Meta Ads ad set ID
@@ -211,6 +212,8 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
         targeting: Complete targeting specifications (will replace existing targeting)
                   (e.g. {"targeting_automation":{"advantage_audience":1}, "geo_locations": {"countries": ["US"]}})
         optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'APP_INSTALLS', etc.)
+        daily_budget: Daily budget in account currency (in cents) as a string
+        lifetime_budget: Lifetime budget in account currency (in cents) as a string
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -239,6 +242,13 @@ async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, An
             params['targeting'] = json.dumps(targeting)
         else:
             params['targeting'] = targeting  # Already a string
+    
+    # Add budget parameters if provided
+    if daily_budget is not None:
+        params['daily_budget'] = str(daily_budget)
+    
+    if lifetime_budget is not None:
+        params['lifetime_budget'] = str(lifetime_budget)
     
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)

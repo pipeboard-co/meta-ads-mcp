@@ -99,7 +99,8 @@ async def create_campaign(
     bid_cap = None,
     spend_cap = None,
     campaign_budget_optimization: bool = None,
-    ab_test_control_setups: Optional[List[Dict[str, Any]]] = None
+    ab_test_control_setups: Optional[List[Dict[str, Any]]] = None,
+    use_adset_level_budgets: bool = False
 ) -> str:
     """
     Create a new campaign in a Meta Ads account.
@@ -111,14 +112,15 @@ async def create_campaign(
         objective: Campaign objective. Validates ad objectives. enum{BRAND_AWARENESS, LEAD_GENERATION, LINK_CLICKS, CONVERSIONS, OUTCOME_TRAFFIC, etc.}.
         status: Initial campaign status (default: PAUSED)
         special_ad_categories: List of special ad categories if applicable
-        daily_budget: Daily budget in account currency (in cents) as a string
-        lifetime_budget: Lifetime budget in account currency (in cents) as a string
+        daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
+        lifetime_budget: Lifetime budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         buying_type: Buying type (e.g., 'AUCTION')
         bid_strategy: Bid strategy (e.g., 'LOWEST_COST', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP')
         bid_cap: Bid cap in account currency (in cents) as a string
         spend_cap: Spending limit for the campaign in account currency (in cents) as a string
-        campaign_budget_optimization: Whether to enable campaign budget optimization
+        campaign_budget_optimization: Whether to enable campaign budget optimization (only used if use_adset_level_budgets=False)
         ab_test_control_setups: Settings for A/B testing (e.g., [{"name":"Creative A", "ad_format":"SINGLE_IMAGE"}])
+        use_adset_level_budgets: If True, budgets will be set at the ad set level instead of campaign level (default: False)
     """
     # Check required parameters
     if not account_id:
@@ -134,8 +136,8 @@ async def create_campaign(
     if special_ad_categories is None:
         special_ad_categories = []
     
-    # For this example, we'll add a fixed daily budget if none is provided
-    if not daily_budget and not lifetime_budget:
+    # For this example, we'll add a fixed daily budget if none is provided and we're not using ad set level budgets
+    if not daily_budget and not lifetime_budget and not use_adset_level_budgets:
         daily_budget = "1000"  # Default to $10 USD
     
     endpoint = f"{account_id}/campaigns"
@@ -147,12 +149,17 @@ async def create_campaign(
         "special_ad_categories": json.dumps(special_ad_categories)  # Properly format as JSON string
     }
     
-    # Convert budget values to strings if they aren't already
-    if daily_budget is not None:
-        params["daily_budget"] = str(daily_budget)
-    
-    if lifetime_budget is not None:
-        params["lifetime_budget"] = str(lifetime_budget)
+    # Only set campaign-level budgets if we're not using ad set level budgets
+    if not use_adset_level_budgets:
+        # Convert budget values to strings if they aren't already
+        if daily_budget is not None:
+            params["daily_budget"] = str(daily_budget)
+        
+        if lifetime_budget is not None:
+            params["lifetime_budget"] = str(lifetime_budget)
+        
+        if campaign_budget_optimization is not None:
+            params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
     
     # Add new parameters
     if buying_type:
@@ -167,14 +174,17 @@ async def create_campaign(
     if spend_cap is not None:
         params["spend_cap"] = str(spend_cap)
     
-    if campaign_budget_optimization is not None:
-        params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
-    
     if ab_test_control_setups:
         params["ab_test_control_setups"] = json.dumps(ab_test_control_setups)
     
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
+        
+        # Add a note about budget strategy if using ad set level budgets
+        if use_adset_level_budgets:
+            data["budget_strategy"] = "ad_set_level"
+            data["note"] = "Campaign created with ad set level budgets. Set budgets when creating ad sets within this campaign."
+        
         return json.dumps(data, indent=2)
     except Exception as e:
         error_msg = str(e)
@@ -200,7 +210,7 @@ async def update_campaign(
     spend_cap = None,
     campaign_budget_optimization: bool = None,
     objective: str = None,  # Add objective if it's updatable
-    # Add other updatable fields as needed based on API docs
+    use_adset_level_budgets: bool = None,  # Add other updatable fields as needed based on API docs
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
@@ -211,13 +221,16 @@ async def update_campaign(
         name: New campaign name
         status: New campaign status (e.g., 'ACTIVE', 'PAUSED')
         special_ad_categories: List of special ad categories if applicable
-        daily_budget: New daily budget in account currency (in cents) as a string
-        lifetime_budget: New lifetime budget in account currency (in cents) as a string
+        daily_budget: New daily budget in account currency (in cents) as a string. 
+                     Set to empty string "" to remove the daily budget.
+        lifetime_budget: New lifetime budget in account currency (in cents) as a string.
+                        Set to empty string "" to remove the lifetime budget.
         bid_strategy: New bid strategy
         bid_cap: New bid cap in account currency (in cents) as a string
         spend_cap: New spending limit for the campaign in account currency (in cents) as a string
         campaign_budget_optimization: Enable/disable campaign budget optimization
         objective: New campaign objective (Note: May not always be updatable)
+        use_adset_level_budgets: If True, removes campaign-level budgets to switch to ad set level budgets
     """
     if not campaign_id:
         return json.dumps({"error": "No campaign ID provided"}, indent=2)
@@ -235,18 +248,52 @@ async def update_campaign(
         # Note: Updating special_ad_categories might have specific API rules or might not be allowed after creation.
         # The API might require an empty list `[]` to clear categories. Check Meta Docs.
         params["special_ad_categories"] = json.dumps(special_ad_categories)
-    if daily_budget is not None:
-        params["daily_budget"] = str(daily_budget)
-    if lifetime_budget is not None:
-        params["lifetime_budget"] = str(lifetime_budget)
+    
+    # Handle budget parameters based on use_adset_level_budgets setting
+    if use_adset_level_budgets is not None:
+        if use_adset_level_budgets:
+            # Remove campaign-level budgets when switching to ad set level budgets
+            params["daily_budget"] = ""
+            params["lifetime_budget"] = ""
+            if campaign_budget_optimization is not None:
+                params["campaign_budget_optimization"] = "false"
+        else:
+            # If switching back to campaign-level budgets, use the provided budget values
+            if daily_budget is not None:
+                if daily_budget == "":
+                    params["daily_budget"] = ""
+                else:
+                    params["daily_budget"] = str(daily_budget)
+            if lifetime_budget is not None:
+                if lifetime_budget == "":
+                    params["lifetime_budget"] = ""
+                else:
+                    params["lifetime_budget"] = str(lifetime_budget)
+            if campaign_budget_optimization is not None:
+                params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
+    else:
+        # Normal budget updates when not changing budget strategy
+        if daily_budget is not None:
+            # To remove budget, set to empty string
+            if daily_budget == "":
+                params["daily_budget"] = ""
+            else:
+                params["daily_budget"] = str(daily_budget)
+        if lifetime_budget is not None:
+            # To remove budget, set to empty string
+            if lifetime_budget == "":
+                params["lifetime_budget"] = ""
+            else:
+                params["lifetime_budget"] = str(lifetime_budget)
+        if campaign_budget_optimization is not None:
+            params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
+    
     if bid_strategy is not None:
         params["bid_strategy"] = bid_strategy
     if bid_cap is not None:
         params["bid_cap"] = str(bid_cap)
     if spend_cap is not None:
         params["spend_cap"] = str(spend_cap)
-    if campaign_budget_optimization is not None:
-        params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
     if objective is not None:
         params["objective"] = objective # Caution: Objective changes might reset learning or be restricted
 
@@ -256,6 +303,12 @@ async def update_campaign(
     try:
         # Use POST method for updates as per Meta API documentation
         data = await make_api_request(endpoint, access_token, params, method="POST")
+        
+        # Add a note about budget strategy if switching to ad set level budgets
+        if use_adset_level_budgets is not None and use_adset_level_budgets:
+            data["budget_strategy"] = "ad_set_level"
+            data["note"] = "Campaign updated to use ad set level budgets. Set budgets when creating ad sets within this campaign."
+        
         return json.dumps(data, indent=2)
     except Exception as e:
         error_msg = str(e)
