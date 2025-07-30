@@ -73,7 +73,7 @@ async def get_adset_details(access_token: str = None, adset_id: str = None) -> s
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -103,6 +103,7 @@ async def create_adset(
     bid_strategy: str = None,
     start_time: str = None,
     end_time: str = None,
+    dsa_beneficiary: str = None,
     access_token: str = None
 ) -> str:
     """
@@ -123,6 +124,7 @@ async def create_adset(
         bid_strategy: Bid strategy (e.g., 'LOWEST_COST', 'LOWEST_COST_WITH_BID_CAP')
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
         end_time: End time in ISO 8601 format
+        dsa_beneficiary: DSA beneficiary (person/organization benefiting from ads) for European compliance
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -181,16 +183,44 @@ async def create_adset(
     if end_time:
         params["end_time"] = end_time
     
+    # Add DSA beneficiary if provided
+    if dsa_beneficiary:
+        params["dsa_beneficiary"] = dsa_beneficiary
+    
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
     except Exception as e:
         error_msg = str(e)
-        return json.dumps({
-            "error": "Failed to create ad set",
-            "details": error_msg,
-            "params_sent": params
-        }, indent=2)
+        
+        # Enhanced error handling for DSA beneficiary issues
+        if "permission" in error_msg.lower() or "insufficient" in error_msg.lower():
+            return json.dumps({
+                "error": "Insufficient permissions to set DSA beneficiary. Please ensure you have business_management permissions.",
+                "details": error_msg,
+                "params_sent": params,
+                "permission_required": True
+            }, indent=2)
+        elif "dsa_beneficiary" in error_msg.lower() and ("not supported" in error_msg.lower() or "parameter" in error_msg.lower()):
+            return json.dumps({
+                "error": "DSA beneficiary parameter not supported in this API version. Please set DSA beneficiary manually in Facebook Ads Manager.",
+                "details": error_msg,
+                "params_sent": params,
+                "manual_setup_required": True
+            }, indent=2)
+        elif "benefits from ads" in error_msg or "DSA beneficiary" in error_msg:
+            return json.dumps({
+                "error": "DSA beneficiary required for European compliance. Please provide the person or organization that benefits from ads in this ad set.",
+                "details": error_msg,
+                "params_sent": params,
+                "dsa_required": True
+            }, indent=2)
+        else:
+            return json.dumps({
+                "error": "Failed to create ad set",
+                "details": error_msg,
+                "params_sent": params
+            }, indent=2)
 
 
 @mcp_server.tool()

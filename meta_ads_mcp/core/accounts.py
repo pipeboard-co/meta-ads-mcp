@@ -59,4 +59,14 @@ async def get_account_info(access_token: str = None, account_id: str = None) -> 
     
     data = await make_api_request(endpoint, access_token, params)
     
+    # Add DSA requirement detection
+    if "business_country_code" in data:
+        european_countries = ["DE", "FR", "IT", "ES", "NL", "BE", "AT", "IE", "DK", "SE", "FI", "NO"]
+        if data["business_country_code"] in european_countries:
+            data["dsa_required"] = True
+            data["dsa_compliance_note"] = "This account is subject to European DSA (Digital Services Act) requirements"
+        else:
+            data["dsa_required"] = False
+            data["dsa_compliance_note"] = "This account is not subject to European DSA requirements"
+    
     return json.dumps(data, indent=2) 
