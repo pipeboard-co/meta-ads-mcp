@@ -90,11 +90,11 @@ class TestGetAdCreativesBugFix:
         
         urls = extract_creative_image_urls(test_creative)
         
-        # Should extract URLs in order: image_url, thumbnail_url, picture
+        # Should extract URLs in order: image_url, picture, thumbnail_url (new priority order)
         expected_urls = [
             "https://example.com/image.jpg",
-            "https://example.com/thumb.jpg", 
-            "https://example.com/picture.jpg"
+            "https://example.com/picture.jpg",
+            "https://example.com/thumb.jpg"
         ]
         
         assert urls == expected_urls

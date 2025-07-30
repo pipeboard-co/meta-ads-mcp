@@ -78,22 +78,30 @@ ad_creative_images = {}
 def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
     """
     Extract image URLs from a creative object for direct viewing.
+    Prioritizes higher quality images over thumbnails.
     
     Args:
         creative: Meta Ads creative object
         
     Returns:
-        List of image URLs found in the creative
+        List of image URLs found in the creative, prioritized by quality
     """
     image_urls = []
+    
+    # Prioritize higher quality image URLs in this order:
+    # 1. image_urls_for_viewing (usually highest quality)
+    # 2. image_url (direct field)
+    # 3. object_story_spec.link_data.picture (usually full size)
+    # 4. asset_feed_spec images (multiple high-quality images)
+    # 5. thumbnail_url (last resort - often profile thumbnail)
+    
+    # Check for image_urls_for_viewing (highest priority)
+    if "image_urls_for_viewing" in creative and creative["image_urls_for_viewing"]:
+        image_urls.extend(creative["image_urls_for_viewing"])
     
     # Check for direct image_url field
     if "image_url" in creative and creative["image_url"]:
         image_urls.append(creative["image_url"])
-    
-    # Check for thumbnail_url field
-    if "thumbnail_url" in creative and creative["thumbnail_url"]:
-        image_urls.append(creative["thumbnail_url"])
     
     # Check object_story_spec for image URLs
     if "object_story_spec" in creative:
@@ -103,7 +111,7 @@ def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
         if "link_data" in story_spec:
             link_data = story_spec["link_data"]
             
-            # Check for picture field
+            # Check for picture field (usually full size)
             if "picture" in link_data and link_data["picture"]:
                 image_urls.append(link_data["picture"])
                 
@@ -120,6 +128,10 @@ def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
         for image in creative["asset_feed_spec"]["images"]:
             if "url" in image and image["url"]:
                 image_urls.append(image["url"])
+    
+    # Check for thumbnail_url field (lowest priority)
+    if "thumbnail_url" in creative and creative["thumbnail_url"]:
+        image_urls.append(creative["thumbnail_url"])
     
     # Remove duplicates while preserving order
     seen = set()

@@ -10,7 +10,12 @@ Tests for multiple issues that were fixed:
    - Many modern creatives don't have image_hash but have direct URLs
    - Fixed by adding direct URL fallback using image_urls_for_viewing and thumbnail_url
 
-The fixes enable get_ad_image to work with both traditional hash-based and modern URL-based creatives.
+3. Image Quality Issue: Function was returning profile thumbnails instead of ad creative images
+   - Fixed by prioritizing image_urls_for_viewing over thumbnail_url
+   - Added proper fallback hierarchy: image_urls_for_viewing > image_url > object_story_spec.picture > thumbnail_url
+
+The fixes enable get_ad_image to work with both traditional hash-based and modern URL-based creatives,
+and ensure high-quality images are returned instead of thumbnails.
 """
 
 import pytest
@@ -379,4 +384,71 @@ class TestGetAdImageRegressionFix:
             
             # Should get error about download failure
             assert isinstance(result, str)
-            assert "Failed to download image from direct URL" in result 
+            assert "Failed to download image from direct URL" in result
+    
+    async def test_get_ad_image_quality_improvement_prioritizes_high_quality(self):
+        """Test that the image quality improvement correctly prioritizes high-quality images over thumbnails."""
+        
+        # Mock responses for creative with both high-quality and thumbnail URLs
+        mock_ad_data = {
+            "account_id": "act_123456789",
+            "creative": {"id": "creative_123456789"}
+        }
+        
+        mock_creative_details = {
+            "id": "creative_123456789",
+            "name": "Quality Test Creative"
+        }
+        
+        # Mock get_ad_creatives response with both URLs
+        mock_get_ad_creatives_response = json.dumps({
+            "data": [
+                {
+                    "id": "creative_123456789",
+                    "name": "Quality Test Creative",
+                    "status": "ACTIVE",
+                    "thumbnail_url": "https://example.com/thumbnail_64x64.jpg",  # Low quality thumbnail
+                    "image_url": "https://example.com/full_image.jpg",  # Medium quality
+                    "image_urls_for_viewing": [
+                        "https://example.com/high_quality_image.jpg",  # Highest quality
+                        "https://example.com/alt_high_quality.jpg"
+                    ],
+                    "object_story_spec": {
+                        "link_data": {
+                            "picture": "https://example.com/object_story_picture.jpg"
+                        }
+                    }
+                }
+            ]
+        })
+        
+        # Mock PIL Image processing
+        mock_pil_image = MagicMock()
+        mock_pil_image.mode = "RGB"
+        mock_pil_image.convert.return_value = mock_pil_image
+        
+        mock_byte_stream = MagicMock()
+        mock_byte_stream.getvalue.return_value = b"fake_jpeg_data"
+        
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.get_ad_creatives', new_callable=AsyncMock) as mock_get_creatives, \
+             patch('meta_ads_mcp.core.ads.download_image', new_callable=AsyncMock) as mock_download, \
+             patch('meta_ads_mcp.core.ads.PILImage.open') as mock_pil_open, \
+             patch('meta_ads_mcp.core.ads.io.BytesIO') as mock_bytesio:
+            
+            mock_api.side_effect = [mock_ad_data, mock_creative_details]
+            mock_get_creatives.return_value = mock_get_ad_creatives_response
+            mock_download.return_value = b"fake_image_bytes"
+            mock_pil_open.return_value = mock_pil_image
+            mock_bytesio.return_value = mock_byte_stream
+            
+            # This should prioritize image_urls_for_viewing[0] over thumbnail_url
+            result = await get_ad_image(access_token="test_token", ad_id="test_ad_id")
+            
+            # Verify it used the highest quality URL, not the thumbnail
+            assert result is not None
+            mock_download.assert_called_once_with("https://example.com/high_quality_image.jpg")
+            
+            # Verify it did NOT use the thumbnail URL
+            # Check that the call was made with the high-quality URL, not the thumbnail
+            mock_download.assert_called_once_with("https://example.com/high_quality_image.jpg") 

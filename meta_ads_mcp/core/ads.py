@@ -171,7 +171,7 @@ async def get_ad_creatives(access_token: str = None, ad_id: str = None) -> str:
         
     endpoint = f"{ad_id}/adcreatives"
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec" # Added image_hash
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,image_urls_for_viewing"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -279,14 +279,26 @@ async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
             if "data" in creative_data and creative_data["data"]:
                 creative = creative_data["data"][0]
                 
-                # Try image_urls_for_viewing first (usually higher quality)
+                # Prioritize higher quality image URLs in this order:
+                # 1. image_urls_for_viewing (usually highest quality)
+                # 2. image_url (direct field)
+                # 3. object_story_spec.link_data.picture (usually full size)
+                # 4. thumbnail_url (last resort - often profile thumbnail)
+                
                 if "image_urls_for_viewing" in creative and creative["image_urls_for_viewing"]:
                     image_url = creative["image_urls_for_viewing"][0]
                     print(f"Using image_urls_for_viewing: {image_url}")
-                # Fall back to thumbnail_url
+                elif "image_url" in creative and creative["image_url"]:
+                    image_url = creative["image_url"]
+                    print(f"Using image_url: {image_url}")
+                elif "object_story_spec" in creative and "link_data" in creative["object_story_spec"]:
+                    link_data = creative["object_story_spec"]["link_data"]
+                    if "picture" in link_data and link_data["picture"]:
+                        image_url = link_data["picture"]
+                        print(f"Using object_story_spec.link_data.picture: {image_url}")
                 elif "thumbnail_url" in creative and creative["thumbnail_url"]:
                     image_url = creative["thumbnail_url"]
-                    print(f"Using thumbnail_url: {image_url}")
+                    print(f"Using thumbnail_url (fallback): {image_url}")
             
             if not image_url:
                 return "Error: No image URLs found in creative"
