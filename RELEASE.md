@@ -1,97 +1,166 @@
 # Release Process
 
-This repository uses GitHub Actions to automatically publish releases to PyPI. Here's how it works:
+This repository uses GitHub Actions to automatically publish releases to PyPI. Here's the optimized release process:
 
-## Automated Publishing
+## 🚀 Quick Release (Recommended)
 
-### Setup Status
+### Prerequisites
+- ✅ **Trusted Publishing Configured**: Repository uses PyPI trusted publishing with OIDC tokens
+- ✅ **GitHub CLI installed**: `gh` command available for streamlined releases
+- ✅ **Clean working directory**: No uncommitted changes
 
-✅ **Trusted Publishing Configured**: The repository is already set up with PyPI trusted publishing using the `release` environment.
+### Optimal Release Process
 
-### Creating a Release
-
-1. **Update the version** in both files:
+1. **Update version in both files** (use consistent versioning):
    
-   In `pyproject.toml`:
-   ```toml
-   version = "0.3.8"  # Increment as needed
+   ```bash
+   # Update pyproject.toml
+   sed -i '' 's/version = "0.7.7"/version = "0.7.8"/' pyproject.toml
+   
+   # Update __init__.py  
+   sed -i '' 's/__version__ = "0.7.7"/__version__ = "0.7.8"/' meta_ads_mcp/__init__.py
    ```
    
-   In `meta_ads_mcp/__init__.py`:
-   ```python
-   __version__ = "0.3.8"  # Must match pyproject.toml
-   ```
+   Or manually edit:
+   - `pyproject.toml`: `version = "0.7.8"`
+   - `meta_ads_mcp/__init__.py`: `__version__ = "0.7.8"`
 
-2. **Commit and push** the version changes:
+2. **Commit and push version changes**:
    ```bash
    git add pyproject.toml meta_ads_mcp/__init__.py
-   git commit -m "Bump version to 0.3.8"
+   git commit -m "Bump version to 0.7.8"
    git push origin main
    ```
 
-3. **Wait for build tests to pass** (optional):
+3. **Create GitHub release** (triggers automatic PyPI publishing):
    ```bash
-   # Check the latest test workflow run
-   gh run list --workflow=test.yml --limit 1
+   # Use bash wrapper if gh has issues in Cursor
+   bash -c "gh release create 0.7.8 --title '0.7.8' --generate-notes"
+   ```
+
+4. **Verify release** (optional):
+   ```bash
+   # Check GitHub release
+   curl -s "https://api.github.com/repos/pipeboard-co/meta-ads-mcp/releases/latest" | grep -E '"tag_name"|"name"'
    
-   # Get the run ID and wait for completion
-   RUN_ID=$(gh run list --workflow=test.yml --limit 1 --json databaseId --jq '.[0].databaseId')
-   gh run watch $RUN_ID
+   # Check PyPI availability (wait 2-3 minutes)
+   curl -s "https://pypi.org/pypi/meta-ads-mcp/json" | grep -E '"version"|"0.7.8"'
    ```
-   Note: This only tests package building and installation, not the actual pytest tests.
 
-4. **Create a GitHub release**:
+## 📋 Detailed Release Process
+
+### Version Management Best Practices
+
+- **Semantic Versioning**: Follow `MAJOR.MINOR.PATCH` (e.g., 0.7.8)
+- **Synchronized Files**: Always update BOTH version files
+- **Commit Convention**: Use `"Bump version to X.Y.Z"` format
+- **Release Tag**: GitHub release tag matches version (no "v" prefix)
+
+### Pre-Release Checklist
+
+```bash
+# 1. Ensure clean working directory
+git status
+
+# 2. Run tests locally (optional but recommended)
+uv run python -m pytest tests/ -v
+
+# 3. Check current version
+grep -E "version =|__version__" pyproject.toml meta_ads_mcp/__init__.py
+```
+
+### Release Commands (One-liner)
+
+```bash
+# Complete release in one sequence
+VERSION="0.7.8" && \
+sed -i '' "s/version = \"0.7.7\"/version = \"$VERSION\"/" pyproject.toml && \
+sed -i '' "s/__version__ = \"0.7.7\"/__version__ = \"$VERSION\"/" meta_ads_mcp/__init__.py && \
+git add pyproject.toml meta_ads_mcp/__init__.py && \
+git commit -m "Bump version to $VERSION" && \
+git push origin main && \
+bash -c "gh release create $VERSION --title '$VERSION' --generate-notes"
+```
+
+## 🔄 Workflows
+
+### `publish.yml` (Automatic)
+- **Trigger**: GitHub release creation
+- **Purpose**: Build and publish to PyPI
+- **Security**: OIDC tokens (no API keys)
+- **Status**: ✅ Fully automated
+
+### `test.yml` (Validation)
+- **Trigger**: Push to main/master
+- **Purpose**: Package structure validation
+- **Matrix**: Python 3.10, 3.11, 3.12
+- **Note**: Build tests only, not pytest
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+1. **gh command issues in Cursor**:
    ```bash
-   gh release create 0.3.8 --title "0.3.8" --generate-notes
+   # Use bash wrapper
+   bash -c "gh release create 0.7.8 --title '0.7.8' --generate-notes"
    ```
-   This command will:
-   - Create a release with the specified version (no "v" prefix)
-   - Auto-generate release notes from commits
-   - Automatically trigger the GitHub Action for PyPI publishing
 
-5. **Automatic deployment**:
-   - The GitHub Action will automatically trigger
-   - It will build the package and publish to PyPI
-   - Check the "Actions" tab to monitor progress
+2. **Version mismatch**:
+   ```bash
+   # Verify both files have same version
+   grep -E "version =|__version__" pyproject.toml meta_ads_mcp/__init__.py
+   ```
 
-## Workflows
+3. **PyPI not updated**:
+   ```bash
+   # Check if package is available (wait 2-3 minutes)
+   curl -s "https://pypi.org/pypi/meta-ads-mcp/json" | grep '"version"'
+   ```
 
-### `publish.yml`
-- **Triggers**: When a GitHub release is published, or manual workflow dispatch
-- **Purpose**: Builds and publishes the package to PyPI
-- **Security**: Uses trusted publishing with OIDC tokens (no API keys needed)
-
-### `test.yml`
-- **Triggers**: On pushes and pull requests to main/master
-- **Purpose**: Tests package building and installation across Python versions
-- **Matrix**: Tests Python 3.10, 3.11, and 3.12
-- **Note**: Does not run pytest tests, only validates package structure
-
-## Manual Deployment
-
-If you need to deploy manually:
+### Manual Deployment (Fallback)
 
 ```bash
 # Install build tools
 pip install build twine
 
-# Build the package
+# Build package
 python -m build
 
-# Upload to PyPI (requires API token or configured credentials)
+# Upload to PyPI (requires API token)
 python -m twine upload dist/*
 ```
 
-## Version Management
+## 📊 Release Verification
 
-- Follow semantic versioning (SemVer): `MAJOR.MINOR.PATCH`
-- **Important**: Update version in BOTH `pyproject.toml` and `meta_ads_mcp/__init__.py`
-- The git tag should match the version (e.g., `v0.3.8` for version `0.3.8`)
-- Keep versions synchronized between the two files
+### GitHub Release
+- ✅ Release created with correct tag
+- ✅ Auto-generated notes from commits
+- ✅ Actions tab shows successful workflow
 
-## Security Notes
+### PyPI Package
+- ✅ Package available for installation
+- ✅ Correct version displayed
+- ✅ All dependencies listed
 
-- Trusted publishing is preferred over API tokens
-- Uses GitHub's OIDC tokens for secure authentication to PyPI
-- Only maintainers should be able to create releases
-- All builds run in isolated GitHub-hosted runners 
+### Installation Test
+```bash
+# Test new version installation
+pip install meta-ads-mcp==0.7.8
+# or
+uvx meta-ads-mcp@0.7.8
+```
+
+## 🔒 Security Notes
+
+- **Trusted Publishing**: Uses GitHub OIDC tokens (no API keys needed)
+- **Isolated Builds**: All builds run in GitHub-hosted runners
+- **Access Control**: Only maintainers can create releases
+- **Audit Trail**: All releases tracked in GitHub Actions
+
+## 📈 Release Metrics
+
+Track successful releases:
+- **GitHub Releases**: https://github.com/pipeboard-co/meta-ads-mcp/releases
+- **PyPI Package**: https://pypi.org/project/meta-ads-mcp/
+- **Actions History**: https://github.com/pipeboard-co/meta-ads-mcp/actions 
