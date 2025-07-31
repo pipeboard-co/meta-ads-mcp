@@ -37,10 +37,10 @@ class TestPageDiscoveryIntegration:
         
         with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_discover.return_value = mock_discovery_result
             mock_api.return_value = mock_creative_response
@@ -51,18 +51,23 @@ class TestPageDiscoveryIntegration:
                 name="Test Creative",
                 image_hash="test_hash_123",
                 message="Test message",
-                headline="Test Headline",
-                description="Test description"
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data:
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify that the function attempted to create a creative (even though it failed due to invalid image)
-            assert "error" in result_data["data"]
-            assert "Image Not Found" in result_data["data"]["error"]["error_user_title"]
+            assert "error" in actual_result
+            assert "Image Not Found" in actual_result["error"]["error_user_title"]
             
             # Verify that page discovery was called
-            mock_discover.assert_called_once_with("act_123456789", None)
+            mock_discover.assert_called_once_with("act_123456789", "test_token_123")
     
     @pytest.mark.asyncio
     async def test_search_pages_by_name_integration(self):
@@ -76,28 +81,35 @@ class TestPageDiscoveryIntegration:
         }
         
         with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_discover.return_value = mock_discovery_result
             
             # Test searching for pages
             result = await search_pages_by_name(
                 account_id="act_123456789",
-                search_term="Injury"
+                search_term="Injury",
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data and isinstance(result_data["data"], str):
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify the search results
-            assert len(result_data["data"]) == 1
-            assert result_data["data"][0]["id"] == "123456789"
-            assert result_data["data"][0]["name"] == "Injury Payouts"
-            assert result_data["search_term"] == "Injury"
-            assert result_data["total_found"] == 1
-            assert result_data["total_available"] == 1
+            assert len(actual_result["data"]) == 1
+            assert actual_result["data"][0]["id"] == "123456789"
+            assert actual_result["data"][0]["name"] == "Injury Payouts"
+            assert actual_result["search_term"] == "Injury"
+            assert actual_result["total_found"] == 1
+            assert actual_result["total_available"] == 1
     
     @pytest.mark.asyncio
     async def test_create_ad_creative_with_manual_page_id(self):
@@ -115,10 +127,10 @@ class TestPageDiscoveryIntegration:
         }
         
         with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_api.return_value = mock_creative_response
             
@@ -129,15 +141,20 @@ class TestPageDiscoveryIntegration:
                 image_hash="test_hash_123",
                 page_id="123456789",  # Manual page ID
                 message="Test message",
-                headline="Test Headline",
-                description="Test description"
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data:
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify that the function attempted to create a creative
-            assert "error" in result_data["data"]
-            assert "Image Not Found" in result_data["data"]["error"]["error_user_title"]
+            assert "error" in actual_result
+            assert "Image Not Found" in actual_result["error"]["error_user_title"]
             
             # Verify that make_api_request was called for creating the creative
             mock_api.assert_called_once()
@@ -152,10 +169,10 @@ class TestPageDiscoveryIntegration:
         }
         
         with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_discover.return_value = mock_discovery_result
             
@@ -164,15 +181,22 @@ class TestPageDiscoveryIntegration:
                 account_id="act_123456789",
                 name="Test Creative",
                 image_hash="test_hash_123",
-                message="Test message"
+                message="Test message",
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data:
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify that the function returned an error about no pages found
-            assert "error" in result_data["data"]
-            assert "No page ID provided and no suitable pages found" in result_data["data"]["error"]
-            assert "suggestions" in result_data["data"]["error"]
+            assert "error" in actual_result
+            assert "No page ID provided and no suitable pages found" in actual_result["error"]
+            assert "suggestions" in actual_result
     
     @pytest.mark.asyncio
     async def test_search_pages_by_name_no_search_term(self):
@@ -186,26 +210,33 @@ class TestPageDiscoveryIntegration:
         }
         
         with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_discover.return_value = mock_discovery_result
             
             # Test searching without a search term
             result = await search_pages_by_name(
-                account_id="act_123456789"
+                account_id="act_123456789",
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data and isinstance(result_data["data"], str):
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify the results
-            assert len(result_data["data"]) == 1
-            assert result_data["data"][0]["id"] == "123456789"
-            assert result_data["data"][0]["name"] == "Test Page"
-            assert result_data["total_available"] == 1
-            assert "note" in result_data
+            assert len(actual_result["data"]) == 1
+            assert actual_result["data"][0]["id"] == "123456789"
+            assert actual_result["data"][0]["name"] == "Test Page"
+            assert actual_result["total_available"] == 1
+            assert "note" in actual_result
     
     @pytest.mark.asyncio
     async def test_search_pages_by_name_no_matches(self):
@@ -219,26 +250,33 @@ class TestPageDiscoveryIntegration:
         }
         
         with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
-             patch('meta_ads_mcp.core.api.meta_api_tool') as mock_decorator:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
-            # Make the decorator just return the function
-            mock_decorator.side_effect = lambda func: func
+            # Provide a valid access token to bypass authentication
+            mock_get_token.return_value = "test_token_123"
             
             mock_discover.return_value = mock_discovery_result
             
             # Test searching for a term that doesn't match
             result = await search_pages_by_name(
                 account_id="act_123456789",
-                search_term="Nonexistent"
+                search_term="Nonexistent",
+                access_token="test_token_123"  # Provide explicit token
             )
             
             result_data = json.loads(result)
             
+            # Handle MCP wrapper - check if result is wrapped in 'data' field
+            if "data" in result_data and isinstance(result_data["data"], str):
+                actual_result = json.loads(result_data["data"])
+            else:
+                actual_result = result_data
+            
             # Verify that no pages were found
-            assert len(result_data["data"]) == 0
-            assert result_data["search_term"] == "Nonexistent"
-            assert result_data["total_found"] == 0
-            assert result_data["total_available"] == 1
+            assert len(actual_result["data"]) == 0
+            assert actual_result["search_term"] == "Nonexistent"
+            assert actual_result["total_found"] == 0
+            assert actual_result["total_available"] == 1
 
 
 if __name__ == "__main__":

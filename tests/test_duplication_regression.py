@@ -546,16 +546,12 @@ class TestDuplicationIntegration:
         duplication = enable_feature
         
         # Mock the auth system completely to bypass the @meta_api_tool decorator checks
-        with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
-            with patch("meta_ads_mcp.core.auth.auth_manager") as mock_auth_manager:
-                with patch("meta_ads_mcp.core.auth.meta_config") as mock_meta_config:
-                    # Setup complete auth mocking
-                    mock_get_token.return_value = "valid_token"
-                    mock_auth_manager.app_id = "valid_app_id"
-                    mock_auth_manager.use_pipeboard = False
-                    mock_meta_config.get_app_id.return_value = "valid_app_id"
-                    
-                    with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+        with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth_integration:
+            # Mock dual authentication tokens
+            mock_auth_integration.get_pipeboard_token.return_value = "pipeboard_token"
+            mock_auth_integration.get_auth_token.return_value = "facebook_token"
+            
+            with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
                         # Mock successful response
                         mock_response = MagicMock()
                         mock_response.status_code = 200
@@ -579,7 +575,7 @@ class TestDuplicationIntegration:
                         # Call the function with explicit token
                         result = await duplication.duplicate_campaign(
                             campaign_id="123456789",
-                            access_token="valid_token",
+                            access_token="facebook_token",  # Use the mocked token
                             name_suffix=" - Test Copy"
                         )
                         
@@ -599,17 +595,13 @@ class TestDuplicationIntegration:
         """Test Facebook connection required error flow."""
         duplication = enable_feature
         
-        # Mock the auth system completely to bypass the @meta_api_tool decorator checks
-        with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
-            with patch("meta_ads_mcp.core.auth.auth_manager") as mock_auth_manager:
-                with patch("meta_ads_mcp.core.auth.meta_config") as mock_meta_config:
-                    # Setup complete auth mocking
-                    mock_get_token.return_value = "valid_token"
-                    mock_auth_manager.app_id = "valid_app_id"
-                    mock_auth_manager.use_pipeboard = False
-                    mock_meta_config.get_app_id.return_value = "valid_app_id"
-                    
-                    with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+        # Mock the auth system completely to bypass the @meta_api_tool decorator checks  
+        with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth_integration:
+            # Mock dual authentication tokens
+            mock_auth_integration.get_pipeboard_token.return_value = "pipeboard_token"
+            mock_auth_integration.get_auth_token.return_value = "facebook_token"
+            
+            with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
                         # Mock 403 response (Facebook connection required)
                         mock_response = MagicMock()
                         mock_response.status_code = 403
@@ -624,7 +616,7 @@ class TestDuplicationIntegration:
                         
                         result = await duplication.duplicate_campaign(
                             campaign_id="123456789",
-                            access_token="valid_token"
+                            access_token="facebook_token"  # Use the mocked token
                         )
                         
                         # The @meta_api_tool decorator wraps the result in a data field
@@ -646,16 +638,12 @@ class TestDuplicationIntegration:
         duplication = enable_feature
         
         # Mock the auth system completely to bypass the @meta_api_tool decorator checks
-        with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
-            with patch("meta_ads_mcp.core.auth.auth_manager") as mock_auth_manager:
-                with patch("meta_ads_mcp.core.auth.meta_config") as mock_meta_config:
-                    # Setup complete auth mocking
-                    mock_get_token.return_value = "valid_token"
-                    mock_auth_manager.app_id = "valid_app_id"
-                    mock_auth_manager.use_pipeboard = False
-                    mock_meta_config.get_app_id.return_value = "valid_app_id"
-                    
-                    with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+        with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth_integration:
+            # Mock dual authentication tokens
+            mock_auth_integration.get_pipeboard_token.return_value = "pipeboard_token"
+            mock_auth_integration.get_auth_token.return_value = "facebook_token"
+            
+            with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
                         # Mock 402 response (subscription required)
                         mock_response = MagicMock()
                         mock_response.status_code = 402
@@ -668,7 +656,7 @@ class TestDuplicationIntegration:
                         
                         result = await duplication.duplicate_campaign(
                             campaign_id="123456789",
-                            access_token="valid_token"
+                            access_token="facebook_token"  # Use the mocked token
                         )
                         
                         # The @meta_api_tool decorator wraps the result in a data field

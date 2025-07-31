@@ -86,6 +86,7 @@ For detailed step-by-step instructions, authentication setup, debugging, and tro
 - **Automated Monitoring**: Ask any MCP-compatible LLM to track performance metrics and alert you about significant changes
 - **Budget Optimization**: Get recommendations for reallocating budget to better-performing ad sets
 - **Creative Improvement**: Receive feedback on ad copy, imagery, and calls-to-action
+- **Dynamic Creative Testing**: Easy API for both simple ads (single headline/description) and advanced A/B testing (multiple headlines/descriptions)
 - **Campaign Management**: Request changes to campaigns, ad sets, and ads (all changes require explicit confirmation)
 - **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad platforms
 - **Universal LLM Support**: Compatible with any MCP client including Claude Desktop, Cursor, Cherry Studio, and more
@@ -236,14 +237,32 @@ For local installation configuration, authentication options, and advanced techn
       - `page_id`: Facebook Page ID for the ad
       - `link_url`: Destination URL
       - `message`: Ad copy/text
-      - `headline`: Ad headline
-      - `description`: Ad description
+      - `headline`: Single headline for simple ads (cannot be used with headlines)
+      - `headlines`: List of headlines for dynamic creative testing (cannot be used with headline)
+      - `description`: Single description for simple ads (cannot be used with descriptions)
+      - `descriptions`: List of descriptions for dynamic creative testing (cannot be used with description)
+      - `dynamic_creative_spec`: Dynamic creative optimization settings
       - `call_to_action_type`: CTA button type (e.g., 'LEARN_MORE')
       - `instagram_actor_id`: Optional Instagram account ID
       - `access_token` (optional): Meta API access token
     - Returns: Confirmation with new creative details
 
-15. `mcp_meta_ads_upload_ad_image`
+15. `mcp_meta_ads_update_ad_creative`
+    - Update an existing ad creative with new content or settings
+    - Inputs:
+      - `creative_id`: Meta Ads creative ID to update
+      - `name`: New creative name
+      - `message`: New ad copy/text
+      - `headline`: Single headline for simple ads (cannot be used with headlines)
+      - `headlines`: New list of headlines for dynamic creative testing (cannot be used with headline)
+      - `description`: Single description for simple ads (cannot be used with descriptions)
+      - `descriptions`: New list of descriptions for dynamic creative testing (cannot be used with description)
+      - `dynamic_creative_spec`: New dynamic creative optimization settings
+      - `call_to_action_type`: New call to action button type
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+    - Returns: Confirmation with updated creative details
+
+16. `mcp_meta_ads_upload_ad_image`
     - Upload an image to use in Meta Ads creatives
     - Inputs:
       - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
@@ -252,14 +271,14 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token
     - Returns: JSON response with image details including hash
 
-16. `mcp_meta_ads_get_ad_image`
+17. `mcp_meta_ads_get_ad_image`
     - Get, download, and visualize a Meta ad image in one step
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
       - `ad_id`: Meta Ads ad ID
     - Returns: The ad image ready for direct visual analysis
 
-17. `mcp_meta_ads_update_ad`
+18. `mcp_meta_ads_update_ad`
     - Update an ad with new settings
     - Inputs:
       - `ad_id`: Meta Ads ad ID
@@ -268,7 +287,7 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
     - Returns: Confirmation with updated ad details and a confirmation link
 
-18. `mcp_meta_ads_update_adset`
+19. `mcp_meta_ads_update_adset`
     - Update an ad set with new settings including frequency caps
     - Inputs:
       - `adset_id`: Meta Ads ad set ID
@@ -280,7 +299,7 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
     - Returns: Confirmation with updated ad set details and a confirmation link
 
-19. `mcp_meta_ads_get_insights`
+20. `mcp_meta_ads_get_insights`
     - Get performance insights for a campaign, ad set, ad or account
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
@@ -290,13 +309,13 @@ For local installation configuration, authentication options, and advanced techn
       - `level`: Level of aggregation (ad, adset, campaign, account)
     - Returns: Performance metrics for the specified object
 
-20. `mcp_meta_ads_get_login_link`
+21. `mcp_meta_ads_get_login_link`
     - Get a clickable login link for Meta Ads authentication
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
     - Returns: A clickable resource link for Meta authentication
 
-21. `mcp_meta-ads_create_budget_schedule`
+22. `mcp_meta-ads_create_budget_schedule`
     - Create a budget schedule for a Meta Ads campaign.
     - Inputs:
       - `campaign_id`: Meta Ads campaign ID.
@@ -307,7 +326,7 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token.
     - Returns: JSON string with the ID of the created budget schedule or an error message.
 
-22. `mcp_meta_ads_search_interests`
+23. `mcp_meta_ads_search_interests`
     - Search for interest targeting options by keyword
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
@@ -315,7 +334,7 @@ For local installation configuration, authentication options, and advanced techn
       - `limit`: Maximum number of results to return (default: 25)
     - Returns: Interest data with id, name, audience_size, and path fields
 
-23. `mcp_meta_ads_get_interest_suggestions`
+24. `mcp_meta_ads_get_interest_suggestions`
     - Get interest suggestions based on existing interests
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
