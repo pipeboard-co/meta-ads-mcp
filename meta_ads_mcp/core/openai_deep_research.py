@@ -77,6 +77,32 @@ class MetaAdsDataManager:
             logger.error(f"Error fetching ads for {account_id}: {e}")
             return []
     
+    async def _get_pages_for_account(self, access_token: str, account_id: str) -> List[Dict[str, Any]]:
+        """Get pages associated with an account"""
+        try:
+            # Import the page discovery function from ads module
+            from .ads import _discover_pages_for_account
+            
+            # Ensure account_id has the 'act_' prefix
+            if not account_id.startswith("act_"):
+                account_id = f"act_{account_id}"
+            
+            page_discovery_result = await _discover_pages_for_account(account_id, access_token)
+            
+            if not page_discovery_result.get("success"):
+                return []
+            
+            # Return page data in a consistent format
+            return [{
+                "id": page_discovery_result["page_id"],
+                "name": page_discovery_result.get("page_name", "Unknown"),
+                "source": page_discovery_result.get("source", "unknown"),
+                "account_id": account_id
+            }]
+        except Exception as e:
+            logger.error(f"Error fetching pages for {account_id}: {e}")
+            return []
+    
     async def search_records(self, query: str, access_token: str) -> List[str]:
         """Search Meta Ads data and return matching record IDs
         
@@ -176,6 +202,34 @@ class MetaAdsDataManager:
                                 },
                                 "raw_data": ad
                             }
+            
+            # If query specifically mentions "page" or "pages", also search pages
+            if any(term in ['page', 'pages', 'facebook page'] for term in query_terms):
+                for account in accounts[:5]:  # Limit to first 5 accounts for performance
+                    pages = await self._get_pages_for_account(access_token, account['id'])
+                    for page in pages:
+                        page_text = f"{page.get('name', '')} {page.get('source', '')}".lower()
+                        
+                        if any(term in page_text for term in query_terms):
+                            page_record_id = f"page:{page['id']}"
+                            matching_ids.append(page_record_id)
+                            
+                            # Cache the page data
+                            self._cache[page_record_id] = {
+                                "id": page_record_id,
+                                "type": "page",
+                                "title": f"Facebook Page: {page.get('name', 'Unnamed Page')}",
+                                "text": f"Facebook Page {page.get('name', 'Unnamed')} (ID: {page.get('id', 'N/A')}) - Source: {page.get('source', 'Unknown')}, Account: {account.get('name', 'Unknown')}",
+                                "metadata": {
+                                    "page_id": page.get('id'),
+                                    "page_name": page.get('name'),
+                                    "source": page.get('source'),
+                                    "account_id": account.get('id'),
+                                    "account_name": account.get('name'),
+                                    "data_type": "meta_ads_page"
+                                },
+                                "raw_data": page
+                            }
         
         except Exception as e:
             logger.error(f"Error during search operation: {e}")
@@ -219,7 +273,7 @@ async def search(
     Search through Meta Ads data and return matching record IDs.
     
     This tool is required for OpenAI ChatGPT Deep Research integration.
-    It searches across ad accounts, campaigns, and ads to find relevant records
+    It searches across ad accounts, campaigns, ads, and pages to find relevant records
     based on the provided query.
     
     Args:
@@ -233,6 +287,7 @@ async def search(
         search(query="active campaigns")
         search(query="account spending")
         search(query="facebook ads performance")
+        search(query="facebook pages")
     """
     if not query:
         return json.dumps({
@@ -285,6 +340,7 @@ async def fetch(
         fetch(id="account:act_123456789")
         fetch(id="campaign:23842588888640185")
         fetch(id="ad:23842614006130185")
+        fetch(id="page:123456789")
     """
     if not id:
         return json.dumps({

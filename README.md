@@ -89,6 +89,7 @@ For detailed step-by-step instructions, authentication setup, debugging, and tro
 - **Campaign Management**: Request changes to campaigns, ad sets, and ads (all changes require explicit confirmation)
 - **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad platforms
 - **Universal LLM Support**: Compatible with any MCP client including Claude Desktop, Cursor, Cherry Studio, and more
+- **Enhanced Search**: Generic search function includes page searching when queries mention "page" or "pages"
 - **Simple Authentication**: Easy setup with secure OAuth authentication
 - **Cross-Platform Support**: Works on Windows, macOS, and Linux
 
@@ -353,6 +354,14 @@ For local installation configuration, authentication options, and advanced techn
       - `location_types`: Types of locations to search (['country', 'region', 'city', 'zip', 'geo_market', 'electoral_district'])
       - `limit`: Maximum number of results to return (default: 25)
     - Returns: Location data with key, name, type, and geographic hierarchy information
+
+28. `mcp_meta_ads_search` (Enhanced)
+    - Generic search across accounts, campaigns, ads, and pages
+    - Automatically includes page searching when query mentions "page" or "pages"
+    - Inputs:
+      - `access_token` (optional): Meta API access token (will use cached token if not provided)
+      - `query`: Search query string (e.g., "Injury Payouts pages", "active campaigns")
+    - Returns: List of matching record IDs in ChatGPT-compatible format
 
 ## Privacy and Security
 

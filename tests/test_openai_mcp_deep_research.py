@@ -300,6 +300,50 @@ class OpenAIMCPTester:
         
         return results
 
+    def test_page_search_functionality(self, auth_headers: Dict[str, str] = None) -> Dict[str, Any]:
+        """Test that the search function includes page searching when query mentions pages"""
+        print("\n🔍 Testing page search functionality")
+        
+        # Test 1: Search with page-related query that matches an account name
+        page_search_result = self.test_search_tool_call("Injury Payouts pages", auth_headers)
+        
+        if not page_search_result["success"]:
+            return {
+                "success": False,
+                "error": f"Page search failed: {page_search_result.get('error', 'Unknown error')}"
+            }
+        
+        # Check if page records are included in results
+        page_ids = [id for id in page_search_result["ids"] if id.startswith("page:")]
+        
+        result = {
+            "success": True,
+            "page_search_works": len(page_ids) > 0,
+            "page_ids_found": len(page_ids),
+            "total_ids": len(page_search_result["ids"]),
+            "page_ids": page_ids
+        }
+        
+        if len(page_ids) > 0:
+            print(f"✅ Page search working - found {len(page_ids)} page records")
+            
+            # Test 2: Fetch a page record
+            first_page_id = page_ids[0]
+            fetch_result = self.test_fetch_tool_call(first_page_id, auth_headers)
+            
+            if fetch_result["success"]:
+                print(f"✅ Page fetch working - retrieved page record: {first_page_id}")
+                result["page_fetch_works"] = True
+                result["fetched_page_data"] = fetch_result.get("record", {})
+            else:
+                print(f"❌ Page fetch failed: {fetch_result.get('error', 'Unknown error')}")
+                result["page_fetch_works"] = False
+        else:
+            print("⚠️  No page records found in search results")
+            result["page_fetch_works"] = False
+        
+        return result
+
     def run_openai_compliance_test_suite(self) -> bool:
         """Run complete OpenAI MCP compliance test suite"""
         print("🚀 OpenAI MCP Deep Research Compliance Test Suite")
@@ -335,6 +379,12 @@ class OpenAIMCPTester:
             print("-" * 40)
             
             results = self.test_openai_specification_compliance(scenario["headers"])
+            
+            # Add page search test
+            page_results = self.test_page_search_functionality(scenario["headers"])
+            results["page_search_functionality"] = page_results.get("page_search_works", False)
+            results["page_fetch_functionality"] = page_results.get("page_fetch_works", False)
+            
             all_results[scenario["name"]] = results
         
         # Summary
@@ -360,9 +410,10 @@ class OpenAIMCPTester:
         if overall_success:
             print("\n🎉 Server is fully compatible with OpenAI's MCP specification!")
             print("   • ChatGPT Deep Research: Ready")
-            print("   • Search tool: Compliant")
+            print("   • Search tool: Compliant (includes page search)")
             print("   • Fetch tool: Compliant")
             print("   • Workflow: Complete")
+            print("   • Page Search: Enhanced")
         else:
             print("\n⚠️  Server needs updates for OpenAI MCP compliance")
             print("   See failed tests above for required changes")
