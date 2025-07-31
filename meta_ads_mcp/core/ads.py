@@ -1212,69 +1212,143 @@ async def get_account_pages(access_token: str = None, account_id: str = None) ->
         account_id = f"act_{account_id}"
     
     try:
-        # Try all approaches that might work
+        # Collect all page IDs from multiple approaches
+        all_page_ids = set()
         
-        # Approach 1: Get active ads and extract page IDs
-        endpoint = f"{account_id}/ads"
-        params = {
-            "fields": "creative{object_story_spec{page_id}}",
-            "limit": 100
-        }
+        # Approach 1: Get user's personal pages (broad scope)
+        try:
+            endpoint = "me/accounts"
+            params = {
+                "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+            }
+            user_pages_data = await make_api_request(endpoint, access_token, params)
+            if "data" in user_pages_data:
+                for page in user_pages_data["data"]:
+                    if "id" in page:
+                        all_page_ids.add(page["id"])
+        except Exception:
+            pass
         
-        ads_data = await make_api_request(endpoint, access_token, params)
+        # Approach 2: Try business manager pages
+        try:
+            # Strip 'act_' prefix to get raw account ID for business endpoints
+            raw_account_id = account_id.replace("act_", "")
+            endpoint = f"{raw_account_id}/owned_pages"
+            params = {
+                "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+            }
+            business_pages_data = await make_api_request(endpoint, access_token, params)
+            if "data" in business_pages_data:
+                for page in business_pages_data["data"]:
+                    if "id" in page:
+                        all_page_ids.add(page["id"])
+        except Exception:
+            pass
         
-        # Extract unique page IDs from ads
-        page_ids = set()
-        if "data" in ads_data:
-            for ad in ads_data.get("data", []):
-                if "creative" in ad and "creative" in ad and "object_story_spec" in ad["creative"] and "page_id" in ad["creative"]["object_story_spec"]:
-                    page_ids.add(ad["creative"]["object_story_spec"]["page_id"])
+        # Approach 3: Try ad account client pages
+        try:
+            endpoint = f"{account_id}/client_pages"
+            params = {
+                "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+            }
+            client_pages_data = await make_api_request(endpoint, access_token, params)
+            if "data" in client_pages_data:
+                for page in client_pages_data["data"]:
+                    if "id" in page:
+                        all_page_ids.add(page["id"])
+        except Exception:
+            pass
         
-        # If we found page IDs, get details for each
-        if page_ids:
-            page_details = {"data": []}
+        # Approach 4: Extract page IDs from all ad creatives (broader creative search)
+        try:
+            endpoint = f"{account_id}/adcreatives"
+            params = {
+                "fields": "id,name,object_story_spec,link_url,call_to_action,image_hash",
+                "limit": 100
+            }
+            creatives_data = await make_api_request(endpoint, access_token, params)
+            if "data" in creatives_data:
+                for creative in creatives_data["data"]:
+                    if "object_story_spec" in creative and "page_id" in creative["object_story_spec"]:
+                        all_page_ids.add(creative["object_story_spec"]["page_id"])
+        except Exception:
+            pass
             
-            for page_id in page_ids:
-                page_endpoint = f"{page_id}"
-                page_params = {
-                    "fields": "id,name,username,category,fan_count,link,verification_status,picture"
-                }
-                
-                page_data = await make_api_request(page_endpoint, access_token, page_params)
-                if "id" in page_data:
-                    page_details["data"].append(page_data)
+        # Approach 5: Get active ads and extract page IDs from creatives
+        try:
+            endpoint = f"{account_id}/ads"
+            params = {
+                "fields": "creative{object_story_spec{page_id},link_url,call_to_action}",
+                "limit": 100
+            }
+            ads_data = await make_api_request(endpoint, access_token, params)
+            if "data" in ads_data:
+                for ad in ads_data.get("data", []):
+                    if "creative" in ad and "object_story_spec" in ad["creative"] and "page_id" in ad["creative"]["object_story_spec"]:
+                        all_page_ids.add(ad["creative"]["object_story_spec"]["page_id"])
+        except Exception:
+            pass
+
+        # Approach 6: Try promoted_objects endpoint
+        try:
+            endpoint = f"{account_id}/promoted_objects"
+            params = {
+                "fields": "page_id,object_store_url,product_set_id,application_id"
+            }
+            promoted_objects_data = await make_api_request(endpoint, access_token, params)
+            if "data" in promoted_objects_data:
+                for obj in promoted_objects_data["data"]:
+                    if "page_id" in obj:
+                        all_page_ids.add(obj["page_id"])
+        except Exception:
+            pass
+
+        # Approach 7: Extract page IDs from tracking_specs in ads (most reliable)
+        try:
+            endpoint = f"{account_id}/ads"
+            params = {
+                "fields": "id,name,status,creative,tracking_specs",
+                "limit": 100
+            }
+            tracking_ads_data = await make_api_request(endpoint, access_token, params)
+            if "data" in tracking_ads_data:
+                for ad in tracking_ads_data.get("data", []):
+                    tracking_specs = ad.get("tracking_specs", [])
+                    if isinstance(tracking_specs, list):
+                        for spec in tracking_specs:
+                            if isinstance(spec, dict) and "page" in spec:
+                                page_list = spec["page"]
+                                if isinstance(page_list, list):
+                                    for page_id in page_list:
+                                        if isinstance(page_id, (str, int)) and str(page_id).isdigit():
+                                            all_page_ids.add(str(page_id))
+        except Exception:
+            pass
             
-            if page_details["data"]:
-                return json.dumps(page_details, indent=2)
-        
-        # Approach 2: Try client_pages endpoint
-        endpoint = f"{account_id}/client_pages"
-        params = {
-            "fields": "id,name,username,category,fan_count,link,verification_status,picture"
-        }
-        
-        client_pages_data = await make_api_request(endpoint, access_token, params)
-        
-        if "data" in client_pages_data and client_pages_data["data"]:
-            return json.dumps(client_pages_data, indent=2)
-        
-        # Approach 3: Try promoted_objects endpoint to find page IDs
-        endpoint = f"{account_id}/promoted_objects"
-        params = {
-            "fields": "page_id"
-        }
-        
-        promoted_objects_data = await make_api_request(endpoint, access_token, params)
-        
-        if "data" in promoted_objects_data and promoted_objects_data["data"]:
-            page_ids = set()
-            for obj in promoted_objects_data["data"]:
-                if "page_id" in obj:
-                    page_ids.add(obj["page_id"])
+        # Approach 8: Try campaigns and extract page info
+        try:
+            endpoint = f"{account_id}/campaigns"
+            params = {
+                "fields": "id,name,promoted_object,objective",
+                "limit": 50
+            }
+            campaigns_data = await make_api_request(endpoint, access_token, params)
+            if "data" in campaigns_data:
+                for campaign in campaigns_data["data"]:
+                    if "promoted_object" in campaign and "page_id" in campaign["promoted_object"]:
+                        all_page_ids.add(campaign["promoted_object"]["page_id"])
+        except Exception:
+            pass
             
-            if page_ids:
-                page_details = {"data": []}
-                for page_id in page_ids:
+        # If we found any page IDs, get details for each
+        if all_page_ids:
+            page_details = {
+                "data": [], 
+                "total_pages_found": len(all_page_ids)
+            }
+            
+            for page_id in all_page_ids:
+                try:
                     page_endpoint = f"{page_id}"
                     page_params = {
                         "fields": "id,name,username,category,fan_count,link,verification_status,picture"
@@ -1283,62 +1357,15 @@ async def get_account_pages(access_token: str = None, account_id: str = None) ->
                     page_data = await make_api_request(page_endpoint, access_token, page_params)
                     if "id" in page_data:
                         page_details["data"].append(page_data)
-                
-                if page_details["data"]:
-                    return json.dumps(page_details, indent=2)
-        
-        # Approach 4: Extract page IDs from tracking_specs in ads
-        # Inspired by praveen92y's implementation for robust page detection
-        # This approach is often the most reliable as confirmed by community feedback
-        endpoint = f"{account_id}/ads"
-        params = {
-            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
-            "limit": 100
-        }
-        
-        tracking_ads_data = await make_api_request(endpoint, access_token, params)
-        
-        tracking_page_ids = set()
-        if "data" in tracking_ads_data:
-            for ad in tracking_ads_data.get("data", []):
-                tracking_specs = ad.get("tracking_specs", [])
-                if isinstance(tracking_specs, list):
-                    for spec in tracking_specs:
-                        # If 'page' key exists, add all page IDs
-                        if isinstance(spec, dict) and "page" in spec:
-                            page_list = spec["page"]
-                            if isinstance(page_list, list):
-                                for page_id in page_list:
-                                    # Validate page ID format (should be numeric string)
-                                    if isinstance(page_id, (str, int)) and str(page_id).isdigit():
-                                        tracking_page_ids.add(str(page_id))
-        
-        if tracking_page_ids:
-            page_details = {"data": [], "source": "tracking_specs", "note": "Page IDs extracted from active ads - these are the most reliable for ad creation"}
-            for page_id in tracking_page_ids:
-                page_endpoint = f"{page_id}"
-                page_params = {
-                    "fields": "id,name,username,category,fan_count,link,verification_status,picture"
-                }
-                
-                page_data = await make_api_request(page_endpoint, access_token, page_params)
-                if "id" in page_data:
-                    # Add additional context about this page ID being suitable for ads
-                    page_data["_meta"] = {
-                        "suitable_for_ads": True,
-                        "found_in_tracking_specs": True,
-                        "recommended_for_create_ad_creative": True
-                    }
-                    page_details["data"].append(page_data)
-                else:
+                    else:
+                        page_details["data"].append({
+                            "id": page_id, 
+                            "error": "Page details not accessible"
+                        })
+                except Exception as e:
                     page_details["data"].append({
-                        "id": page_id, 
-                        "error": "Page details not found",
-                        "_meta": {
-                            "suitable_for_ads": True,
-                            "found_in_tracking_specs": True,
-                            "note": "Page ID exists in ads but details not accessible - you can still use this ID for ad creation"
-                        }
+                        "id": page_id,
+                        "error": f"Failed to get page details: {str(e)}"
                     })
             
             if page_details["data"]:
@@ -1347,14 +1374,8 @@ async def get_account_pages(access_token: str = None, account_id: str = None) ->
         # If all approaches failed, return empty data with a message
         return json.dumps({
             "data": [],
-            "message": "No pages found associated with this account using automated methods",
-            "troubleshooting": {
-                "suggestion_1": "If you have existing ads, run 'get_ads' and look for page IDs in the 'tracking_specs' field",
-                "suggestion_2": "Use the exact page ID from existing ads' tracking_specs for creating new ad creatives",
-                "suggestion_3": "Verify your page ID format - it should be a numeric string (e.g., '123456789')",
-                "suggestion_4": "Check for digit transpositions or formatting errors in your page ID"
-            },
-            "note": "Based on community feedback, page IDs from existing ads' tracking_specs are the most reliable for ad creation"
+            "message": "No pages found associated with this account",
+            "suggestion": "Create a Facebook page and connect it to this ad account, or ensure existing pages are properly connected through Business Manager"
         }, indent=2)
         
     except Exception as e:
@@ -1362,3 +1383,8 @@ async def get_account_pages(access_token: str = None, account_id: str = None) ->
             "error": "Failed to get account pages",
             "details": str(e)
         }, indent=2)
+
+
+
+
+

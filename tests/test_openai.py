@@ -1,23 +1,29 @@
 from openai import OpenAI
 import os
+import pytest
 
-client = OpenAI()
-# error if no token
-if not os.getenv("PIPEBOARD_API_TOKEN"):
-    raise ValueError("PIPEBOARD_API_TOKEN is not set")
 
-resp = client.responses.create(
-    model="gpt-4.1",
-    tools=[{
-        "type": "mcp",
-        "server_label": "meta-ads",
-        "server_url": "https://mcp.pipeboard.co/meta-ads-mcp",
-        "headers": {
-            "Authorization": f"Bearer {os.getenv('PIPEBOARD_API_TOKEN')}"
-        },
-        "require_approval": "never",
-    }],
-    input="What are my meta ad accounts? Do not pass access_token since auth is already done.",
+@pytest.mark.skipif(
+    not os.getenv("PIPEBOARD_API_TOKEN"),
+    reason="PIPEBOARD_API_TOKEN not set - skipping OpenAI integration test"
 )
+def test_openai_mcp_integration():
+    """Test OpenAI integration with Meta Ads MCP via Pipeboard."""
+    client = OpenAI()
 
-print(resp.output_text)
+    resp = client.responses.create(
+        model="gpt-4.1",
+        tools=[{
+            "type": "mcp",
+            "server_label": "meta-ads",
+            "server_url": "https://mcp.pipeboard.co/meta-ads-mcp",
+            "headers": {
+                "Authorization": f"Bearer {os.getenv('PIPEBOARD_API_TOKEN')}"
+            },
+            "require_approval": "never",
+        }],
+        input="What are my meta ad accounts? Do not pass access_token since auth is already done.",
+    )
+
+    assert resp.output_text is not None
+    print(resp.output_text)
