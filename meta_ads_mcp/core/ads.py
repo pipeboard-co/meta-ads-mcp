@@ -670,31 +670,31 @@ async def create_ad_creative(
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
     
-    # If no page ID is provided, try to find a page associated with the account
+    # Enhanced page discovery: If no page ID is provided, use robust discovery methods
     if not page_id:
         try:
-            # Query to get pages associated with the account
-            pages_endpoint = f"{account_id}/assigned_pages"
-            pages_params = {
-                "fields": "id,name",
-                "limit": 1 
-            }
+            # Use the comprehensive page discovery logic from get_account_pages
+            page_discovery_result = await _discover_pages_for_account(account_id, access_token)
             
-            pages_data = await make_api_request(pages_endpoint, access_token, pages_params)
-            
-            if "data" in pages_data and pages_data["data"]:
-                page_id = pages_data["data"][0]["id"]
-                print(f"Using page ID: {page_id} ({pages_data['data'][0].get('name', 'Unknown')})")
+            if page_discovery_result.get("success"):
+                page_id = page_discovery_result["page_id"]
+                page_name = page_discovery_result.get("page_name", "Unknown")
+                print(f"Auto-discovered page ID: {page_id} ({page_name})")
             else:
                 return json.dumps({
-                    "error": "No page ID provided and no pages found for this account",
-                    "suggestion": "Please provide a page_id parameter"
+                    "error": "No page ID provided and no suitable pages found for this account",
+                    "details": page_discovery_result.get("message", "Page discovery failed"),
+                    "suggestions": [
+                        "Use get_account_pages to see available pages",
+                        "Use search_pages_by_name to find specific pages",
+                        "Provide a page_id parameter manually"
+                    ]
                 }, indent=2)
         except Exception as e:
             return json.dumps({
-                "error": "Error finding page for account",
+                "error": "Error during page discovery",
                 "details": str(e),
-                "suggestion": "Please provide a page_id parameter"
+                "suggestion": "Please provide a page_id parameter or use get_account_pages to find available pages"
             }, indent=2)
     
     # Prepare the creative data
@@ -757,6 +757,191 @@ async def create_ad_creative(
             "details": str(e),
             "creative_data_sent": creative_data
         }, indent=2)
+
+
+async def _discover_pages_for_account(account_id: str, access_token: str) -> dict:
+    """
+    Internal function to discover pages for an account using multiple approaches.
+    Returns the best available page ID for ad creation.
+    """
+    try:
+        # Approach 1: Extract page IDs from tracking_specs in ads (most reliable)
+        endpoint = f"{account_id}/ads"
+        params = {
+            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "limit": 100
+        }
+        
+        tracking_ads_data = await make_api_request(endpoint, access_token, params)
+        
+        tracking_page_ids = set()
+        if "data" in tracking_ads_data:
+            for ad in tracking_ads_data.get("data", []):
+                tracking_specs = ad.get("tracking_specs", [])
+                if isinstance(tracking_specs, list):
+                    for spec in tracking_specs:
+                        if isinstance(spec, dict) and "page" in spec:
+                            page_list = spec["page"]
+                            if isinstance(page_list, list):
+                                for page_id in page_list:
+                                    if isinstance(page_id, (str, int)) and str(page_id).isdigit():
+                                        tracking_page_ids.add(str(page_id))
+        
+        if tracking_page_ids:
+            # Get details for the first page found
+            page_id = list(tracking_page_ids)[0]
+            page_endpoint = f"{page_id}"
+            page_params = {
+                "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+            }
+            
+            page_data = await make_api_request(page_endpoint, access_token, page_params)
+            if "id" in page_data:
+                return {
+                    "success": True,
+                    "page_id": page_id,
+                    "page_name": page_data.get("name", "Unknown"),
+                    "source": "tracking_specs",
+                    "note": "Page ID extracted from existing ads - most reliable for ad creation"
+                }
+        
+        # Approach 2: Try client_pages endpoint
+        endpoint = f"{account_id}/client_pages"
+        params = {
+            "fields": "id,name,username,category,fan_count,link,verification_status,picture"
+        }
+        
+        client_pages_data = await make_api_request(endpoint, access_token, params)
+        
+        if "data" in client_pages_data and client_pages_data["data"]:
+            page = client_pages_data["data"][0]
+            return {
+                "success": True,
+                "page_id": page["id"],
+                "page_name": page.get("name", "Unknown"),
+                "source": "client_pages"
+            }
+        
+        # Approach 3: Try assigned_pages endpoint
+        pages_endpoint = f"{account_id}/assigned_pages"
+        pages_params = {
+            "fields": "id,name",
+            "limit": 1 
+        }
+        
+        pages_data = await make_api_request(pages_endpoint, access_token, pages_params)
+        
+        if "data" in pages_data and pages_data["data"]:
+            page = pages_data["data"][0]
+            return {
+                "success": True,
+                "page_id": page["id"],
+                "page_name": page.get("name", "Unknown"),
+                "source": "assigned_pages"
+            }
+        
+        # If all approaches failed
+        return {
+            "success": False,
+            "message": "No suitable pages found for this account",
+            "note": "Try using get_account_pages to see all available pages or provide page_id manually"
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"Error during page discovery: {str(e)}"
+        }
+
+
+async def _search_pages_by_name_core(access_token: str, account_id: str, search_term: str = None) -> str:
+    """
+    Core logic for searching pages by name.
+    
+    Args:
+        access_token: Meta API access token
+        account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        search_term: Search term to find pages by name (optional - returns all pages if not provided)
+    
+    Returns:
+        JSON string with search results
+    """
+    # Ensure account_id has the 'act_' prefix
+    if not account_id.startswith("act_"):
+        account_id = f"act_{account_id}"
+    
+    try:
+        # Use the internal discovery function directly
+        page_discovery_result = await _discover_pages_for_account(account_id, access_token)
+        
+        if not page_discovery_result.get("success"):
+            return json.dumps({
+                "data": [],
+                "message": "No pages found for this account",
+                "details": page_discovery_result.get("message", "Page discovery failed")
+            }, indent=2)
+        
+        # Create a single page result
+        page_data = {
+            "id": page_discovery_result["page_id"],
+            "name": page_discovery_result.get("page_name", "Unknown"),
+            "source": page_discovery_result.get("source", "unknown")
+        }
+        
+        all_pages_data = {"data": [page_data]}
+        
+        # Filter pages by search term if provided
+        if search_term:
+            search_term_lower = search_term.lower()
+            filtered_pages = []
+            
+            for page in all_pages_data["data"]:
+                page_name = page.get("name", "").lower()
+                if search_term_lower in page_name:
+                    filtered_pages.append(page)
+            
+            return json.dumps({
+                "data": filtered_pages,
+                "search_term": search_term,
+                "total_found": len(filtered_pages),
+                "total_available": len(all_pages_data["data"])
+            }, indent=2)
+        else:
+            # Return all pages if no search term provided
+            return json.dumps({
+                "data": all_pages_data["data"],
+                "total_available": len(all_pages_data["data"]),
+                "note": "Use search_term parameter to filter pages by name"
+            }, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": "Failed to search pages by name",
+            "details": str(e)
+        }, indent=2)
+
+
+@mcp_server.tool()
+@meta_api_tool
+async def search_pages_by_name(access_token: str = None, account_id: str = None, search_term: str = None) -> str:
+    """
+    Search for pages by name within an account.
+    
+    Args:
+        access_token: Meta API access token (optional - will use cached token if not provided)
+        account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        search_term: Search term to find pages by name (optional - returns all pages if not provided)
+    
+    Returns:
+        JSON response with matching pages
+    """
+    # Check required parameters
+    if not account_id:
+        return json.dumps({"error": "No account ID provided"}, indent=2)
+    
+    # Call the core function
+    result = await _search_pages_by_name_core(access_token, account_id, search_term)
+    return result
 
 
 @mcp_server.tool()
