@@ -240,22 +240,43 @@ def meta_api_tool(func):
                     logger.error("ISSUE DETECTED: Pipeboard authentication configured but no valid token available")
                     logger.error("ACTION REQUIRED: Complete authentication via Pipeboard service")
                 
-                return json.dumps({
-                    "error": {
-                        "message": "Authentication Required",
-                        "details": {
-                            "description": "You need to authenticate with the Meta API before using this tool",
-                            "action_required": "Please authenticate first",
-                            "auth_url": auth_url,
-                            "configuration_status": {
-                                "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
-                                "pipeboard_enabled": bool(os.environ.get('PIPEBOARD_API_TOKEN')),
-                            },
-                            "troubleshooting": "Check logs for TOKEN VALIDATION FAILED messages",
-                            "markdown_link": f"[Click here to authenticate with Meta Ads API]({auth_url})"
+                # Provide different guidance based on authentication method
+                if using_pipeboard:
+                    return json.dumps({
+                        "error": {
+                            "message": "Pipeboard Authentication Required",
+                            "details": {
+                                "description": "Your Pipeboard API token is invalid or has expired",
+                                "action_required": "Update your Pipeboard token",
+                                "setup_url": "https://pipeboard.co/setup",
+                                "token_url": "https://pipeboard.co/api-tokens",
+                                "configuration_status": {
+                                    "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
+                                    "pipeboard_enabled": True,
+                                },
+                                "troubleshooting": "Go to https://pipeboard.co/setup to verify your account setup, then visit https://pipeboard.co/api-tokens to obtain a new API token",
+                                "setup_link": "[Verify your Pipeboard account setup](https://pipeboard.co/setup)",
+                                "token_link": "[Get a new Pipeboard API token](https://pipeboard.co/api-tokens)"
+                            }
                         }
-                    }
-                }, indent=2)
+                    }, indent=2)
+                else:
+                    return json.dumps({
+                        "error": {
+                            "message": "Authentication Required",
+                            "details": {
+                                "description": "You need to authenticate with the Meta API before using this tool",
+                                "action_required": "Please authenticate first",
+                                "auth_url": auth_url,
+                                "configuration_status": {
+                                    "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
+                                    "pipeboard_enabled": False,
+                                },
+                                "troubleshooting": "Check logs for TOKEN VALIDATION FAILED messages",
+                                "markdown_link": f"[Click here to authenticate with Meta Ads API]({auth_url})"
+                            }
+                        }
+                    }, indent=2)
                 
             # Call the original function
             result = await func(*args, **kwargs)
