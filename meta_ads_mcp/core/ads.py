@@ -519,6 +519,7 @@ async def update_ad(
     status: str = None,
     bid_amount: int = None,
     tracking_specs = None,
+    creative_id: str = None,
     access_token: str = None
 ) -> str:
     """
@@ -529,6 +530,7 @@ async def update_ad(
         status: Update ad status (ACTIVE, PAUSED, etc.)
         bid_amount: Bid amount in account currency (in cents for USD)
         tracking_specs: Optional tracking specifications (e.g., for pixel events).
+        creative_id: ID of the creative to associate with this ad (changes the ad's image/content)
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id:
@@ -542,14 +544,19 @@ async def update_ad(
         params["bid_amount"] = str(bid_amount)
     if tracking_specs is not None: # Add tracking_specs to params if provided
         params["tracking_specs"] = json.dumps(tracking_specs) # Needs to be JSON encoded string
+    if creative_id is not None:
+        # Creative parameter needs to be a JSON object containing creative_id
+        params["creative"] = json.dumps({"creative_id": creative_id})
 
     if not params:
-        return json.dumps({"error": "No update parameters provided (status, bid_amount, or tracking_specs)"}, indent=2)
+        return json.dumps({"error": "No update parameters provided (status, bid_amount, tracking_specs, or creative_id)"}, indent=2)
 
     endpoint = f"{ad_id}"
-    data = await make_api_request(endpoint, access_token, params, method='POST')
-
-    return json.dumps(data, indent=2)
+    try:
+        data = await make_api_request(endpoint, access_token, params, method='POST')
+        return json.dumps(data, indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"Failed to update ad: {str(e)}"}, indent=2)
 
 
 @mcp_server.tool()
