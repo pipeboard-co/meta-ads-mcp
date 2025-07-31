@@ -25,7 +25,29 @@ async def get_insights(access_token: str = None, object_id: str = None,
                    last_3d, last_7d, last_14d, last_28d, last_30d, last_90d, last_week_mon_sun, 
                    last_week_sun_sat, last_quarter, last_year, this_week_mon_today, this_week_sun_today, this_year
                    Dictionary example: {"since":"2023-01-01","until":"2023-01-31"}
-        breakdown: Optional breakdown dimension (e.g., age, gender, country)
+        breakdown: Optional breakdown dimension. Valid values include:
+                   Demographic: age, gender, country, region, dma
+                   Platform/Device: device_platform, platform_position, publisher_platform, impression_device
+                   Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset, 
+                                  image_asset, link_url_asset, title_asset, video_asset, media_asset_url,
+                                  media_creator, media_destination_url, media_format, media_origin_url,
+                                  media_text_content, media_type, creative_relaxation_asset_type,
+                                  flexible_format_asset_type, gen_ai_asset_type
+                   Campaign/Ad Attributes: breakdown_ad_objective, breakdown_reporting_ad_id, app_id, product_id
+                   Conversion Tracking: coarse_conversion_value, conversion_destination, standard_event_content_type,
+                                       signal_source_bucket, is_conversion_id_modeled, fidelity_type, redownload
+                   Time-based: hourly_stats_aggregated_by_advertiser_time_zone, 
+                              hourly_stats_aggregated_by_audience_time_zone, frequency_value
+                   Extensions/Landing: ad_extension_domain, ad_extension_url, landing_destination, 
+                                      mdsa_landing_destination
+                   Attribution: sot_attribution_model_type, sot_attribution_window, sot_channel, 
+                               sot_event_type, sot_source
+                   Mobile/SKAN: skan_campaign_id, skan_conversion_id, skan_version, postback_sequence_index
+                   CRM/Business: crm_advertiser_l12_territory_ids, crm_advertiser_subvertical_id,
+                                crm_advertiser_vertical_id, crm_ult_advertiser_id, user_persona_id, user_persona_name
+                   Advanced: hsid, is_auto_advance, is_rendered_as_delayed_skip_ad, mmm, place_page_id,
+                            marketing_messages_btn_name, impression_view_time_advertiser_hour_v2, comscore_market,
+                            comscore_market_code
         level: Level of aggregation (ad, adset, campaign, account)
     """
     if not object_id:
