@@ -1,6 +1,6 @@
 # Meta Ads MCP
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for interacting with Meta Ads API. This tool enables AI models to access, analyze, and manage Meta advertising campaigns through a standardized interface, allowing LLMs to retrieve performance data, visualize ad creatives, and provide strategic insights for Facebook, Instagram, and other Meta platforms.
+A **source-available** [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for interacting with Meta Ads API. This tool enables AI models to access, analyze, and manage Meta advertising campaigns through a standardized interface, allowing LLMs to retrieve performance data, visualize ad creatives, and provide strategic insights for Facebook, Instagram, and other Meta platforms.
 
 > **DISCLAIMER:** This is an unofficial third-party tool and is not associated with, endorsed by, or affiliated with Meta in any way. This project is maintained independently and uses Meta's public APIs according to their terms of service. Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
@@ -18,6 +18,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 - [Features](#features)
 - [Configuration](#configuration)
 - [Available MCP Tools](#available-mcp-tools)
+- [Licensing](#licensing)
 - [Privacy and Security](#privacy-and-security)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
@@ -381,6 +382,27 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
       - `query`: Search query string (e.g., "Injury Payouts pages", "active campaigns")
     - Returns: List of matching record IDs in ChatGPT-compatible format
+
+## Licensing
+
+Meta Ads MCP is **source-available** software licensed under the [Business Source License 1.1](LICENSE). This means:
+
+### ✅ **What you CAN do:**
+- ✅ **Use for free** - Individual and business use at no cost
+- ✅ **Modify and customize** - Edit the source code for your needs
+- ✅ **Internal commercial use** - Deploy within your organization
+- ✅ **Redistribute** - Share the software with others
+- ✅ **Create derivative works** - Build upon the codebase
+
+### ❌ **What you CANNOT do:**
+- ❌ **Offer as competing SaaS** - Cannot offer this as a hosted service that competes with ARTELL SOLUÇÕES TECNOLÓGICAS LTDA's commercial offerings
+
+### 🔄 **Future Open Source:**
+- **Change Date**: January 1, 2029
+- **After Change Date**: Automatically converts to Apache License 2.0 (fully open source)
+- **No restrictions**: After the change date, you can use it for any purpose, including competing services
+
+This licensing model ensures the software remains accessible while protecting the commercial interests of the original developers. For questions about commercial licensing or use cases, please contact us.
 
 ## Privacy and Security
 
