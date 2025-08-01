@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "meta-ads-mcp"
-version = "0.10.0"
+version = "0.10.1"
 description = "Model Context Protocol (MCP) server for interacting with Meta Ads API"
 readme = "README.md"
 requires-python = ">=3.10"
