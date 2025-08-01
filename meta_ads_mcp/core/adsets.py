@@ -104,6 +104,8 @@ async def create_adset(
     start_time: str = None,
     end_time: str = None,
     dsa_beneficiary: str = None,
+    promoted_object: Dict[str, Any] = None,
+    destination_type: str = None,
     access_token: str = None
 ) -> str:
     """
@@ -118,13 +120,18 @@ async def create_adset(
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
         targeting: Targeting specifications including age, location, interests, etc.
                   Use targeting_automation.advantage_audience=1 for automatic audience finding
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS')
+        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS')
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         bid_amount: Bid amount in account currency (in cents)
         bid_strategy: Bid strategy (e.g., 'LOWEST_COST', 'LOWEST_COST_WITH_BID_CAP')
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
         end_time: End time in ISO 8601 format
         dsa_beneficiary: DSA beneficiary (person/organization benefiting from ads) for European compliance
+        promoted_object: Mobile app configuration for APP_INSTALLS campaigns. Required fields: application_id, object_store_url.
+                        Optional fields: custom_event_type, pixel_id, page_id.
+                        Example: {"application_id": "123456789012345", "object_store_url": "https://apps.apple.com/app/id123456789"}
+        destination_type: Where users are directed after clicking the ad (e.g., 'APP_STORE', 'DEEPLINK', 'APP_INSTALL').
+                         Required for mobile app campaigns.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -142,6 +149,59 @@ async def create_adset(
     
     if not billing_event:
         return json.dumps({"error": "No billing event provided"}, indent=2)
+    
+    # Validate mobile app parameters for APP_INSTALLS campaigns
+    if optimization_goal == "APP_INSTALLS":
+        if not promoted_object:
+            return json.dumps({
+                "error": "promoted_object is required for APP_INSTALLS optimization goal",
+                "details": "Mobile app campaigns must specify which app is being promoted",
+                "required_fields": ["application_id", "object_store_url"]
+            }, indent=2)
+        
+        # Validate promoted_object structure
+        if not isinstance(promoted_object, dict):
+            return json.dumps({
+                "error": "promoted_object must be a dictionary",
+                "example": {"application_id": "123456789012345", "object_store_url": "https://apps.apple.com/app/id123456789"}
+            }, indent=2)
+        
+        # Validate required promoted_object fields
+        if "application_id" not in promoted_object:
+            return json.dumps({
+                "error": "promoted_object missing required field: application_id",
+                "details": "application_id is the Facebook app ID for your mobile app"
+            }, indent=2)
+        
+        if "object_store_url" not in promoted_object:
+            return json.dumps({
+                "error": "promoted_object missing required field: object_store_url", 
+                "details": "object_store_url should be the App Store or Google Play URL for your app"
+            }, indent=2)
+        
+        # Validate store URL format
+        store_url = promoted_object["object_store_url"]
+        valid_store_patterns = [
+            "apps.apple.com",  # iOS App Store
+            "play.google.com",  # Google Play Store
+            "itunes.apple.com"  # Alternative iOS format
+        ]
+        
+        if not any(pattern in store_url for pattern in valid_store_patterns):
+            return json.dumps({
+                "error": "Invalid object_store_url format",
+                "details": "URL must be from App Store (apps.apple.com) or Google Play (play.google.com)",
+                "provided_url": store_url
+            }, indent=2)
+    
+    # Validate destination_type if provided
+    if destination_type:
+        valid_destination_types = ["APP_STORE", "DEEPLINK", "APP_INSTALL"]
+        if destination_type not in valid_destination_types:
+            return json.dumps({
+                "error": f"Invalid destination_type: {destination_type}",
+                "valid_values": valid_destination_types
+            }, indent=2)
     
     # Basic targeting is required if not provided
     if not targeting:
@@ -186,6 +246,13 @@ async def create_adset(
     # Add DSA beneficiary if provided
     if dsa_beneficiary:
         params["dsa_beneficiary"] = dsa_beneficiary
+    
+    # Add mobile app parameters if provided
+    if promoted_object:
+        params["promoted_object"] = json.dumps(promoted_object)
+    
+    if destination_type:
+        params["destination_type"] = destination_type
     
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")

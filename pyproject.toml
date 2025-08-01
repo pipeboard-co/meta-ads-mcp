@@ -39,3 +39,11 @@ meta-ads-mcp = "meta_ads_mcp:entrypoint"
 
 [tool.hatch.build.targets.wheel]
 packages = ["meta_ads_mcp"]
+
+[tool.pytest.ini_options]
+markers = [
+    "e2e: marks tests as end-to-end (requires running MCP server) - excluded from default runs",
+]
+addopts = "-v --strict-markers -m 'not e2e'"
+testpaths = ["tests"]
+asyncio_mode = "auto"
