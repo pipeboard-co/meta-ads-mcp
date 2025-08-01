@@ -614,7 +614,7 @@ class AudienceEstimationTester:
             print(f"\n✅ Audience estimation tests: SUCCESS ({passed_tests}/{total_tests} passed)")
             print("   • Comprehensive audience estimation is working")
             print("   • Backwards compatibility is maintained")
-            print("   • Meta delivery_estimate API integration is functional")
+            print("   • Meta reachestimate API integration is functional")
             return True
         else:
             print(f"\n❌ Audience estimation tests: FAILED ({passed_tests}/{total_tests} passed)")

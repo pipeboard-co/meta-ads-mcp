@@ -3,7 +3,7 @@
 Unit tests for estimate_audience_size functionality in Meta Ads MCP.
 
 This module tests the new estimate_audience_size function that replaces validate_interests
-and provides comprehensive audience estimation using Meta's delivery_estimate API.
+and provides comprehensive audience estimation using Meta's reachestimate API.
 """
 
 import pytest
@@ -58,14 +58,12 @@ class TestEstimateAudienceSize:
             
             # Verify API call
             mock_api.assert_called_once_with(
-                "act_123456789/delivery_estimate",
+                "act_123456789/reachestimate",
                 "test_token",
                 {
-                    "targeting": targeting_spec,
-                    "optimization_goal": "REACH",
-                    "objective": "REACH"
+                    "targeting_spec": targeting_spec
                 },
-                method="POST"
+                method="GET"
             )
             
             # Verify response format
@@ -80,7 +78,7 @@ class TestEstimateAudienceSize:
     
     @pytest.mark.asyncio
     async def test_different_optimization_goals(self):
-        """Test audience estimation with different optimization goals"""
+        """Test audience estimation with different optimization goals (parameter is preserved in response)"""
         mock_response = {
             "data": [
                 {
@@ -98,19 +96,13 @@ class TestEstimateAudienceSize:
             "geo_locations": {"countries": ["US"]}
         }
         
-        test_cases = [
-            ("REACH", "REACH"),
-            ("LINK_CLICKS", "TRAFFIC"),
-            ("LANDING_PAGE_VIEWS", "TRAFFIC"),
-            ("CONVERSIONS", "CONVERSIONS"),
-            ("APP_INSTALLS", "APP_INSTALLS"),
-            ("UNKNOWN_GOAL", "REACH")  # Should fallback to REACH
-        ]
+        # Test different optimization goals - they should all use the same reachestimate endpoint
+        test_goals = ["REACH", "LINK_CLICKS", "LANDING_PAGE_VIEWS", "CONVERSIONS", "APP_INSTALLS"]
         
         with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
             mock_api.return_value = mock_response
             
-            for optimization_goal, expected_objective in test_cases:
+            for optimization_goal in test_goals:
                 mock_api.reset_mock()
                 
                 result = await estimate_audience_size(
@@ -120,16 +112,14 @@ class TestEstimateAudienceSize:
                     optimization_goal=optimization_goal
                 )
                 
-                # Verify correct objective mapping
+                # Verify API call uses reachestimate endpoint with simplified parameters
                 mock_api.assert_called_once_with(
-                    "act_123456789/delivery_estimate",
+                    "act_123456789/reachestimate",
                     "test_token",
                     {
-                        "targeting": targeting_spec,
-                        "optimization_goal": optimization_goal,
-                        "objective": expected_objective
+                        "targeting_spec": targeting_spec
                     },
-                    method="POST"
+                    method="GET"
                 )
                 
                 result_data = json.loads(result)
@@ -316,7 +306,7 @@ class TestEstimateAudienceSize:
     
     @pytest.mark.asyncio
     async def test_api_error_handling(self):
-        """Test handling of API errors from delivery_estimate"""
+        """Test handling of API errors from reachestimate"""
         targeting_spec = {
             "age_min": 25,
             "age_max": 65,
@@ -338,12 +328,12 @@ class TestEstimateAudienceSize:
             assert "data" in result_data
             nested_data = json.loads(result_data["data"])
             assert "error" in nested_data
-            assert "Failed to get audience estimation" in nested_data["error"]
+            assert "Failed to get audience estimation from reachestimate endpoint" in nested_data["error"]
             assert "details" in nested_data
     
     @pytest.mark.asyncio
     async def test_empty_api_response(self):
-        """Test handling of empty response from delivery_estimate API"""
+        """Test handling of empty response from reachestimate API"""
         targeting_spec = {
             "age_min": 25,
             "age_max": 65,

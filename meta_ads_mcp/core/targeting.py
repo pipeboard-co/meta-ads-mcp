@@ -147,27 +147,16 @@ async def estimate_audience_size(
             }
         }, indent=2)
     
-    # Build delivery estimate request
-    endpoint = f"{account_id}/delivery_estimate"
+    # Build reach estimate request (using correct Meta API endpoint)
+    endpoint = f"{account_id}/reachestimate"
     params = {
-        "targeting": targeting,
-        "optimization_goal": optimization_goal
+        "targeting_spec": targeting
     }
     
-    # Add basic campaign parameters for estimation
-    if optimization_goal == "REACH":
-        params["objective"] = "REACH"
-    elif optimization_goal in ["LINK_CLICKS", "LANDING_PAGE_VIEWS"]:
-        params["objective"] = "TRAFFIC"
-    elif optimization_goal == "CONVERSIONS":
-        params["objective"] = "CONVERSIONS"
-    elif optimization_goal == "APP_INSTALLS":
-        params["objective"] = "APP_INSTALLS"
-    else:
-        params["objective"] = "REACH"  # Default fallback
+    # Note: reachestimate endpoint doesn't support optimization_goal or objective parameters
     
     try:
-        data = await make_api_request(endpoint, access_token, params, method="POST")
+        data = await make_api_request(endpoint, access_token, params, method="GET")
         
         # Format the response for easier consumption
         if "data" in data and len(data["data"]) > 0:
@@ -191,14 +180,69 @@ async def estimate_audience_size(
         else:
             return json.dumps({
                 "error": "No estimation data returned from Meta API",
-                "raw_response": data
+                "raw_response": data,
+                "debug_info": {
+                    "response_keys": list(data.keys()) if isinstance(data, dict) else "not_a_dict",
+                    "response_type": str(type(data)),
+                    "endpoint_used": f"{account_id}/reachestimate"
+                }
             }, indent=2)
     
     except Exception as e:
-        return json.dumps({
-            "error": f"Failed to get audience estimation: {str(e)}",
-            "details": "Check targeting parameters and account permissions"
-        }, indent=2)
+        # Check if this is the specific Business Manager system user permission error
+        error_str = str(e)
+        if "100" in error_str and "33" in error_str:
+            # Try to provide fallback estimation using individual interests if available
+            interests_found = []
+            if targeting and "interests" in targeting:
+                interests_found.extend([interest.get("id") for interest in targeting["interests"] if interest.get("id")])
+            elif targeting and "flexible_spec" in targeting:
+                for spec in targeting["flexible_spec"]:
+                    if "interests" in spec:
+                        interests_found.extend([interest.get("id") for interest in spec["interests"] if interest.get("id")])
+            
+            if interests_found:
+                # Attempt to get individual interest data as fallback
+                try:
+                    fallback_result = await estimate_audience_size(
+                        access_token=access_token,
+                        interest_fbid_list=interests_found
+                    )
+                    fallback_data = json.loads(fallback_result)
+                    
+                    return json.dumps({
+                        "comprehensive_targeting_failed": True,
+                        "error_code": "100-33",
+                        "fallback_used": True,
+                        "details": {
+                            "issue": "reachestimate endpoint returned error - possibly due to targeting parameters or account limitations",
+                            "solution": "Individual interest validation used as fallback - comprehensive targeting may have specific requirements",
+                            "endpoint_used": f"{account_id}/reachestimate"
+                        },
+                        "individual_interest_data": fallback_data,
+                        "note": "Individual interest audience sizes provided as fallback. Comprehensive targeting via reachestimate endpoint failed."
+                    }, indent=2)
+                except:
+                    pass
+            
+            return json.dumps({
+                "error": "reachestimate endpoint returned error (previously was incorrectly using delivery_estimate)",
+                "error_code": "100-33", 
+                "details": {
+                    "issue": "The endpoint returned an error, possibly due to targeting parameters or account limitations",
+                    "endpoint_used": f"{account_id}/reachestimate",
+                    "previous_issue": "Code was previously using non-existent delivery_estimate endpoint - now fixed",
+                    "available_alternative": "Use interest_list or interest_fbid_list parameters for individual interest validation"
+                },
+                "raw_error": error_str
+            }, indent=2)
+        else:
+            return json.dumps({
+                "error": f"Failed to get audience estimation from reachestimate endpoint: {str(e)}",
+                "details": "Check targeting parameters and account permissions",
+                "error_type": "general_api_error",
+                "endpoint_used": f"{account_id}/reachestimate"
+            }, indent=2)
 
 
 @mcp_server.tool()
