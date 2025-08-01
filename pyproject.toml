@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "httpx>=0.26.0",
-    "mcp[cli]>=1.10.1",
+    "mcp[cli]>=1.10.1,<=1.12.2",
     "python-dotenv>=1.1.0",
     "requests>=2.32.3",
     "Pillow>=10.0.0",

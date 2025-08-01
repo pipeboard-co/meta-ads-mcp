@@ -14,7 +14,7 @@ from .pipeboard_auth import pipeboard_auth_manager
 import time
 
 # Initialize FastMCP server
-mcp_server = FastMCP("meta-ads", use_consistent_tool_format=True)
+mcp_server = FastMCP("meta-ads")
 
 # Register resource URIs
 mcp_server.resource(uri="meta-ads://resources")(list_resources)
