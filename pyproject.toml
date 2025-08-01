@@ -12,10 +12,10 @@ authors = [
     {name = "Yves Junqueira", email = "yves.junqueira@gmail.com"},
 ]
 keywords = ["meta", "facebook", "ads", "api", "mcp", "claude"]
-license = {text = "Apache-2.0"}
+license = {text = "BUSL-1.1"}
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: Other/Proprietary License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
