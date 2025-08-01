@@ -1,6 +1,6 @@
 # Meta Ads MCP
 
-A **source-available** [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for interacting with Meta Ads API. This tool enables AI models to access, analyze, and manage Meta advertising campaigns through a standardized interface, allowing LLMs to retrieve performance data, visualize ad creatives, and provide strategic insights for Facebook, Instagram, and other Meta platforms.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for interacting with Meta Ads API. This tool enables AI models to access, analyze, and manage Meta advertising campaigns through a standardized interface, allowing LLMs to retrieve performance data, visualize ad creatives, and provide strategic insights for Facebook, Instagram, and other Meta platforms.
 
 > **DISCLAIMER:** This is an unofficial third-party tool and is not associated with, endorsed by, or affiliated with Meta in any way. This project is maintained independently and uses Meta's public APIs according to their terms of service. Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
@@ -385,7 +385,7 @@ For local installation configuration, authentication options, and advanced techn
 
 ## Licensing
 
-Meta Ads MCP is **source-available** software licensed under the [Business Source License 1.1](LICENSE). This means:
+Meta Ads MCP is licensed under the [Business Source License 1.1](LICENSE). This means:
 
 ### ✅ **What you CAN do:**
 - ✅ **Use for free** - Individual and business use at no cost
