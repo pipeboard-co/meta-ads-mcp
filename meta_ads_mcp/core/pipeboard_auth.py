@@ -120,7 +120,7 @@ class PipeboardAuthManager:
         else:
             logger.info("Pipeboard authentication not enabled. Set PIPEBOARD_API_TOKEN environment variable to enable.")
         self.token_info = None
-        self._load_cached_token()
+        # Note: Token caching is disabled to always fetch fresh tokens from Pipeboard
     
     def _get_token_cache_path(self) -> Path:
         """Get the platform-specific path for token cache file"""
@@ -320,18 +320,7 @@ class PipeboardAuthManager:
             logger.error("Please set PIPEBOARD_API_TOKEN environment variable")
             return None
             
-        # Check if we already have a valid token
-        if not force_refresh and self.token_info and not self.token_info.is_expired():
-            logger.debug("Using existing valid token")
-            return self.token_info.access_token
-            
-        # If we have a token but it's expired, log that information
-        if not force_refresh and self.token_info and self.token_info.is_expired():
-            logger.error("TOKEN VALIDATION FAILED: Existing token is expired")
-            if self.token_info.expires_at:
-                logger.error(f"Token expiration time: {self.token_info.expires_at}")
-        
-        logger.info(f"Getting new token (force_refresh={force_refresh})")
+        logger.info("Getting fresh token from Pipeboard (caching disabled)")
         
         # If force refresh or no token/expired token, get a new one from Pipeboard
         try:
@@ -398,8 +387,7 @@ class PipeboardAuthManager:
                 token_type=data.get("token_type", "bearer")
             )
             
-            # Save to cache
-            self._save_token_to_cache()
+            # Note: Token caching is disabled
             
             masked_token = self.token_info.access_token[:10] + "..." + self.token_info.access_token[-5:] if self.token_info.access_token else "None"
             logger.info(f"Successfully retrieved access token: {masked_token}")
