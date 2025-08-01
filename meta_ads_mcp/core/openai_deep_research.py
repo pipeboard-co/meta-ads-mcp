@@ -23,7 +23,7 @@ class MetaAdsDataManager:
         self._cache = {}
         logger.debug("MetaAdsDataManager initialized")
     
-    async def _get_ad_accounts(self, access_token: str, limit: int = 25) -> List[Dict[str, Any]]:
+    async def _get_ad_accounts(self, access_token: str, limit: int = 200) -> List[Dict[str, Any]]:
         """Get ad accounts data"""
         try:
             endpoint = "me/adaccounts"
@@ -141,7 +141,7 @@ class MetaAdsDataManager:
         
         try:
             # Search ad accounts
-            accounts = await self._get_ad_accounts(access_token, limit=25)
+            accounts = await self._get_ad_accounts(access_token, limit=200)
             for account in accounts:
                 account_text = f"{account.get('name', '')} {account.get('id', '')} {account.get('account_status', '')} {account.get('business_city', '')} {account.get('business_country_code', '')}".lower()
                 

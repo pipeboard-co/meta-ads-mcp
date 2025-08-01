@@ -51,32 +51,7 @@ async def get_account_info(access_token: str = None, account_id: str = None) -> 
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
     
-    # First, check if the account is accessible to the user
-    endpoint = "me/adaccounts"
-    params = {
-        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code",
-        "limit": 50
-    }
-    accessible_accounts_data = await make_api_request(endpoint, access_token, params)
-    
-    if "data" in accessible_accounts_data:
-        accessible_account_ids = [acc["id"] for acc in accessible_accounts_data["data"]]
-        if account_id not in accessible_account_ids:
-            # Provide a helpful error message with accessible accounts
-            accessible_accounts = [
-                {"id": acc["id"], "name": acc["name"]} 
-                for acc in accessible_accounts_data["data"][:10]  # Show first 10
-            ]
-            return {
-                "error": {
-                    "message": f"Account {account_id} is not accessible to your user account",
-                    "details": "This account either doesn't exist or you don't have permission to access it",
-                    "accessible_accounts": accessible_accounts,
-                    "total_accessible_accounts": len(accessible_accounts_data["data"]),
-                    "suggestion": "Try using one of the accessible account IDs listed above"
-                }
-            }
-    
+    # Try to get the account info directly first
     endpoint = f"{account_id}"
     params = {
         "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code,timezone_name"
@@ -86,6 +61,32 @@ async def get_account_info(access_token: str = None, account_id: str = None) -> 
     
     # Check if the API request returned an error
     if "error" in data:
+        # If access was denied, provide helpful error message with accessible accounts
+        if "access" in str(data.get("error", {})).lower() or "permission" in str(data.get("error", {})).lower():
+            # Get list of accessible accounts for helpful error message
+            accessible_endpoint = "me/adaccounts"
+            accessible_params = {
+                "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code",
+                "limit": 50
+            }
+            accessible_accounts_data = await make_api_request(accessible_endpoint, access_token, accessible_params)
+            
+            if "data" in accessible_accounts_data:
+                accessible_accounts = [
+                    {"id": acc["id"], "name": acc["name"]} 
+                    for acc in accessible_accounts_data["data"][:10]  # Show first 10
+                ]
+                return {
+                    "error": {
+                        "message": f"Account {account_id} is not accessible to your user account",
+                        "details": "This account either doesn't exist or you don't have permission to access it",
+                        "accessible_accounts": accessible_accounts,
+                        "total_accessible_accounts": len(accessible_accounts_data["data"]),
+                        "suggestion": "Try using one of the accessible account IDs listed above"
+                    }
+                }
+        
+        # Return the original error for non-permission related issues
         return data
     
     # Add DSA requirement detection

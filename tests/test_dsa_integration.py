@@ -420,7 +420,16 @@ class TestDSAIntegration:
     async def test_account_info_inaccessible_account_error(self):
         """Test that get_account_info provides helpful error for inaccessible accounts"""
         
-        # Mock accessible accounts response
+        # Mock permission error for direct account access (first API call)
+        mock_permission_error = {
+            "error": {
+                "message": "Insufficient access privileges",
+                "type": "OAuthException",
+                "code": 200
+            }
+        }
+        
+        # Mock accessible accounts response (second API call)
         mock_accessible_accounts = {
             "data": [
                 {"id": "act_123", "name": "Test Account 1"},
@@ -431,7 +440,8 @@ class TestDSAIntegration:
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
             with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
-                mock_api.return_value = mock_accessible_accounts
+                # First call returns permission error, second call returns accessible accounts
+                mock_api.side_effect = [mock_permission_error, mock_accessible_accounts]
                 
                 result = await get_account_info(account_id="act_inaccessible")
                 
