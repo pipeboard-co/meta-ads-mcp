@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from meta_ads_mcp.core.targeting import (
     search_interests,
     get_interest_suggestions,
-    validate_interests,
+    estimate_audience_size,
     search_behaviors,
     search_demographics,
     search_geo_locations
@@ -166,8 +166,8 @@ class TestGetInterestSuggestions:
         assert nested_data["error"] == "No interest list provided"
 
 
-class TestValidateInterests:
-    """Test cases for validate_interests function"""
+class TestEstimateAudienceSizeBackwardsCompatibility:
+    """Test cases for estimate_audience_size function backwards compatibility"""
     
     @pytest.mark.asyncio
     async def test_validate_interests_by_name_success(self):
@@ -190,7 +190,7 @@ class TestValidateInterests:
         with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
             mock_api.return_value = mock_response
             
-            result = await validate_interests(
+            result = await estimate_audience_size(
                 access_token="test_token",
                 interest_list=["Japan", "nonexistantkeyword"]
             )
@@ -227,7 +227,7 @@ class TestValidateInterests:
         with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
             mock_api.return_value = mock_response
             
-            result = await validate_interests(
+            result = await estimate_audience_size(
                 access_token="test_token",
                 interest_fbid_list=["6003700426513"]
             )
@@ -248,8 +248,8 @@ class TestValidateInterests:
     
     @pytest.mark.asyncio
     async def test_validate_interests_no_input(self):
-        """Test validate_interests with no input lists"""
-        result = await validate_interests(access_token="test_token")
+        """Test estimate_audience_size with no input lists (backwards compatibility)"""
+        result = await estimate_audience_size(access_token="test_token")
         
         result_data = json.loads(result)
         # The @meta_api_tool decorator wraps errors in a 'data' field

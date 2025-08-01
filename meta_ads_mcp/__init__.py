@@ -29,7 +29,7 @@ __all__ = [
     'main',
     'search_interests',
     'get_interest_suggestions',
-    'validate_interests',
+    'estimate_audience_size',
     'search_behaviors',
     'search_demographics',
     'search_geo_locations'
@@ -56,7 +56,7 @@ from .core import (
     main,
     search_interests,
     get_interest_suggestions,
-    validate_interests,
+    estimate_audience_size,
     search_behaviors,
     search_demographics,
     search_geo_locations
