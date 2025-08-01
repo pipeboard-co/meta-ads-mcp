@@ -111,7 +111,7 @@ For local installation configuration, authentication options, and advanced techn
    - Inputs:
      - `access_token` (optional): Meta API access token (will use cached token if not provided)
      - `user_id`: Meta user ID or "me" for the current user
-     - `limit`: Maximum number of accounts to return (default: 10)
+     - `limit`: Maximum number of accounts to return (default: 200)
    - Returns: List of accessible ad accounts with their details
 
 2. `mcp_meta_ads_get_account_info`

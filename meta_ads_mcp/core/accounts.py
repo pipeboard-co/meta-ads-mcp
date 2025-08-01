@@ -8,14 +8,14 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_accounts(access_token: str = None, user_id: str = "me", limit: int = 10) -> str:
+async def get_ad_accounts(access_token: str = None, user_id: str = "me", limit: int = 200) -> str:
     """
     Get ad accounts accessible by a user.
     
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
         user_id: Meta user ID or "me" for the current user
-        limit: Maximum number of accounts to return (default: 10)
+        limit: Maximum number of accounts to return (default: 200)
     """
     endpoint = f"{user_id}/adaccounts"
     params = {

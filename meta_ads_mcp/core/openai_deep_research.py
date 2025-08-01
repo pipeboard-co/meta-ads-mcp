@@ -103,6 +103,24 @@ class MetaAdsDataManager:
             logger.error(f"Error fetching pages for {account_id}: {e}")
             return []
     
+    async def _get_businesses(self, access_token: str, user_id: str = "me", limit: int = 25) -> List[Dict[str, Any]]:
+        """Get businesses accessible by the current user"""
+        try:
+            endpoint = f"{user_id}/businesses"
+            params = {
+                "fields": "id,name,created_time,verification_status",
+                "limit": limit
+            }
+            
+            data = await make_api_request(endpoint, access_token, params)
+            
+            if "data" in data:
+                return data["data"]
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching businesses: {e}")
+            return []
+    
     async def search_records(self, query: str, access_token: str) -> List[str]:
         """Search Meta Ads data and return matching record IDs
         
@@ -230,6 +248,32 @@ class MetaAdsDataManager:
                                 },
                                 "raw_data": page
                             }
+            
+            # If query specifically mentions "business" or "businesses", also search businesses
+            if any(term in ['business', 'businesses', 'company', 'companies'] for term in query_terms):
+                businesses = await self._get_businesses(access_token, limit=25)
+                for business in businesses:
+                    business_text = f"{business.get('name', '')} {business.get('verification_status', '')}".lower()
+                    
+                    if any(term in business_text for term in query_terms):
+                        business_record_id = f"business:{business['id']}"
+                        matching_ids.append(business_record_id)
+                        
+                        # Cache the business data
+                        self._cache[business_record_id] = {
+                            "id": business_record_id,
+                            "type": "business",
+                            "title": f"Business: {business.get('name', 'Unnamed Business')}",
+                            "text": f"Meta Business {business.get('name', 'Unnamed')} (ID: {business.get('id', 'N/A')}) - Created: {business.get('created_time', 'Unknown')}, Verification: {business.get('verification_status', 'Unknown')}",
+                            "metadata": {
+                                "business_id": business.get('id'),
+                                "business_name": business.get('name'),
+                                "created_time": business.get('created_time'),
+                                "verification_status": business.get('verification_status'),
+                                "data_type": "meta_ads_business"
+                            },
+                            "raw_data": business
+                        }
         
         except Exception as e:
             logger.error(f"Error during search operation: {e}")
@@ -273,7 +317,7 @@ async def search(
     Search through Meta Ads data and return matching record IDs.
     
     This tool is required for OpenAI ChatGPT Deep Research integration.
-    It searches across ad accounts, campaigns, ads, and pages to find relevant records
+    It searches across ad accounts, campaigns, ads, pages, and businesses to find relevant records
     based on the provided query.
     
     Args:
@@ -288,6 +332,7 @@ async def search(
         search(query="account spending")
         search(query="facebook ads performance")
         search(query="facebook pages")
+        search(query="user businesses")
     """
     if not query:
         return json.dumps({
