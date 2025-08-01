@@ -6,6 +6,13 @@ This test validates that the new estimate_audience_size function correctly provi
 comprehensive audience estimation and backwards compatibility for interest validation
 through a pre-authenticated MCP server.
 
+Usage:
+    1. Start the server: uv run python -m meta_ads_mcp --transport streamable-http --port 8080
+    2. Run test: uv run python tests/test_estimate_audience_size_e2e.py
+
+Or with pytest (manual only):
+    uv run python -m pytest tests/test_estimate_audience_size_e2e.py -v -m e2e
+
 Test scenarios:
 1. Comprehensive audience estimation with complex targeting
 2. Backwards compatibility with simple interest validation
@@ -13,6 +20,7 @@ Test scenarios:
 4. Different optimization goals
 """
 
+import pytest
 import requests
 import json
 import os
@@ -27,6 +35,8 @@ try:
 except ImportError:
     print("⚠️  python-dotenv not installed, using system environment variables only")
 
+@pytest.mark.e2e
+@pytest.mark.skip(reason="E2E test - run manually only")
 class AudienceEstimationTester:
     """Test suite focused on audience estimation functionality"""
     
@@ -132,6 +142,71 @@ class AudienceEstimationTester:
                 "error": str(e)
             }
 
+    def _check_for_errors(self, parsed_content: Dict[str, Any]) -> Dict[str, Any]:
+        """Properly handle both wrapped and direct error formats"""
+        
+        # Check for data wrapper format first
+        if "data" in parsed_content:
+            data = parsed_content["data"]
+            
+            # Handle case where data is already parsed (dict/list)
+            if isinstance(data, dict) and 'error' in data:
+                return {
+                    "has_error": True,
+                    "error_message": data['error'],
+                    "error_details": data.get('details', ''),
+                    "format": "wrapped_dict"
+                }
+            
+            # Handle case where data is a JSON string that needs parsing
+            if isinstance(data, str):
+                try:
+                    error_data = json.loads(data)
+                    if 'error' in error_data:
+                        return {
+                            "has_error": True,
+                            "error_message": error_data['error'],
+                            "error_details": error_data.get('details', ''),
+                            "format": "wrapped_json"
+                        }
+                except json.JSONDecodeError:
+                    # Data field exists but isn't valid JSON
+                    pass
+        
+        # Check for direct error format
+        if 'error' in parsed_content:
+            return {
+                "has_error": True,
+                "error_message": parsed_content['error'],
+                "error_details": parsed_content.get('details', ''),
+                "format": "direct"
+            }
+        
+        return {"has_error": False}
+
+    def _extract_data(self, parsed_content: Dict[str, Any]) -> Any:
+        """Extract successful response data from various wrapper formats"""
+        
+        if "data" in parsed_content:
+            data = parsed_content["data"]
+            
+            # Handle case where data is already parsed
+            if isinstance(data, (list, dict)):
+                return data
+            
+            # Handle case where data is a JSON string
+            if isinstance(data, str):
+                try:
+                    return json.loads(data)
+                except json.JSONDecodeError:
+                    return None
+        
+        # Handle direct format (data at top level)
+        if isinstance(parsed_content, (list, dict)):
+            return parsed_content
+        
+        return None
+
     def test_comprehensive_audience_estimation(self) -> Dict[str, Any]:
         """Test comprehensive audience estimation with complex targeting"""
         
@@ -165,12 +240,15 @@ class AudienceEstimationTester:
             try:
                 parsed_content = json.loads(content)
                 
-                if "error" in parsed_content:
+                # Check for errors using robust helper method
+                error_info = self._check_for_errors(parsed_content)
+                if error_info["has_error"]:
                     results[spec_name] = {
                         "success": False,
-                        "error": parsed_content["error"]
+                        "error": error_info["error_message"],
+                        "error_format": error_info["format"]
                     }
-                    print(f"   ❌ API Error: {parsed_content['error']}")
+                    print(f"   ❌ API Error: {error_info['error_message']}")
                     continue
                 
                 # Check for expected fields in comprehensive estimation
@@ -226,22 +304,33 @@ class AudienceEstimationTester:
             try:
                 parsed_content = json.loads(content)
                 
-                if "data" in parsed_content:
-                    validations = parsed_content["data"]
+                # Check for errors first
+                error_info = self._check_for_errors(parsed_content)
+                if error_info["has_error"]:
                     results["interest_names"] = {
-                        "success": True,
-                        "count": len(validations),
-                        "has_valid": any(v.get("valid", False) for v in validations),
-                        "has_invalid": any(not v.get("valid", True) for v in validations),
-                        "validations": validations
+                        "success": False,
+                        "error": error_info["error_message"],
+                        "error_format": error_info["format"]
                     }
-                    print(f"   ✅ Validated {len(validations)} interests")
-                    for validation in validations:
-                        status = "✅" if validation.get("valid") else "❌"
-                        print(f"      {status} {validation.get('name', 'N/A')}")
+                    print(f"   ❌ API Error: {error_info['error_message']}")
                 else:
-                    results["interest_names"] = {"success": False, "error": "No validation data"}
-                    print(f"   ❌ No validation data returned")
+                    # Extract data using robust helper method
+                    validations = self._extract_data(parsed_content)
+                    if validations and isinstance(validations, list):
+                        results["interest_names"] = {
+                            "success": True,
+                            "count": len(validations),
+                            "has_valid": any(v.get("valid", False) for v in validations),
+                            "has_invalid": any(not v.get("valid", True) for v in validations),
+                            "validations": validations
+                        }
+                        print(f"   ✅ Validated {len(validations)} interests")
+                        for validation in validations:
+                            status = "✅" if validation.get("valid") else "❌"
+                            print(f"      {status} {validation.get('name', 'N/A')}")
+                    else:
+                        results["interest_names"] = {"success": False, "error": "No validation data"}
+                        print(f"   ❌ No validation data returned")
                     
             except json.JSONDecodeError:
                 results["interest_names"] = {"success": False, "error": "Invalid JSON"}
@@ -267,21 +356,32 @@ class AudienceEstimationTester:
             try:
                 parsed_content = json.loads(content)
                 
-                if "data" in parsed_content:
-                    validations = parsed_content["data"]
+                # Check for errors first
+                error_info = self._check_for_errors(parsed_content)
+                if error_info["has_error"]:
                     results["interest_fbids"] = {
-                        "success": True,
-                        "count": len(validations),
-                        "all_valid": all(v.get("valid", False) for v in validations),
-                        "validations": validations
+                        "success": False,
+                        "error": error_info["error_message"],
+                        "error_format": error_info["format"]
                     }
-                    print(f"   ✅ Validated {len(validations)} FBID interests")
-                    for validation in validations:
-                        status = "✅" if validation.get("valid") else "❌"
-                        print(f"      {status} FBID: {validation.get('id', 'N/A')}")
+                    print(f"   ❌ API Error: {error_info['error_message']}")
                 else:
-                    results["interest_fbids"] = {"success": False, "error": "No validation data"}
-                    print(f"   ❌ No validation data returned")
+                    # Extract data using robust helper method
+                    validations = self._extract_data(parsed_content)
+                    if validations and isinstance(validations, list):
+                        results["interest_fbids"] = {
+                            "success": True,
+                            "count": len(validations),
+                            "all_valid": all(v.get("valid", False) for v in validations),
+                            "validations": validations
+                        }
+                        print(f"   ✅ Validated {len(validations)} FBID interests")
+                        for validation in validations:
+                            status = "✅" if validation.get("valid") else "❌"
+                            print(f"      {status} FBID: {validation.get('id', 'N/A')}")
+                    else:
+                        results["interest_fbids"] = {"success": False, "error": "No validation data"}
+                        print(f"   ❌ No validation data returned")
                     
             except json.JSONDecodeError:
                 results["interest_fbids"] = {"success": False, "error": "Invalid JSON"}
@@ -320,7 +420,16 @@ class AudienceEstimationTester:
                 try:
                     parsed_content = json.loads(content)
                     
-                    if parsed_content.get("success", False):
+                    # Check for errors first
+                    error_info = self._check_for_errors(parsed_content)
+                    if error_info["has_error"]:
+                        results[goal] = {
+                            "success": False,
+                            "error": error_info["error_message"],
+                            "error_format": error_info["format"]
+                        }
+                        print(f"   ❌ {goal}: {error_info['error_message']}")
+                    elif parsed_content.get("success", False):
                         results[goal] = {
                             "success": True,
                             "estimated_size": parsed_content.get("estimated_audience_size", 0),
@@ -331,9 +440,9 @@ class AudienceEstimationTester:
                     else:
                         results[goal] = {
                             "success": False,
-                            "error": parsed_content.get("error", "Unknown error")
+                            "error": "Response indicates failure but no error message found"
                         }
-                        print(f"   ❌ {goal}: {parsed_content.get('error', 'Unknown error')}")
+                        print(f"   ❌ {goal}: Response indicates failure but no error message found")
                         
                 except json.JSONDecodeError:
                     results[goal] = {"success": False, "error": "Invalid JSON"}
@@ -397,9 +506,15 @@ class AudienceEstimationTester:
         try:
             parsed_content = json.loads(content)
             
-            if "error" in parsed_content:
-                print(f"   ✅ {description}: {parsed_content['error']}")
-                return {"success": True, "error_message": parsed_content["error"]}
+            # Use robust error checking helper method
+            error_info = self._check_for_errors(parsed_content)
+            if error_info["has_error"]:
+                print(f"   ✅ {description}: {error_info['error_message']}")
+                return {
+                    "success": True, 
+                    "error_message": error_info["error_message"],
+                    "error_format": error_info["format"]
+                }
             else:
                 print(f"   ❌ {description}: No error returned when expected")
                 return {"success": False, "unexpected_success": True}
