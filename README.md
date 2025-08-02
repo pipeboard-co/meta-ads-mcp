@@ -385,24 +385,14 @@ For local installation configuration, authentication options, and advanced techn
 
 ## Licensing
 
-Meta Ads MCP is licensed under the [Business Source License 1.1](LICENSE). This means:
+Meta Ads MCP is licensed under the [Business Source License 1.1](LICENSE), which means:
 
-### ✅ **What you CAN do:**
-- ✅ **Use for free** - Individual and business use at no cost
-- ✅ **Modify and customize** - Edit the source code for your needs
-- ✅ **Internal commercial use** - Deploy within your organization
-- ✅ **Redistribute** - Share the software with others
-- ✅ **Create derivative works** - Build upon the codebase
+- ✅ **Free to use** for individual and business purposes
+- ✅ **Modify and customize** as needed
+- ✅ **Redistribute** to others
+- ✅ **Becomes fully open source** (Apache 2.0) on January 1, 2029
 
-### ❌ **What you CANNOT do:**
-- ❌ **Offer as competing SaaS** - Cannot offer this as a hosted service that competes with ARTELL SOLUÇÕES TECNOLÓGICAS LTDA's commercial offerings
-
-### 🔄 **Future Open Source:**
-- **Change Date**: January 1, 2029
-- **After Change Date**: Automatically converts to Apache License 2.0 (fully open source)
-- **No restrictions**: After the change date, you can use it for any purpose, including competing services
-
-This licensing model ensures the software remains accessible while protecting the commercial interests of the original developers. For questions about commercial licensing or use cases, please contact us.
+The only restriction is that you cannot offer this as a competing hosted service. For questions about commercial licensing, please contact us.
 
 ## Privacy and Security
 
