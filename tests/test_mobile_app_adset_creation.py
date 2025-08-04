@@ -409,6 +409,57 @@ class TestMobileAppAdsetCreation:
         params = call_args[0][2]
         assert params['destination_type'] == "APP_INSTALL"
 
+    @pytest.mark.asyncio
+    async def test_on_ad_destination_type_for_lead_generation(
+        self, mock_api_request, mock_auth_manager, valid_mobile_app_params
+    ):
+        """Test ON_AD destination_type for lead generation campaigns (Issue #009 fix)"""
+        
+        # Create a lead generation adset configuration (without promoted_object since it's for lead gen, not mobile apps)
+        lead_gen_params = valid_mobile_app_params.copy()
+        lead_gen_params.update({
+            "optimization_goal": "LEAD_GENERATION",
+            "billing_event": "IMPRESSIONS"
+        })
+        
+        result = await create_adset(
+            **lead_gen_params,
+            destination_type="ON_AD"
+        )
+        
+        # Should pass validation and include destination_type in API call
+        call_args = mock_api_request.call_args
+        params = call_args[0][2]
+        assert params['destination_type'] == "ON_AD"
+
+    @pytest.mark.asyncio
+    async def test_on_ad_validation_passes(
+        self, mock_api_request, mock_auth_manager, valid_mobile_app_params
+    ):
+        """Test that ON_AD destination_type passes validation (Issue #009 regression test)"""
+        
+        # Use parameters that work with ON_AD (lead generation, not mobile app)
+        lead_gen_params = valid_mobile_app_params.copy()
+        lead_gen_params.update({
+            "optimization_goal": "LEAD_GENERATION",
+            "billing_event": "IMPRESSIONS"
+        })
+        
+        result = await create_adset(
+            **lead_gen_params,
+            destination_type="ON_AD"
+        )
+        
+        result_data = json.loads(result)
+        
+        # Should NOT return a validation error about destination_type
+        # Before the fix, this would return: "Invalid destination_type: ON_AD" 
+        if "data" in result_data:
+            error_data = json.loads(result_data["data"])
+            assert "error" not in error_data or "destination_type" not in error_data.get("error", "").lower()
+        else:
+            assert "error" not in result_data or "destination_type" not in result_data.get("error", "").lower()
+
     # Test: Error Handling
     @pytest.mark.asyncio
     async def test_meta_api_error_handling(

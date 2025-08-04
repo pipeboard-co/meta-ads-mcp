@@ -130,8 +130,9 @@ async def create_adset(
         promoted_object: Mobile app configuration for APP_INSTALLS campaigns. Required fields: application_id, object_store_url.
                         Optional fields: custom_event_type, pixel_id, page_id.
                         Example: {"application_id": "123456789012345", "object_store_url": "https://apps.apple.com/app/id123456789"}
-        destination_type: Where users are directed after clicking the ad (e.g., 'APP_STORE', 'DEEPLINK', 'APP_INSTALL').
-                         Required for mobile app campaigns.
+        destination_type: Where users are directed after clicking the ad (e.g., 'APP_STORE', 'DEEPLINK', 'APP_INSTALL', 'ON_AD').
+                         Required for mobile app campaigns and lead generation campaigns.
+                         Use 'ON_AD' for lead generation campaigns where user interaction happens within the ad.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -196,7 +197,7 @@ async def create_adset(
     
     # Validate destination_type if provided
     if destination_type:
-        valid_destination_types = ["APP_STORE", "DEEPLINK", "APP_INSTALL"]
+        valid_destination_types = ["APP_STORE", "DEEPLINK", "APP_INSTALL", "ON_AD"]
         if destination_type not in valid_destination_types:
             return json.dumps({
                 "error": f"Invalid destination_type: {destination_type}",
