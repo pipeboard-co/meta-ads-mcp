@@ -565,6 +565,7 @@ async def upload_ad_image(
     access_token: str = None,
     account_id: str = None,
     file: str = None,
+    image_url: str = None,
     name: str = None
 ) -> str:
     """
@@ -574,6 +575,7 @@ async def upload_ad_image(
         access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         file: Data URL or raw base64 string of the image (e.g., "data:image/png;base64,iVBORw0KG...")
+        image_url: Direct URL to an image to fetch and upload
         name: Optional name for the image (default: filename)
     
     Returns:
@@ -584,8 +586,8 @@ async def upload_ad_image(
         return json.dumps({"error": "No account ID provided"}, indent=2)
     
     # Ensure we have image data
-    if not file:
-        return json.dumps({"error": "Missing required parameter 'file' (data URL or base64)"}, indent=2)
+    if not file and not image_url:
+        return json.dumps({"error": "Provide either 'file' (data URL or base64) or 'image_url'"}, indent=2)
     
     # Ensure account_id has the 'act_' prefix for API compatibility
     if not account_id.startswith("act_"):
@@ -596,33 +598,62 @@ async def upload_ad_image(
         encoded_image: str = ""
         inferred_name: str = name or ""
 
-        # Support data URL (e.g., data:image/png;base64,...) and raw base64
-        data_url_prefix = "data:"
-        base64_marker = "base64,"
-        if file.startswith(data_url_prefix) and base64_marker in file:
-            header, base64_payload = file.split(base64_marker, 1)
-            encoded_image = base64_payload.strip()
+        if file:
+            # Support data URL (e.g., data:image/png;base64,...) and raw base64
+            data_url_prefix = "data:"
+            base64_marker = "base64,"
+            if file.startswith(data_url_prefix) and base64_marker in file:
+                header, base64_payload = file.split(base64_marker, 1)
+                encoded_image = base64_payload.strip()
 
-            # Infer file extension from MIME type if name not provided
-            if not inferred_name:
-                # Example header: data:image/png;...
-                mime_type = header[len(data_url_prefix):].split(";")[0].strip()
-                extension_map = {
-                    "image/png": ".png",
-                    "image/jpeg": ".jpg",
-                    "image/jpg": ".jpg",
-                    "image/webp": ".webp",
-                    "image/gif": ".gif",
-                    "image/bmp": ".bmp",
-                    "image/tiff": ".tiff",
-                }
-                ext = extension_map.get(mime_type, ".png")
-                inferred_name = f"upload{ext}"
+                # Infer file extension from MIME type if name not provided
+                if not inferred_name:
+                    # Example header: data:image/png;...
+                    mime_type = header[len(data_url_prefix):].split(";")[0].strip()
+                    extension_map = {
+                        "image/png": ".png",
+                        "image/jpeg": ".jpg",
+                        "image/jpg": ".jpg",
+                        "image/webp": ".webp",
+                        "image/gif": ".gif",
+                        "image/bmp": ".bmp",
+                        "image/tiff": ".tiff",
+                    }
+                    ext = extension_map.get(mime_type, ".png")
+                    inferred_name = f"upload{ext}"
+            else:
+                # Assume it's already raw base64
+                encoded_image = file.strip()
+                if not inferred_name:
+                    inferred_name = "upload.png"
         else:
-            # Assume it's already raw base64
-            encoded_image = file.strip()
+            # Download image from URL
+            try:
+                image_bytes = await try_multiple_download_methods(image_url)
+            except Exception as download_error:
+                return json.dumps({
+                    "error": "Failed to download image from URL",
+                    "details": str(download_error),
+                    "image_url": image_url,
+                }, indent=2)
+
+            if not image_bytes:
+                return json.dumps({
+                    "error": "No data returned when downloading image from URL",
+                    "image_url": image_url,
+                }, indent=2)
+
+            import base64  # Local import
+            encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+
+            # Infer name from URL if not provided
             if not inferred_name:
-                inferred_name = "upload.png"
+                try:
+                    path_no_query = image_url.split("?")[0]
+                    filename_from_url = os.path.basename(path_no_query)
+                    inferred_name = filename_from_url if filename_from_url else "upload.jpg"
+                except Exception:
+                    inferred_name = "upload.jpg"
 
         # Final name resolution
         final_name = name or inferred_name or "upload.png"
