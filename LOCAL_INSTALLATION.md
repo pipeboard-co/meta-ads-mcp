@@ -480,7 +480,7 @@ If you're still experiencing issues:
 
 1. **Check the logs** for detailed error messages
 2. **Search existing issues** on GitHub
-3. **Join our Discord** at [discord.gg/hNxpJcqM52](https://discord.gg/hNxpJcqM52)
+3. **Join our Discord** at [discord.gg/YNjF7gUb5h](https://discord.gg/YNjF7gUb5h)
 4. **Email support** at info@pipeboard.co
 5. **Consider Remote MCP** at [pipeboard.co](https://pipeboard.co) as an alternative
 
