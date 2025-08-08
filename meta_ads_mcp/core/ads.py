@@ -564,7 +564,7 @@ async def update_ad(
 async def upload_ad_image(
     access_token: str = None,
     account_id: str = None,
-    image_path: str = None,
+    file: str = None,
     name: str = None
 ) -> str:
     """
@@ -573,7 +573,7 @@ async def upload_ad_image(
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
-        image_path: Path to the image file to upload
+        file: Data URL or raw base64 string of the image (e.g., "data:image/png;base64,iVBORw0KG...")
         name: Optional name for the image (default: filename)
     
     Returns:
@@ -583,45 +583,65 @@ async def upload_ad_image(
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
     
-    if not image_path:
-        return json.dumps({"error": "No image path provided"}, indent=2)
+    # Ensure we have image data
+    if not file:
+        return json.dumps({"error": "Missing required parameter 'file' (data URL or base64)"}, indent=2)
     
     # Ensure account_id has the 'act_' prefix for API compatibility
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
     
-    # Check if image file exists
-    if not os.path.exists(image_path):
-        return json.dumps({"error": f"Image file not found: {image_path}"}, indent=2)
-    
     try:
-        # Read image file
-        with open(image_path, "rb") as img_file:
-            image_bytes = img_file.read()
-        
-        # Get image filename if name not provided
-        if not name:
-            name = os.path.basename(image_path)
-        
+        # Determine encoded_image (base64 string without data URL prefix) and a sensible name
+        encoded_image: str = ""
+        inferred_name: str = name or ""
+
+        # Support data URL (e.g., data:image/png;base64,...) and raw base64
+        data_url_prefix = "data:"
+        base64_marker = "base64,"
+        if file.startswith(data_url_prefix) and base64_marker in file:
+            header, base64_payload = file.split(base64_marker, 1)
+            encoded_image = base64_payload.strip()
+
+            # Infer file extension from MIME type if name not provided
+            if not inferred_name:
+                # Example header: data:image/png;...
+                mime_type = header[len(data_url_prefix):].split(";")[0].strip()
+                extension_map = {
+                    "image/png": ".png",
+                    "image/jpeg": ".jpg",
+                    "image/jpg": ".jpg",
+                    "image/webp": ".webp",
+                    "image/gif": ".gif",
+                    "image/bmp": ".bmp",
+                    "image/tiff": ".tiff",
+                }
+                ext = extension_map.get(mime_type, ".png")
+                inferred_name = f"upload{ext}"
+        else:
+            # Assume it's already raw base64
+            encoded_image = file.strip()
+            if not inferred_name:
+                inferred_name = "upload.png"
+
+        # Final name resolution
+        final_name = name or inferred_name or "upload.png"
+
         # Prepare the API endpoint for uploading images
         endpoint = f"{account_id}/adimages"
-        
-        # We need to convert the binary data to base64 for API upload
-        import base64
-        encoded_image = base64.b64encode(image_bytes).decode('utf-8')
-        
-        # Prepare POST parameters
+
+        # Prepare POST parameters expected by Meta API
         params = {
             "bytes": encoded_image,
-            "name": name
+            "name": final_name,
         }
-        
+
         # Make API request to upload the image
         print(f"Uploading image to Facebook Ad Account {account_id}")
         data = await make_api_request(endpoint, access_token, params, method="POST")
-        
+
         return json.dumps(data, indent=2)
-    
+
     except Exception as e:
         return json.dumps({
             "error": "Failed to upload image",
