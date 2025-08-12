@@ -21,6 +21,7 @@ Environment Variables:
 - PIPEBOARD_API_TOKEN: Enables mode 2 (token-based auth)  
 - META_ADS_DISABLE_CALLBACK_SERVER: Disables local server, enables mode 3
 - META_ACCESS_TOKEN: Direct Meta token (fallback)
+- META_ADS_DISABLE_LOGIN_LINK: Hard-disables the get_login_link tool; returns a disabled message
 """
 
 import json
@@ -32,8 +33,10 @@ from .server import mcp_server
 from .utils import logger, META_APP_SECRET
 from .pipeboard_auth import pipeboard_auth_manager
 
+# Only register the login link tool if not explicitly disabled
+ENABLE_LOGIN_LINK = not bool(os.environ.get("META_ADS_DISABLE_LOGIN_LINK", ""))
 
-@mcp_server.tool()
+
 async def get_login_link(access_token: str = None) -> str:
     """
     Get a clickable login link for Meta Ads authentication.
@@ -195,4 +198,8 @@ async def get_login_link(access_token: str = None) -> str:
         # Wait a moment to ensure the server is fully started
         await asyncio.sleep(1)
         
-        return json.dumps(response, indent=2) 
+    return json.dumps(response, indent=2)
+
+# Conditionally register as MCP tool only when enabled
+if ENABLE_LOGIN_LINK:
+    get_login_link = mcp_server.tool()(get_login_link)

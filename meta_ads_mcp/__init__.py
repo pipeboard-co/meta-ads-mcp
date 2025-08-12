@@ -24,7 +24,7 @@ __all__ = [
     'get_ad_image',
     'update_ad',
     'get_insights',
-    'get_login_link',
+    # 'get_login_link' is conditionally exported via core.__all__
     'login_cli',
     'main',
     'search_interests',
@@ -51,7 +51,6 @@ from .core import (
     get_ad_image,
     update_ad,
     get_insights,
-    get_login_link,
     login_cli,
     main,
     search_interests,

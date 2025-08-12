@@ -6,7 +6,7 @@ from .campaigns import get_campaigns, get_campaign_details, create_campaign
 from .adsets import get_adsets, get_adset_details, update_adset
 from .ads import get_ads, get_ad_details, get_ad_creatives, get_ad_image, update_ad
 from .insights import get_insights
-from .authentication import get_login_link
+from . import authentication  # Import module to register conditional auth tools
 from .server import login_cli, main
 from .auth import login
 from . import ads_library  # Import module to register conditional tools
@@ -32,7 +32,7 @@ __all__ = [
     'get_ad_image',
     'update_ad',
     'get_insights',
-    'get_login_link',
+    # Note: 'get_login_link' is registered conditionally by the authentication module
     'login_cli',
     'login',
     'main',
