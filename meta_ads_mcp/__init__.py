@@ -7,7 +7,7 @@ with the Claude LLM.
 
 from meta_ads_mcp.core.server import main
 
-__version__ = "0.10.6"
+__version__ = "0.10.7"
 
 __all__ = [
     'get_ad_accounts',

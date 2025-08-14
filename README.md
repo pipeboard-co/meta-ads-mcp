@@ -156,6 +156,7 @@ For local installation configuration, authentication options, and advanced techn
      - `special_ad_categories`: List of special ad categories if applicable
      - `daily_budget`: Daily budget in account currency (in cents)
      - `lifetime_budget`: Lifetime budget in account currency (in cents)
+     - `bid_strategy`: Bid strategy. Must be one of: `LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`.
    - Returns: Confirmation with new campaign details
 
 7. `mcp_meta_ads_get_adsets`
