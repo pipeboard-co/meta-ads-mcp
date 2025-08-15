@@ -1,8 +1,7 @@
 """
 Meta Ads MCP - Python Package
 
-This package provides a Meta Ads Marketing Cloud Platform (MCP) integration
-with the Claude LLM.
+This package provides a Meta Ads MCP integration
 """
 
 from meta_ads_mcp.core.server import main

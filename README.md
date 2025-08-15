@@ -151,13 +151,42 @@ For local installation configuration, authentication options, and advanced techn
      - `access_token` (optional): Meta API access token (will use cached token if not provided)
      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
      - `name`: Campaign name
-     - `objective`: Campaign objective (AWARENESS, TRAFFIC, ENGAGEMENT, etc.)
+     - `objective`: Campaign objective (ODAX, outcome-based). Must be one of:
+       - `OUTCOME_AWARENESS`
+       - `OUTCOME_TRAFFIC`
+       - `OUTCOME_ENGAGEMENT`
+       - `OUTCOME_LEADS`
+       - `OUTCOME_SALES`
+       - `OUTCOME_APP_PROMOTION`
+       
+       Note: Legacy objectives such as `BRAND_AWARENESS`, `LINK_CLICKS`, `CONVERSIONS`, `APP_INSTALLS`, etc. are no longer valid for new campaigns and will cause a 400 error. Use the outcome-based values above. Common mappings:
+       - `BRAND_AWARENESS` → `OUTCOME_AWARENESS`
+       - `REACH` → `OUTCOME_AWARENESS`
+       - `LINK_CLICKS`, `TRAFFIC` → `OUTCOME_TRAFFIC`
+       - `POST_ENGAGEMENT`, `PAGE_LIKES`, `EVENT_RESPONSES`, `VIDEO_VIEWS` → `OUTCOME_ENGAGEMENT`
+       - `LEAD_GENERATION` → `OUTCOME_LEADS`
+       - `CONVERSIONS`, `CATALOG_SALES`, `MESSAGES` (sales-focused flows) → `OUTCOME_SALES`
+       - `APP_INSTALLS` → `OUTCOME_APP_PROMOTION`
      - `status`: Initial campaign status (default: PAUSED)
      - `special_ad_categories`: List of special ad categories if applicable
      - `daily_budget`: Daily budget in account currency (in cents)
      - `lifetime_budget`: Lifetime budget in account currency (in cents)
      - `bid_strategy`: Bid strategy. Must be one of: `LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`.
    - Returns: Confirmation with new campaign details
+
+   - Example:
+     ```json
+     {
+       "name": "2025 - Bedroom Furniture - Awareness",
+       "account_id": "act_123456789012345",
+       "objective": "OUTCOME_AWARENESS",
+       "special_ad_categories": [],
+       "status": "PAUSED",
+       "buying_type": "AUCTION",
+       "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
+       "daily_budget": 10000
+     }
+     ```
 
 7. `mcp_meta_ads_get_adsets`
    - Get ad sets for a Meta Ads account with optional filtering by campaign
