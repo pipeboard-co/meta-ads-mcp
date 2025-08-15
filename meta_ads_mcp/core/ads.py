@@ -671,7 +671,55 @@ async def upload_ad_image(
         print(f"Uploading image to Facebook Ad Account {account_id}")
         data = await make_api_request(endpoint, access_token, params, method="POST")
 
-        return json.dumps(data, indent=2)
+        # Normalize/structure the response for callers (e.g., to easily grab image_hash)
+        # Typical Graph API response shape:
+        # { "images": { "<hash>": { "hash": "<hash>", "url": "...", "width": ..., "height": ..., "name": "...", "status": 1 } } }
+        if isinstance(data, dict) and "images" in data and isinstance(data["images"], dict) and data["images"]:
+            images_dict = data["images"]
+            images_list = []
+            for hash_key, info in images_dict.items():
+                # Some responses may omit the nested hash, so ensure it's present
+                normalized = {
+                    "hash": (info.get("hash") or hash_key),
+                    "url": info.get("url"),
+                    "width": info.get("width"),
+                    "height": info.get("height"),
+                    "name": info.get("name"),
+                }
+                # Drop null/None values
+                normalized = {k: v for k, v in normalized.items() if v is not None}
+                images_list.append(normalized)
+
+            # Sort deterministically by hash
+            images_list.sort(key=lambda i: i.get("hash", ""))
+            primary_hash = images_list[0].get("hash") if images_list else None
+
+            result = {
+                "success": True,
+                "account_id": account_id,
+                "name": final_name,
+                "image_hash": primary_hash,
+                "images_count": len(images_list),
+                "images": images_list
+            }
+            return json.dumps(result, indent=2)
+
+        # If the API returned an error-like structure, surface it consistently
+        if isinstance(data, dict) and "error" in data:
+            return json.dumps({
+                "error": "Failed to upload image",
+                "details": data.get("error"),
+                "account_id": account_id,
+                "name": final_name
+            }, indent=2)
+
+        # Fallback: return a wrapped raw response to avoid breaking callers
+        return json.dumps({
+            "success": True,
+            "account_id": account_id,
+            "name": final_name,
+            "raw_response": data
+        }, indent=2)
 
     except Exception as e:
         return json.dumps({
