@@ -502,9 +502,10 @@ class TestDynamicCreatives:
             assert creative_data["dynamic_creative_spec"]["description_optimization"] is False
     
     async def test_update_ad_creative_no_creative_id(self):
-        """Test update_ad_creative with no creative_id provided."""
+        """Test update_ad_creative with empty creative_id provided."""
         
         result = await update_ad_creative(
+            creative_id="",  # Now provide the required parameter but with empty value
             access_token="test_token",
             headlines=["New Headline"]
         )

@@ -13,8 +13,8 @@ ENABLE_REPORT_GENERATION = bool(os.environ.get("META_ADS_ENABLE_REPORTS", ""))
 if ENABLE_REPORT_GENERATION:
     @mcp_server.tool()
     async def generate_report(
-        access_token: str = None,
-        account_id: str = None,
+        account_id: str,
+        access_token: Optional[str] = None,
         report_type: str = "account",
         time_range: str = "last_30d",
         campaign_ids: Optional[List[str]] = None,
@@ -30,8 +30,8 @@ if ENABLE_REPORT_GENERATION:
         **This is a premium feature available with Pipeboard Pro.**
         
         Args:
-            access_token: Meta API access token (optional - will use cached token if not provided)
             account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+            access_token: Meta API access token (optional - will use cached token if not provided)
             report_type: Type of report to generate (account, campaign, comparison)
             time_range: Time period for the report (e.g., 'last_30d', 'last_7d', 'this_month')
             campaign_ids: Specific campaign IDs (required for campaign/comparison reports)

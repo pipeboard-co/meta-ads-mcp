@@ -11,15 +11,15 @@ import datetime
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_insights(access_token: str = None, object_id: str = None, 
+async def get_insights(object_id: str, access_token: Optional[str] = None, 
                       time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "", 
                       level: str = "ad") -> str:
     """
     Get performance insights for a campaign, ad set, ad or account.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         object_id: ID of the campaign, ad set, ad or account
+        access_token: Meta API access token (optional - will use cached token if not provided)
         time_range: Either a preset time range string or a dictionary with "since" and "until" dates in YYYY-MM-DD format
                    Preset options: today, yesterday, this_month, last_month, this_quarter, maximum, data_maximum, 
                    last_3d, last_7d, last_14d, last_28d, last_30d, last_90d, last_week_mon_sun, 

@@ -25,6 +25,7 @@ Environment Variables:
 """
 
 import json
+from typing import Optional
 import asyncio
 import os
 from .api import meta_api_tool
@@ -37,7 +38,7 @@ from .pipeboard_auth import pipeboard_auth_manager
 ENABLE_LOGIN_LINK = not bool(os.environ.get("META_ADS_DISABLE_LOGIN_LINK", ""))
 
 
-async def get_login_link(access_token: str = None) -> str:
+async def get_login_link(access_token: Optional[str] = None) -> str:
     """
     Get a clickable login link for Meta Ads authentication.
     

@@ -87,7 +87,7 @@ meta_config = MetaConfig()
 
 class TokenInfo:
     """Stores token information including expiration"""
-    def __init__(self, access_token: str, expires_in: int = None, user_id: str = None):
+    def __init__(self, access_token: str, expires_in: Optional[int] = None, user_id: Optional[str] = None):
         self.access_token = access_token
         self.expires_in = expires_in
         self.user_id = user_id

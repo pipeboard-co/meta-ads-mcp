@@ -21,7 +21,7 @@ logger.info(f"Pipeboard API base URL: {PIPEBOARD_API_BASE}")
 
 class TokenInfo:
     """Stores token information including expiration"""
-    def __init__(self, access_token: str, expires_at: str = None, token_type: str = None):
+    def __init__(self, access_token: str, expires_at: Optional[str] = None, token_type: Optional[str] = None):
         self.access_token = access_token
         self.expires_at = expires_at
         self.token_type = token_type

@@ -104,7 +104,7 @@ class TestDSABeneficiaryDetection:
             mock_auth.return_value = "test_access_token"
             
             # Test without account_id parameter
-            result = await get_account_info()
+            result = await get_account_info(account_id=None)
             
             # Handle new return format (dictionary instead of JSON string)
             if isinstance(result, dict):

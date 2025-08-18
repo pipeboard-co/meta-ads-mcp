@@ -18,7 +18,7 @@ if ENABLE_DUPLICATION:
     @meta_api_tool
     async def duplicate_campaign(
         campaign_id: str,
-        access_token: str = None,
+        access_token: Optional[str] = None,
         name_suffix: Optional[str] = " - Copy",
         include_ad_sets: bool = True,
         include_ads: bool = True,
@@ -61,7 +61,7 @@ if ENABLE_DUPLICATION:
     @meta_api_tool
     async def duplicate_adset(
         adset_id: str,
-        access_token: str = None,
+        access_token: Optional[str] = None,
         target_campaign_id: Optional[str] = None,
         name_suffix: Optional[str] = " - Copy",
         include_ads: bool = True,
@@ -104,7 +104,7 @@ if ENABLE_DUPLICATION:
     @meta_api_tool
     async def duplicate_ad(
         ad_id: str,
-        access_token: str = None,
+        access_token: Optional[str] = None,
         target_adset_id: Optional[str] = None,
         name_suffix: Optional[str] = " - Copy",
         duplicate_creative: bool = True,
@@ -141,7 +141,7 @@ if ENABLE_DUPLICATION:
     @meta_api_tool
     async def duplicate_creative(
         creative_id: str,
-        access_token: str = None,
+        access_token: Optional[str] = None,
         name_suffix: Optional[str] = " - Copy",
         new_primary_text: Optional[str] = None,
         new_headline: Optional[str] = None,

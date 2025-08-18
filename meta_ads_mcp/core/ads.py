@@ -16,27 +16,21 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ads(access_token: str = None, account_id: str = None, limit: int = 10, 
+async def get_ads(account_id: str, access_token: Optional[str] = None, limit: int = 10, 
                  campaign_id: str = "", adset_id: str = "") -> str:
     """
     Get ads for a Meta Ads account with optional filtering.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of ads to return (default: 10)
         campaign_id: Optional campaign ID to filter by
         adset_id: Optional ad set ID to filter by
     """
-    # If no account ID is specified, try to get the first one for the user
+    # Require explicit account_id
     if not account_id:
-        accounts_json = await get_ad_accounts("me", json.dumps({"limit": 1}), access_token)
-        accounts_data = json.loads(accounts_json)
-        
-        if "data" in accounts_data and accounts_data["data"]:
-            account_id = accounts_data["data"][0]["id"]
-        else:
-            return json.dumps({"error": "No account ID specified and no accounts found for user"}, indent=2)
+        return json.dumps({"error": "No account ID specified"}, indent=2)
     
     # Prioritize adset_id over campaign_id - use adset-specific endpoint
     if adset_id:
@@ -67,13 +61,13 @@ async def get_ads(access_token: str = None, account_id: str = None, limit: int =
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_details(access_token: str = None, ad_id: str = None) -> str:
+async def get_ad_details(ad_id: str, access_token: Optional[str] = None) -> str:
     """
     Get detailed information about a specific ad.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         ad_id: Meta Ads ad ID
+        access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id:
         return json.dumps({"error": "No ad ID provided"}, indent=2)
@@ -91,14 +85,14 @@ async def get_ad_details(access_token: str = None, ad_id: str = None) -> str:
 @mcp_server.tool()
 @meta_api_tool
 async def create_ad(
-    account_id: str = None,
-    name: str = None,
-    adset_id: str = None,
-    creative_id: str = None,
+    account_id: str,
+    name: str,
+    adset_id: str,
+    creative_id: str,
     status: str = "PAUSED",
-    bid_amount = None,
+    bid_amount: Optional[int] = None,
     tracking_specs: Optional[List[Dict[str, Any]]] = None,
-    access_token: str = None
+    access_token: Optional[str] = None
 ) -> str:
     """
     Create a new ad with an existing creative.
@@ -158,13 +152,13 @@ async def create_ad(
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_creatives(access_token: str = None, ad_id: str = None) -> str:
+async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> str:
     """
     Get creative details for a specific ad. Best if combined with get_ad_image to get the full image.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         ad_id: Meta Ads ad ID
+        access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id:
         return json.dumps({"error": "No ad ID provided"}, indent=2)
@@ -186,13 +180,13 @@ async def get_ad_creatives(access_token: str = None, ad_id: str = None) -> str:
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
+async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
     """
     Get, download, and visualize a Meta ad image in one step. Useful to see the image in the LLM.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         ad_id: Meta Ads ad ID
+        access_token: Meta API access token (optional - will use cached token if not provided)
     
     Returns:
         The ad image ready for direct visual analysis
@@ -388,13 +382,13 @@ async def get_ad_image(access_token: str = None, ad_id: str = None) -> Image:
 
 @mcp_server.tool()
 @meta_api_tool
-async def save_ad_image_locally(access_token: str = None, ad_id: str = None, output_dir: str = "ad_images") -> str:
+async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, output_dir: str = "ad_images") -> str:
     """
     Get, download, and save a Meta ad image locally, returning the file path.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         ad_id: Meta Ads ad ID
+        access_token: Meta API access token (optional - will use cached token if not provided)
         output_dir: Directory to save the image file (default: 'ad_images')
     
     Returns:
@@ -516,11 +510,11 @@ async def save_ad_image_locally(access_token: str = None, ad_id: str = None, out
 @meta_api_tool
 async def update_ad(
     ad_id: str,
-    status: str = None,
-    bid_amount: int = None,
-    tracking_specs = None,
-    creative_id: str = None,
-    access_token: str = None
+    status: Optional[str] = None,
+    bid_amount: Optional[int] = None,
+    tracking_specs: Optional[List[Dict[str, Any]]] = None,
+    creative_id: Optional[str] = None,
+    access_token: Optional[str] = None
 ) -> str:
     """
     Update an ad with new settings.
@@ -562,18 +556,18 @@ async def update_ad(
 @mcp_server.tool()
 @meta_api_tool
 async def upload_ad_image(
-    access_token: str = None,
-    account_id: str = None,
-    file: str = None,
-    image_url: str = None,
-    name: str = None
+    account_id: str,
+    access_token: Optional[str] = None,
+    file: Optional[str] = None,
+    image_url: Optional[str] = None,
+    name: Optional[str] = None
 ) -> str:
     """
     Upload an image to use in Meta Ads creatives.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
         file: Data URL or raw base64 string of the image (e.g., "data:image/png;base64,iVBORw0KG...")
         image_url: Direct URL to an image to fetch and upload
         name: Optional name for the image (default: filename)
@@ -731,29 +725,29 @@ async def upload_ad_image(
 @mcp_server.tool()
 @meta_api_tool
 async def create_ad_creative(
-    access_token: str = None,
-    account_id: str = None,
-    name: str = None,
-    image_hash: str = None,
-    page_id: str = None,
-    link_url: str = None,
-    message: str = None,
-    headline: str = None,
-    headlines: List[str] = None,
-    description: str = None,
-    descriptions: List[str] = None,
-    dynamic_creative_spec: Dict[str, Any] = None,
-    call_to_action_type: str = None,
-    instagram_actor_id: str = None
+    account_id: str,
+    image_hash: str,
+    access_token: Optional[str] = None,
+    name: Optional[str] = None,
+    page_id: Optional[str] = None,
+    link_url: Optional[str] = None,
+    message: Optional[str] = None,
+    headline: Optional[str] = None,
+    headlines: Optional[List[str]] = None,
+    description: Optional[str] = None,
+    descriptions: Optional[List[str]] = None,
+    dynamic_creative_spec: Optional[Dict[str, Any]] = None,
+    call_to_action_type: Optional[str] = None,
+    instagram_actor_id: Optional[str] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
-        name: Creative name
         image_hash: Hash of the uploaded image
+        access_token: Meta API access token (optional - will use cached token if not provided)
+        name: Creative name
         page_id: Facebook Page ID to be used for the ad
         link_url: Destination URL for the ad
         message: Ad copy/text
@@ -943,23 +937,23 @@ async def create_ad_creative(
 @mcp_server.tool()
 @meta_api_tool
 async def update_ad_creative(
-    access_token: str = None,
-    creative_id: str = None,
-    name: str = None,
-    message: str = None,
-    headline: str = None,
-    headlines: List[str] = None,
-    description: str = None,
-    descriptions: List[str] = None,
-    dynamic_creative_spec: Dict[str, Any] = None,
-    call_to_action_type: str = None
+    creative_id: str,
+    access_token: Optional[str] = None,
+    name: Optional[str] = None,
+    message: Optional[str] = None,
+    headline: Optional[str] = None,
+    headlines: Optional[List[str]] = None,
+    description: Optional[str] = None,
+    descriptions: Optional[List[str]] = None,
+    dynamic_creative_spec: Optional[Dict[str, Any]] = None,
+    call_to_action_type: Optional[str] = None
 ) -> str:
     """
     Update an existing ad creative with new content or settings.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         creative_id: Meta Ads creative ID to update
+        access_token: Meta API access token (optional - will use cached token if not provided)
         name: New creative name
         message: New ad copy/text
         headline: Single headline for simple ads (cannot be used with headlines)
@@ -1252,13 +1246,13 @@ async def _search_pages_by_name_core(access_token: str, account_id: str, search_
 
 @mcp_server.tool()
 @meta_api_tool
-async def search_pages_by_name(access_token: str = None, account_id: str = None, search_term: str = None) -> str:
+async def search_pages_by_name(account_id: str, access_token: Optional[str] = None, search_term: Optional[str] = None) -> str:
     """
     Search for pages by name within an account.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
         search_term: Search term to find pages by name (optional - returns all pages if not provided)
     
     Returns:
@@ -1275,13 +1269,13 @@ async def search_pages_by_name(access_token: str = None, account_id: str = None,
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_account_pages(access_token: str = None, account_id: str = None) -> str:
+async def get_account_pages(account_id: str, access_token: Optional[str] = None) -> str:
     """
     Get pages associated with a Meta Ads account.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
     
     Returns:
         JSON response with pages associated with the account

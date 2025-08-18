@@ -310,8 +310,8 @@ _data_manager = MetaAdsDataManager()
 @mcp_server.tool()
 @meta_api_tool
 async def search(
-    access_token: str = None,
-    query: str = None
+    query: str,
+    access_token: Optional[str] = None
 ) -> str:
     """
     Search through Meta Ads data and return matching record IDs.
@@ -321,8 +321,8 @@ async def search(
     based on the provided query.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         query: Search query string to find relevant Meta Ads records
+        access_token: Meta API access token (optional - will use cached token if not provided)
         
     Returns:
         JSON response with list of matching record IDs
@@ -367,7 +367,7 @@ async def search(
 
 @mcp_server.tool()
 async def fetch(
-    id: str = None
+    id: str
 ) -> str:
     """
     Fetch complete record data by ID.

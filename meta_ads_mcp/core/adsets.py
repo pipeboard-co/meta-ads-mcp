@@ -9,25 +9,19 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_adsets(access_token: str = None, account_id: str = None, limit: int = 10, campaign_id: str = "") -> str:
+async def get_adsets(account_id: str, access_token: Optional[str] = None, limit: int = 10, campaign_id: str = "") -> str:
     """
     Get ad sets for a Meta Ads account with optional filtering by campaign.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of ad sets to return (default: 10)
         campaign_id: Optional campaign ID to filter by
     """
-    # If no account ID is specified, try to get the first one for the user
+    # Require explicit account_id
     if not account_id:
-        accounts_json = await get_ad_accounts("me", json.dumps({"limit": 1}), access_token)
-        accounts_data = json.loads(accounts_json)
-        
-        if "data" in accounts_data and accounts_data["data"]:
-            account_id = accounts_data["data"][0]["id"]
-        else:
-            return json.dumps({"error": "No account ID specified and no accounts found for user"}, indent=2)
+        return json.dumps({"error": "No account ID specified"}, indent=2)
     
     # Change endpoint based on whether campaign_id is provided
     if campaign_id:
@@ -53,12 +47,12 @@ async def get_adsets(access_token: str = None, account_id: str = None, limit: in
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_adset_details(access_token: str = None, adset_id: str = None) -> str:
+async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -> str:
     """
     Get detailed information about a specific ad set.
     
     Args:
-        adset_id: Meta Ads ad set ID (required)
+        adset_id: Meta Ads ad set ID
         access_token: Meta API access token (optional - will use cached token if not provided)
     
     Example:
@@ -90,23 +84,23 @@ async def get_adset_details(access_token: str = None, adset_id: str = None) -> s
 @mcp_server.tool()
 @meta_api_tool
 async def create_adset(
-    account_id: str = None, 
-    campaign_id: str = None, 
-    name: str = None,
+    account_id: str, 
+    campaign_id: str, 
+    name: str,
+    optimization_goal: str,
+    billing_event: str,
     status: str = "PAUSED",
-    daily_budget = None,
-    lifetime_budget = None,
-    targeting: Dict[str, Any] = None,
-    optimization_goal: str = None,
-    billing_event: str = None,
-    bid_amount = None,
-    bid_strategy: str = None,
-    start_time: str = None,
-    end_time: str = None,
-    dsa_beneficiary: str = None,
-    promoted_object: Dict[str, Any] = None,
-    destination_type: str = None,
-    access_token: str = None
+    daily_budget: Optional[int] = None,
+    lifetime_budget: Optional[int] = None,
+    targeting: Optional[Dict[str, Any]] = None,
+    bid_amount: Optional[int] = None,
+    bid_strategy: Optional[str] = None,
+    start_time: Optional[str] = None,
+    end_time: Optional[str] = None,
+    dsa_beneficiary: Optional[str] = None,
+    promoted_object: Optional[Dict[str, Any]] = None,
+    destination_type: Optional[str] = None,
+    access_token: Optional[str] = None
 ) -> str:
     """
     Create a new ad set in a Meta Ads account.
@@ -115,13 +109,13 @@ async def create_adset(
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         campaign_id: Meta Ads campaign ID this ad set belongs to
         name: Ad set name
+        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS')
+        billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
         daily_budget: Daily budget in account currency (in cents) as a string
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
         targeting: Targeting specifications including age, location, interests, etc.
                   Use targeting_automation.advantage_audience=1 for automatic audience finding
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS')
-        billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         bid_amount: Bid amount in account currency (in cents)
         bid_strategy: Bid strategy (e.g., 'LOWEST_COST', 'LOWEST_COST_WITH_BID_CAP')
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
@@ -293,10 +287,10 @@ async def create_adset(
 
 @mcp_server.tool()
 @meta_api_tool
-async def update_adset(adset_id: str, frequency_control_specs: List[Dict[str, Any]] = None, bid_strategy: str = None, 
-                        bid_amount: int = None, status: str = None, targeting: Dict[str, Any] = None, 
-                        optimization_goal: str = None, daily_budget = None, lifetime_budget = None, 
-                        access_token: str = None) -> str:
+async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None, 
+                        bid_amount: Optional[int] = None, status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None, 
+                        optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None, 
+                        access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
     

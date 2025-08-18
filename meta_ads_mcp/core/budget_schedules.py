@@ -16,7 +16,7 @@ async def create_budget_schedule(
     budget_value_type: str,
     time_start: int,
     time_end: int,
-    access_token: str = None
+    access_token: Optional[str] = None
 ) -> str:
     """
     Create a budget schedule for a Meta Ads campaign.

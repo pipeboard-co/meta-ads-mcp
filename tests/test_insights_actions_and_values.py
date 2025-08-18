@@ -260,17 +260,14 @@ class TestInsightsActionsAndValues:
             level="campaign"
         )
         
-        # Parse the result
-        result_data = json.loads(result)
-        
-        # The error response is wrapped in a 'data' field
-        if 'data' in result_data:
-            error_data = json.loads(result_data['data'])
-            assert 'error' in error_data
-            assert 'No object ID provided' in error_data['error']
+        # Parse the result. The decorator returns a dict error for missing required args
+        if isinstance(result, dict):
+            result_data = result
         else:
-            assert 'error' in result_data
-            assert 'No object ID provided' in result_data['error']
+            result_data = json.loads(result)
+
+        assert 'error' in result_data
+        assert "missing 1 required positional argument: 'object_id'" in result_data['error']
         
         # Verify API was not called
         mock_api_request.assert_not_called()

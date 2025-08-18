@@ -9,7 +9,7 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_campaigns(access_token: str = None, account_id: str = None, limit: int = 10, status_filter: str = "", after: str = "") -> str:
+async def get_campaigns(account_id: str, access_token: Optional[str] = None, limit: int = 10, status_filter: str = "", after: str = "") -> str:
     """
     Get campaigns for a Meta Ads account with optional filtering.
     
@@ -20,23 +20,17 @@ async def get_campaigns(access_token: str = None, account_id: str = None, limit:
     in the API call (currently not exposed by this tool's parameters).
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of campaigns to return (default: 10)
         status_filter: Filter by effective status (e.g., 'ACTIVE', 'PAUSED', 'ARCHIVED').
                        Maps to the 'effective_status' API parameter, which expects an array
                        (this function handles the required JSON formatting). Leave empty for all statuses.
         after: Pagination cursor to get the next set of results
     """
-    # If no account ID is specified, try to get the first one for the user
+    # Require explicit account_id
     if not account_id:
-        accounts_json = await get_ad_accounts("me", json.dumps({"limit": 1}), access_token)
-        accounts_data = json.loads(accounts_json)
-        
-        if "data" in accounts_data and accounts_data["data"]:
-            account_id = accounts_data["data"][0]["id"]
-        else:
-            return json.dumps({"error": "No account ID specified and no accounts found for user"}, indent=2)
+        return json.dumps({"error": "No account ID specified"}, indent=2)
     
     endpoint = f"{account_id}/campaigns"
     params = {
@@ -58,7 +52,7 @@ async def get_campaigns(access_token: str = None, account_id: str = None, limit:
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_campaign_details(access_token: str = None, campaign_id: str = None) -> str:
+async def get_campaign_details(campaign_id: str, access_token: Optional[str] = None) -> str:
     """
     Get detailed information about a specific campaign.
 
@@ -67,8 +61,8 @@ async def get_campaign_details(access_token: str = None, campaign_id: str = None
     that could be added to the 'fields' parameter in the code if needed.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         campaign_id: Meta Ads campaign ID
+        access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not campaign_id:
         return json.dumps({"error": "No campaign ID provided"}, indent=2)
@@ -86,19 +80,19 @@ async def get_campaign_details(access_token: str = None, campaign_id: str = None
 @mcp_server.tool()
 @meta_api_tool
 async def create_campaign(
-    access_token: str = None,
-    account_id: str = None,
-    name: str = None,
-    objective: str = None,
+    account_id: str,
+    name: str,
+    objective: str,
+    access_token: Optional[str] = None,
     status: str = "PAUSED",
-    special_ad_categories: List[str] = None,
-    daily_budget = None,
-    lifetime_budget = None,
-    buying_type: str = None,
-    bid_strategy: str = None,
-    bid_cap = None,
-    spend_cap = None,
-    campaign_budget_optimization: bool = None,
+    special_ad_categories: Optional[List[str]] = None,
+    daily_budget: Optional[int] = None,
+    lifetime_budget: Optional[int] = None,
+    buying_type: Optional[str] = None,
+    bid_strategy: Optional[str] = None,
+    bid_cap: Optional[int] = None,
+    spend_cap: Optional[int] = None,
+    campaign_budget_optimization: Optional[bool] = None,
     ab_test_control_setups: Optional[List[Dict[str, Any]]] = None,
     use_adset_level_budgets: bool = False
 ) -> str:
@@ -106,7 +100,6 @@ async def create_campaign(
     Create a new campaign in a Meta Ads account.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         name: Campaign name
         objective: Campaign objective (ODAX, outcome-based). Must be one of:
@@ -116,6 +109,7 @@ async def create_campaign(
                    CONVERSIONS, APP_INSTALLS, etc. are not valid for new
                    campaigns and will cause a 400 error. Use the outcome-based
                    values above (e.g., BRAND_AWARENESS → OUTCOME_AWARENESS).
+        access_token: Meta API access token (optional - will use cached token if not provided)
         status: Initial campaign status (default: PAUSED)
         special_ad_categories: List of special ad categories if applicable
         daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
@@ -204,26 +198,26 @@ async def create_campaign(
 @mcp_server.tool()
 @meta_api_tool
 async def update_campaign(
-    access_token: str = None,
-    campaign_id: str = None,
-    name: str = None,
-    status: str = None,
-    special_ad_categories: List[str] = None,
-    daily_budget = None,
-    lifetime_budget = None,
-    bid_strategy: str = None,
-    bid_cap = None,
-    spend_cap = None,
-    campaign_budget_optimization: bool = None,
-    objective: str = None,  # Add objective if it's updatable
-    use_adset_level_budgets: bool = None,  # Add other updatable fields as needed based on API docs
+    campaign_id: str,
+    access_token: Optional[str] = None,
+    name: Optional[str] = None,
+    status: Optional[str] = None,
+    special_ad_categories: Optional[List[str]] = None,
+    daily_budget: Optional[int] = None,
+    lifetime_budget: Optional[int] = None,
+    bid_strategy: Optional[str] = None,
+    bid_cap: Optional[int] = None,
+    spend_cap: Optional[int] = None,
+    campaign_budget_optimization: Optional[bool] = None,
+    objective: Optional[str] = None,  # Add objective if it's updatable
+    use_adset_level_budgets: Optional[bool] = None,  # Add other updatable fields as needed based on API docs
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
 
     Args:
+        campaign_id: Meta Ads campaign ID
         access_token: Meta API access token (optional - will use cached token if not provided)
-        campaign_id: Meta Ads campaign ID (required)
         name: New campaign name
         status: New campaign status (e.g., 'ACTIVE', 'PAUSED')
         special_ad_categories: List of special ad categories if applicable

@@ -14,10 +14,10 @@ if not DISABLE_ADS_LIBRARY:
     @mcp_server.tool()
     @meta_api_tool
     async def search_ads_archive(
-        access_token: str = None,
-        search_terms: str = None,
+        search_terms: str,
+        ad_reached_countries: List[str],
+        access_token: Optional[str] = None,
         ad_type: str = "ALL",
-        ad_reached_countries: List[str] = None,
         limit: int = 25,  # Default limit, adjust as needed
         fields: str = "ad_creation_time,ad_creative_body,ad_creative_link_caption,ad_creative_link_description,ad_creative_link_title,ad_delivery_start_time,ad_delivery_stop_time,ad_snapshot_url,currency,demographic_distribution,funding_entity,impressions,page_id,page_name,publisher_platform,region_distribution,spend"
     ) -> str:
@@ -25,10 +25,10 @@ if not DISABLE_ADS_LIBRARY:
         Search the Facebook Ads Library archive.
 
         Args:
-            access_token: Meta API access token (optional - will use cached token if not provided).
             search_terms: The search query for ads.
-            ad_type: Type of ads to search for (e.g., POLITICAL_AND_ISSUE_ADS, HOUSING_ADS, ALL).
             ad_reached_countries: List of country codes (e.g., ["US", "GB"]).
+            access_token: Meta API access token (optional - will use cached token if not provided).
+            ad_type: Type of ads to search for (e.g., POLITICAL_AND_ISSUE_ADS, HOUSING_ADS, ALL).
             limit: Maximum number of ads to return.
             fields: Comma-separated string of fields to retrieve for each ad.
 

@@ -64,8 +64,11 @@ class TestSearchInterests:
     
     @pytest.mark.asyncio
     async def test_search_interests_no_query(self):
-        """Test search_interests with no query provided"""
-        result = await search_interests(access_token="test_token")
+        """Test search_interests with empty query parameter"""
+        result = await search_interests(
+            query="",  # Now provide the required parameter but with empty value
+            access_token="test_token"
+        )
         
         result_data = json.loads(result)
         # The @meta_api_tool decorator wraps errors in a 'data' field
@@ -155,8 +158,11 @@ class TestGetInterestSuggestions:
     
     @pytest.mark.asyncio
     async def test_get_interest_suggestions_no_list(self):
-        """Test get_interest_suggestions with no interest list"""
-        result = await get_interest_suggestions(access_token="test_token")
+        """Test get_interest_suggestions with empty interest list"""
+        result = await get_interest_suggestions(
+            interest_list=[],  # Now provide the required parameter but with empty value
+            access_token="test_token"
+        )
         
         result_data = json.loads(result)
         # The @meta_api_tool decorator wraps errors in a 'data' field
@@ -400,8 +406,11 @@ class TestSearchGeoLocations:
     
     @pytest.mark.asyncio
     async def test_search_geo_locations_no_query(self):
-        """Test search_geo_locations with no query"""
-        result = await search_geo_locations(access_token="test_token")
+        """Test search_geo_locations with empty query"""
+        result = await search_geo_locations(
+            query="",  # Now provide the required parameter but with empty value
+            access_token="test_token"
+        )
         
         result_data = json.loads(result)
         # The @meta_api_tool decorator wraps errors in a 'data' field

@@ -316,6 +316,6 @@ def meta_api_tool(func):
             return result
         except Exception as e:
             logger.error(f"Error in {func.__name__}: {str(e)}")
-            return {"error": str(e)}
+            return json.dumps({"error": str(e)}, indent=2)
     
     return wrapper 

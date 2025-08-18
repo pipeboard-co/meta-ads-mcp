@@ -30,13 +30,13 @@ async def get_ad_accounts(access_token: Optional[str] = None, user_id: str = "me
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_account_info(access_token: str = None, account_id: str = None) -> str:
+async def get_account_info(account_id: str, access_token: Optional[str] = None) -> str:
     """
     Get detailed information about a specific ad account.
     
     Args:
+        account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         access_token: Meta API access token (optional - will use cached token if not provided)
-        account_id: Meta Ads account ID (format: act_XXXXXXXXX) - REQUIRED
     """
     if not account_id:
         return {

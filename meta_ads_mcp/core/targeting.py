@@ -8,13 +8,13 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def search_interests(access_token: str = None, query: str = None, limit: int = 25) -> str:
+async def search_interests(query: str, access_token: Optional[str] = None, limit: int = 25) -> str:
     """
     Search for interest targeting options by keyword.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         query: Search term for interests (e.g., "baseball", "cooking", "travel")
+        access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of results to return (default: 25)
     
     Returns:
@@ -37,13 +37,13 @@ async def search_interests(access_token: str = None, query: str = None, limit: i
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_interest_suggestions(access_token: str = None, interest_list: List[str] = None, limit: int = 25) -> str:
+async def get_interest_suggestions(interest_list: List[str], access_token: Optional[str] = None, limit: int = 25) -> str:
     """
     Get interest suggestions based on existing interests.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)  
         interest_list: List of interest names to get suggestions for (e.g., ["Basketball", "Soccer"])
+        access_token: Meta API access token (optional - will use cached token if not provided)  
         limit: Maximum number of suggestions to return (default: 25)
     
     Returns:
@@ -67,13 +67,13 @@ async def get_interest_suggestions(access_token: str = None, interest_list: List
 @mcp_server.tool()
 @meta_api_tool
 async def estimate_audience_size(
-    access_token: str = None,
-    account_id: str = None,
-    targeting: Dict[str, Any] = None,
+    access_token: Optional[str] = None,
+    account_id: Optional[str] = None,
+    targeting: Optional[Dict[str, Any]] = None,
     optimization_goal: str = "REACH",
     # Backwards compatibility for simple interest validation
-    interest_list: List[str] = None,
-    interest_fbid_list: List[str] = None
+    interest_list: Optional[List[str]] = None,
+    interest_fbid_list: Optional[List[str]] = None
 ) -> str:
     """
     Estimate audience size for targeting specifications using Meta's delivery_estimate API.
@@ -247,7 +247,7 @@ async def estimate_audience_size(
 
 @mcp_server.tool()
 @meta_api_tool
-async def search_behaviors(access_token: str = None, limit: int = 50) -> str:
+async def search_behaviors(access_token: Optional[str] = None, limit: int = 50) -> str:
     """
     Get all available behavior targeting options.
     
@@ -272,7 +272,7 @@ async def search_behaviors(access_token: str = None, limit: int = 50) -> str:
 
 @mcp_server.tool()
 @meta_api_tool
-async def search_demographics(access_token: str = None, demographic_class: str = "demographics", limit: int = 50) -> str:
+async def search_demographics(access_token: Optional[str] = None, demographic_class: str = "demographics", limit: int = 50) -> str:
     """
     Get demographic targeting options.
     
@@ -299,14 +299,14 @@ async def search_demographics(access_token: str = None, demographic_class: str =
 
 @mcp_server.tool()
 @meta_api_tool
-async def search_geo_locations(access_token: str = None, query: str = None, 
-                             location_types: List[str] = None, limit: int = 25) -> str:
+async def search_geo_locations(query: str, access_token: Optional[str] = None, 
+                             location_types: Optional[List[str]] = None, limit: int = 25) -> str:
     """
     Search for geographic targeting locations.
     
     Args:
-        access_token: Meta API access token (optional - will use cached token if not provided)
         query: Search term for locations (e.g., "New York", "California", "Japan")
+        access_token: Meta API access token (optional - will use cached token if not provided)
         location_types: Types of locations to search. Options: ['country', 'region', 'city', 'zip', 
                        'geo_market', 'electoral_district']. If not specified, searches all types.
         limit: Maximum number of results to return (default: 25)
