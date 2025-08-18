@@ -14,6 +14,10 @@ from .utils import download_image, try_multiple_download_methods, ad_creative_im
 from .server import mcp_server
 
 
+# Only register the save_ad_image_locally function if explicitly enabled via environment variable
+ENABLE_SAVE_AD_IMAGE_LOCALLY = bool(os.environ.get("META_ADS_ENABLE_SAVE_AD_IMAGE_LOCALLY", ""))
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def get_ads(account_id: str, access_token: Optional[str] = None, limit: int = 10, 
@@ -380,130 +384,131 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
         return f"Error processing image: {str(e)}"
 
 
-@mcp_server.tool()
-@meta_api_tool
-async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, output_dir: str = "ad_images") -> str:
-    """
-    Get, download, and save a Meta ad image locally, returning the file path.
-    
-    Args:
-        ad_id: Meta Ads ad ID
-        access_token: Meta API access token (optional - will use cached token if not provided)
-        output_dir: Directory to save the image file (default: 'ad_images')
-    
-    Returns:
-        The file path to the saved image, or an error message string.
-    """
-    if not ad_id:
-        return json.dumps({"error": "No ad ID provided"}, indent=2)
+if ENABLE_SAVE_AD_IMAGE_LOCALLY:
+    @mcp_server.tool()
+    @meta_api_tool
+    async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, output_dir: str = "ad_images") -> str:
+        """
+        Get, download, and save a Meta ad image locally, returning the file path.
         
-    print(f"Attempting to get and save creative image for ad {ad_id}")
-    
-    # First, get creative and account IDs
-    ad_endpoint = f"{ad_id}"
-    ad_params = {
-        "fields": "creative{id},account_id"
-    }
-    
-    ad_data = await make_api_request(ad_endpoint, access_token, ad_params)
-    
-    if "error" in ad_data:
-        return json.dumps({"error": f"Could not get ad data - {json.dumps(ad_data)}"}, indent=2)
-    
-    account_id = ad_data.get("account_id")
-    if not account_id:
-        return json.dumps({"error": "No account ID found for ad"}, indent=2)
-    
-    if "creative" not in ad_data:
-        return json.dumps({"error": "No creative found for this ad"}, indent=2)
+        Args:
+            ad_id: Meta Ads ad ID
+            access_token: Meta API access token (optional - will use cached token if not provided)
+            output_dir: Directory to save the image file (default: 'ad_images')
         
-    creative_data = ad_data.get("creative", {})
-    creative_id = creative_data.get("id")
-    if not creative_id:
-        return json.dumps({"error": "No creative ID found"}, indent=2)
-    
-    # Get creative details to find image hash
-    creative_endpoint = f"{creative_id}"
-    creative_params = {
-        "fields": "id,name,image_hash,asset_feed_spec"
-    }
-    creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
-    
-    image_hashes = []
-    if "image_hash" in creative_details:
-        image_hashes.append(creative_details["image_hash"])
-    if "asset_feed_spec" in creative_details and "images" in creative_details["asset_feed_spec"]:
-        for image in creative_details["asset_feed_spec"]["images"]:
-            if "hash" in image:
-                image_hashes.append(image["hash"])
-    
-    if not image_hashes:
-        # Fallback attempt (as in get_ad_image)
-        creative_json = await get_ad_creatives(ad_id=ad_id, access_token=access_token) # Ensure ad_id is passed correctly
-        creative_data_list = json.loads(creative_json)
-        if 'data' in creative_data_list and creative_data_list['data']:
-             first_creative = creative_data_list['data'][0]
-             if 'object_story_spec' in first_creative and 'link_data' in first_creative['object_story_spec'] and 'image_hash' in first_creative['object_story_spec']['link_data']:
-                 image_hashes.append(first_creative['object_story_spec']['link_data']['image_hash'])
-             elif 'image_hash' in first_creative: # Check direct hash on creative data
-                  image_hashes.append(first_creative['image_hash'])
-
-
-    if not image_hashes:
-        return json.dumps({"error": "No image hashes found in creative or fallback"}, indent=2)
-
-    print(f"Found image hashes: {image_hashes}")
-    
-    # Fetch image data using the first hash
-    image_endpoint = f"act_{account_id}/adimages"
-    hashes_str = f'["{image_hashes[0]}"]'
-    image_params = {
-        "fields": "hash,url,width,height,name,status",
-        "hashes": hashes_str
-    }
-    
-    print(f"Requesting image data with params: {image_params}")
-    image_data = await make_api_request(image_endpoint, access_token, image_params)
-    
-    if "error" in image_data:
-        return json.dumps({"error": f"Failed to get image data - {json.dumps(image_data)}"}, indent=2)
-    
-    if "data" not in image_data or not image_data["data"]:
-        return json.dumps({"error": "No image data returned from API"}, indent=2)
-        
-    first_image = image_data["data"][0]
-    image_url = first_image.get("url")
-    
-    if not image_url:
-        return json.dumps({"error": "No valid image URL found in API response"}, indent=2)
-        
-    print(f"Downloading image from URL: {image_url}")
-    
-    # Download and Save Image
-    image_bytes = await download_image(image_url)
-    
-    if not image_bytes:
-        return json.dumps({"error": "Failed to download image"}, indent=2)
-        
-    try:
-        # Ensure output directory exists
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
+        Returns:
+            The file path to the saved image, or an error message string.
+        """
+        if not ad_id:
+            return json.dumps({"error": "No ad ID provided"}, indent=2)
             
-        # Create a filename (e.g., using ad_id and image hash)
-        file_extension = ".jpg" # Default extension, could try to infer from headers later
-        filename = f"{ad_id}_{image_hashes[0]}{file_extension}"
-        filepath = os.path.join(output_dir, filename)
+        print(f"Attempting to get and save creative image for ad {ad_id}")
         
-        # Save the image bytes to the file
-        with open(filepath, "wb") as f:
-            f.write(image_bytes)
+        # First, get creative and account IDs
+        ad_endpoint = f"{ad_id}"
+        ad_params = {
+            "fields": "creative{id},account_id"
+        }
+        
+        ad_data = await make_api_request(ad_endpoint, access_token, ad_params)
+        
+        if "error" in ad_data:
+            return json.dumps({"error": f"Could not get ad data - {json.dumps(ad_data)}"}, indent=2)
+        
+        account_id = ad_data.get("account_id")
+        if not account_id:
+            return json.dumps({"error": "No account ID found for ad"}, indent=2)
+        
+        if "creative" not in ad_data:
+            return json.dumps({"error": "No creative found for this ad"}, indent=2)
             
-        print(f"Image saved successfully to: {filepath}")
-        return json.dumps({"filepath": filepath}, indent=2) # Return JSON with filepath
+        creative_data = ad_data.get("creative", {})
+        creative_id = creative_data.get("id")
+        if not creative_id:
+            return json.dumps({"error": "No creative ID found"}, indent=2)
+        
+        # Get creative details to find image hash
+        creative_endpoint = f"{creative_id}"
+        creative_params = {
+            "fields": "id,name,image_hash,asset_feed_spec"
+        }
+        creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
+        
+        image_hashes = []
+        if "image_hash" in creative_details:
+            image_hashes.append(creative_details["image_hash"])
+        if "asset_feed_spec" in creative_details and "images" in creative_details["asset_feed_spec"]:
+            for image in creative_details["asset_feed_spec"]["images"]:
+                if "hash" in image:
+                    image_hashes.append(image["hash"])
+        
+        if not image_hashes:
+            # Fallback attempt (as in get_ad_image)
+            creative_json = await get_ad_creatives(ad_id=ad_id, access_token=access_token) # Ensure ad_id is passed correctly
+            creative_data_list = json.loads(creative_json)
+            if 'data' in creative_data_list and creative_data_list['data']:
+                 first_creative = creative_data_list['data'][0]
+                 if 'object_story_spec' in first_creative and 'link_data' in first_creative['object_story_spec'] and 'image_hash' in first_creative['object_story_spec']['link_data']:
+                     image_hashes.append(first_creative['object_story_spec']['link_data']['image_hash'])
+                 elif 'image_hash' in first_creative: # Check direct hash on creative data
+                      image_hashes.append(first_creative['image_hash'])
 
-    except Exception as e:
-        return json.dumps({"error": f"Failed to save image: {str(e)}"}, indent=2)
+
+        if not image_hashes:
+            return json.dumps({"error": "No image hashes found in creative or fallback"}, indent=2)
+
+        print(f"Found image hashes: {image_hashes}")
+        
+        # Fetch image data using the first hash
+        image_endpoint = f"act_{account_id}/adimages"
+        hashes_str = f'["{image_hashes[0]}"]'
+        image_params = {
+            "fields": "hash,url,width,height,name,status",
+            "hashes": hashes_str
+        }
+        
+        print(f"Requesting image data with params: {image_params}")
+        image_data = await make_api_request(image_endpoint, access_token, image_params)
+        
+        if "error" in image_data:
+            return json.dumps({"error": f"Failed to get image data - {json.dumps(image_data)}"}, indent=2)
+        
+        if "data" not in image_data or not image_data["data"]:
+            return json.dumps({"error": "No image data returned from API"}, indent=2)
+            
+        first_image = image_data["data"][0]
+        image_url = first_image.get("url")
+        
+        if not image_url:
+            return json.dumps({"error": "No valid image URL found in API response"}, indent=2)
+            
+        print(f"Downloading image from URL: {image_url}")
+        
+        # Download and Save Image
+        image_bytes = await download_image(image_url)
+        
+        if not image_bytes:
+            return json.dumps({"error": "Failed to download image"}, indent=2)
+            
+        try:
+            # Ensure output directory exists
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+                
+            # Create a filename (e.g., using ad_id and image hash)
+            file_extension = ".jpg" # Default extension, could try to infer from headers later
+            filename = f"{ad_id}_{image_hashes[0]}{file_extension}"
+            filepath = os.path.join(output_dir, filename)
+            
+            # Save the image bytes to the file
+            with open(filepath, "wb") as f:
+                f.write(image_bytes)
+                
+            print(f"Image saved successfully to: {filepath}")
+            return json.dumps({"filepath": filepath}, indent=2) # Return JSON with filepath
+
+        except Exception as e:
+            return json.dumps({"error": f"Failed to save image: {str(e)}"}, indent=2)
 
 
 @mcp_server.tool()
