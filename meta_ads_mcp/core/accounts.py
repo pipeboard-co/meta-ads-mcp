@@ -1,14 +1,14 @@
 """Account-related functionality for Meta Ads API."""
 
 import json
-from typing import Optional
+from typing import Optional, Dict, Any
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
 
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_accounts(access_token: str = None, user_id: str = "me", limit: int = 200) -> str:
+async def get_ad_accounts(access_token: Optional[str] = None, user_id: str = "me", limit: int = 200) -> str:
     """
     Get ad accounts accessible by a user.
     
