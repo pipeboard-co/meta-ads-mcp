@@ -27,14 +27,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -67,7 +67,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,is_dynamic_creative"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -100,6 +100,7 @@ async def create_adset(
     dsa_beneficiary: Optional[str] = None,
     promoted_object: Optional[Dict[str, Any]] = None,
     destination_type: Optional[str] = None,
+    is_dynamic_creative: Optional[bool] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -125,8 +126,9 @@ async def create_adset(
                         Optional fields: custom_event_type, pixel_id, page_id.
                         Example: {"application_id": "123456789012345", "object_store_url": "https://apps.apple.com/app/id123456789"}
         destination_type: Where users are directed after clicking the ad (e.g., 'APP_STORE', 'DEEPLINK', 'APP_INSTALL', 'ON_AD').
-                         Required for mobile app campaigns and lead generation campaigns.
-                         Use 'ON_AD' for lead generation campaigns where user interaction happens within the ad.
+                          Required for mobile app campaigns and lead generation campaigns.
+                          Use 'ON_AD' for lead generation campaigns where user interaction happens within the ad.
+        is_dynamic_creative: Enable Dynamic Creative for this ad set (required when using dynamic creatives with asset_feed_spec/dynamic_creative_spec).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -249,6 +251,10 @@ async def create_adset(
     if destination_type:
         params["destination_type"] = destination_type
     
+    # Enable Dynamic Creative if requested
+    if is_dynamic_creative is not None:
+        params["is_dynamic_creative"] = "true" if bool(is_dynamic_creative) else "false"
+    
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
@@ -290,6 +296,7 @@ async def create_adset(
 async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None, 
                         bid_amount: Optional[int] = None, status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None, 
                         optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None, 
+                        is_dynamic_creative: Optional[bool] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -306,6 +313,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'APP_INSTALLS', etc.)
         daily_budget: Daily budget in account currency (in cents) as a string
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
+        is_dynamic_creative: Enable/disable Dynamic Creative for this ad set.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -341,6 +349,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
     
     if lifetime_budget is not None:
         params['lifetime_budget'] = str(lifetime_budget)
+    
+    if is_dynamic_creative is not None:
+        params['is_dynamic_creative'] = "true" if bool(is_dynamic_creative) else "false"
     
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)

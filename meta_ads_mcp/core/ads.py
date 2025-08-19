@@ -111,6 +111,10 @@ async def create_ad(
         tracking_specs: Optional tracking specifications (e.g., for pixel events).
                       Example: [{"action.type":"offsite_conversion","fb_pixel":["YOUR_PIXEL_ID"]}]
         access_token: Meta API access token (optional - will use cached token if not provided)
+
+    Note:
+        Dynamic Creative creatives require the parent ad set to have `is_dynamic_creative=true`.
+        Otherwise, ad creation will fail with error_subcode 1885998.
     """
     # Check required parameters
     if not account_id:
