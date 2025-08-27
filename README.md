@@ -346,16 +346,16 @@ For local installation configuration, authentication options, and advanced techn
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
     - Returns: A clickable resource link for Meta authentication
 
-22. `mcp_meta-ads_create_budget_schedule`
-    - Create a budget schedule for a Meta Ads campaign.
+22. `mcp_meta_ads_create_budget_schedule`
+    - Create a budget schedule for a Meta Ads campaign
     - Inputs:
-      - `campaign_id`: Meta Ads campaign ID.
-      - `budget_value`: Amount of budget increase.
-      - `budget_value_type`: Type of budget value ("ABSOLUTE" or "MULTIPLIER").
-      - `time_start`: Unix timestamp for when the high demand period should start.
-      - `time_end`: Unix timestamp for when the high demand period should end.
-      - `access_token` (optional): Meta API access token.
-    - Returns: JSON string with the ID of the created budget schedule or an error message.
+      - `campaign_id`: Meta Ads campaign ID
+      - `budget_value`: Amount of budget increase
+      - `budget_value_type`: Type of budget value ("ABSOLUTE" or "MULTIPLIER")
+      - `time_start`: Unix timestamp for when the high demand period should start
+      - `time_end`: Unix timestamp for when the high demand period should end
+      - `access_token` (optional): Meta API access token
+    - Returns: JSON string with the ID of the created budget schedule or an error message
 
 23. `mcp_meta_ads_search_interests`
     - Search for interest targeting options by keyword
@@ -373,7 +373,7 @@ For local installation configuration, authentication options, and advanced techn
       - `limit`: Maximum number of suggestions to return (default: 25)
     - Returns: Suggested interests with id, name, audience_size, and description fields
 
-24. `mcp_meta_ads_validate_interests`
+25. `mcp_meta_ads_validate_interests`
     - Validate interest names or IDs for targeting
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
@@ -381,14 +381,14 @@ For local installation configuration, authentication options, and advanced techn
       - `interest_fbid_list`: List of interest IDs to validate (e.g., ["6003700426513"])
     - Returns: Validation results showing valid status and audience_size for each interest
 
-25. `mcp_meta_ads_search_behaviors`
+26. `mcp_meta_ads_search_behaviors`
     - Get all available behavior targeting options
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
       - `limit`: Maximum number of results to return (default: 50)
     - Returns: Behavior targeting options with id, name, audience_size bounds, path, and description
 
-26. `mcp_meta_ads_search_demographics`
+27. `mcp_meta_ads_search_demographics`
     - Get demographic targeting options
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
@@ -396,7 +396,7 @@ For local installation configuration, authentication options, and advanced techn
       - `limit`: Maximum number of results to return (default: 50)
     - Returns: Demographic targeting options with id, name, audience_size bounds, path, and description
 
-27. `mcp_meta_ads_search_geo_locations`
+28. `mcp_meta_ads_search_geo_locations`
     - Search for geographic targeting locations
     - Inputs:
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
@@ -405,7 +405,7 @@ For local installation configuration, authentication options, and advanced techn
       - `limit`: Maximum number of results to return (default: 25)
     - Returns: Location data with key, name, type, and geographic hierarchy information
 
-28. `mcp_meta_ads_search` (Enhanced)
+29. `mcp_meta_ads_search` (Enhanced)
     - Generic search across accounts, campaigns, ads, and pages
     - Automatically includes page searching when query mentions "page" or "pages"
     - Inputs:
@@ -454,7 +454,7 @@ The easiest way to avoid any setup issues is to **[🎯 use our Remote MCP inste
 For comprehensive troubleshooting, debugging, and local installation issues, see our **[Local Installation Guide](LOCAL_INSTALLATION.md)** which includes:
 
 - Authentication troubleshooting
-- Installation issues and solutions  
+- Installation issues and solutions
 - API error resolution
 - Debug logs and diagnostic commands
-- Performance optimization tips 
+- Performance optimization tips
