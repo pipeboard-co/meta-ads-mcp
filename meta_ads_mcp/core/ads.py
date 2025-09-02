@@ -635,15 +635,27 @@ async def upload_ad_image(
                 image_bytes = await try_multiple_download_methods(image_url)
             except Exception as download_error:
                 return json.dumps({
-                    "error": "Failed to download image from URL",
-                    "details": str(download_error),
+                    "error": "We couldn’t download the image from the link provided.",
+                    "reason": "The server returned an error while trying to fetch the image.",
                     "image_url": image_url,
+                    "details": str(download_error),
+                    "suggestions": [
+                        "Make sure the link is publicly reachable (no login, VPN, or IP restrictions).",
+                        "If the image is hosted on a private app or server, move it to a public URL or a CDN and try again.",
+                        "Verify the URL is correct and serves the actual image file."
+                    ]
                 }, indent=2)
 
             if not image_bytes:
                 return json.dumps({
-                    "error": "No data returned when downloading image from URL",
+                    "error": "We couldn’t access the image at the link you provided.",
+                    "reason": "The image link doesn’t appear to be publicly accessible or didn’t return any data.",
                     "image_url": image_url,
+                    "suggestions": [
+                        "Double‑check that the link is public and does not require login, VPN, or IP allow‑listing.",
+                        "If the image is stored in a private app (for example, a self‑hosted gallery), upload it to a public URL or a CDN and try again.",
+                        "Confirm the URL is correct and points directly to an image file (e.g., .jpg, .png)."
+                    ]
                 }, indent=2)
 
             import base64  # Local import
