@@ -315,8 +315,6 @@ async def search(
 ) -> str:
     """
     Search through Meta Ads data and return matching record IDs.
-    
-    This tool is required for OpenAI ChatGPT Deep Research integration.
     It searches across ad accounts, campaigns, ads, pages, and businesses to find relevant records
     based on the provided query.
     
@@ -371,8 +369,6 @@ async def fetch(
 ) -> str:
     """
     Fetch complete record data by ID.
-    
-    This tool is required for OpenAI ChatGPT Deep Research integration.
     It retrieves the full data for a specific record identified by its ID.
     
     Args:
