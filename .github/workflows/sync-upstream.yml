@@ -1,0 +1,25 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Runs every Sunday at midnight
+  workflow_dispatch:      # Allows manual trigger too
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Fork
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Sync upstream changes
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git remote add upstream https://github.com/pipeboard-co/meta-ads-mcp.git
+          git fetch upstream
+          git checkout main
+          git merge upstream/main --allow-unrelated-histories
+          git push origin main
