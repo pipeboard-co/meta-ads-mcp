@@ -16,6 +16,7 @@ Test cases cover:
 import pytest
 import json
 import asyncio
+import requests
 from unittest.mock import AsyncMock, patch, MagicMock
 from typing import Dict, Any, List
 
@@ -385,24 +386,108 @@ class TestInsightsActionsAndValues:
         assert 'lead' in action_value_types, "Lead action_value type not found"
 
 
-class TestInsightsActionsAndValuesIntegration:
-    """Integration tests for actions and action_values functionality"""
+@pytest.mark.e2e
+@pytest.mark.skip(reason="E2E test - run manually only")
+class TestInsightsActionsAndValuesE2E:
+    """E2E tests for actions and action_values via MCP HTTP server"""
     
-    @pytest.mark.asyncio
-    async def test_actions_workflow(self):
-        """Test complete workflow with actions and action_values"""
-        
-        # This test would require actual API credentials and would be skipped in CI
-        # It's included for manual testing with real data
-        pytest.skip("Integration test requires real API credentials")
-        
-        # Example workflow:
-        # 1. Get campaign insights with actions and action_values
-        # 2. Verify the data structure
-        # 3. Check that purchase data is present in actions and action_values
-        # 4. Validate the values make sense
-        
-        pass
+    def __init__(self, base_url: str = "http://localhost:8080"):
+        self.base_url = base_url.rstrip('/')
+        self.endpoint = f"{self.base_url}/mcp/"
+        self.request_id = 1
+        # Default account from workspace rules
+        self.account_id = "act_701351919139047"
+
+    def _make_request(self, method: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "User-Agent": "Insights-E2E-Test-Client/1.0"
+        }
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "id": self.request_id
+        }
+        if params:
+            payload["params"] = params
+        try:
+            resp = requests.post(self.endpoint, headers=headers, json=payload, timeout=30)
+            self.request_id += 1
+            return {
+                "status_code": resp.status_code,
+                "json": resp.json() if resp.status_code == 200 else None,
+                "text": resp.text,
+                "success": resp.status_code == 200
+            }
+        except requests.exceptions.RequestException as e:
+            return {"status_code": 0, "json": None, "text": str(e), "success": False, "error": str(e)}
+
+    def _check_for_errors(self, parsed_content: Dict[str, Any]) -> Dict[str, Any]:
+        if "data" in parsed_content:
+            data = parsed_content["data"]
+            if isinstance(data, dict) and 'error' in data:
+                return {"has_error": True, "error_message": data['error'], "format": "wrapped_dict"}
+            if isinstance(data, str):
+                try:
+                    error_data = json.loads(data)
+                    if 'error' in error_data:
+                        return {"has_error": True, "error_message": error_data['error'], "format": "wrapped_json"}
+                except json.JSONDecodeError:
+                    pass
+        if 'error' in parsed_content:
+            return {"has_error": True, "error_message": parsed_content['error'], "format": "direct"}
+        return {"has_error": False}
+
+    def test_tool_exists_and_has_required_fields(self):
+        result = self._make_request("tools/list", {})
+        assert result["success"], f"tools/list failed: {result.get('text', '')}"
+        tools = result["json"]["result"].get("tools", [])
+        tool = next((t for t in tools if t["name"] == "get_insights"), None)
+        assert tool is not None, "get_insights tool not found"
+        props = tool.get("inputSchema", {}).get("properties", {})
+        for req in ["object_id", "time_range", "breakdown", "level"]:
+            assert req in props, f"Missing parameter in schema: {req}"
+
+    def test_get_insights_account_level(self):
+        params = {
+            "name": "get_insights",
+            "arguments": {
+                "object_id": self.account_id,
+                "time_range": "last_30d",
+                "level": "account"
+            }
+        }
+        result = self._make_request("tools/call", params)
+        assert result["success"], f"tools/call failed: {result.get('text', '')}"
+        response_data = result["json"]["result"]
+        content = response_data.get("content", [{}])[0].get("text", "")
+        parsed = json.loads(content)
+        err = self._check_for_errors(parsed)
+        # Don't fail if auth or permissions block; just assert structure is parsable
+        if err["has_error"]:
+            assert isinstance(err["error_message"], (str, dict))
+        else:
+            # Expect data list on success
+            data = parsed.get("data") if isinstance(parsed, dict) else None
+            assert data is not None
+
+def main():
+    tester = TestInsightsActionsAndValuesE2E()
+    print("🚀 Insights Actions E2E (manual)")
+    # Basic smoke run
+    try:
+        tester.test_tool_exists_and_has_required_fields()
+        print("✅ Tool schema ok")
+        tester.test_get_insights_account_level()
+        print("✅ Account-level insights request executed")
+    except AssertionError as e:
+        print(f"❌ Assertion failed: {e}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+if __name__ == "__main__":
+    main()
 
 
 def extract_purchase_data(insights_data):

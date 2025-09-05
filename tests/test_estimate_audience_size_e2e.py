@@ -207,6 +207,82 @@ class AudienceEstimationTester:
         
         return None
 
+    def test_pl_only_reachestimate_bounds(self) -> Dict[str, Any]:
+        """Verify PL-only reachestimate returns expected bounds and midpoint.
+        
+        Prerequisite: Start server with fallback disabled so reachestimate is used directly.
+        Example:
+            export META_MCP_DISABLE_DELIVERY_FALLBACK=1
+            uv run python -m meta_ads_mcp --transport streamable-http --port 8080
+        """
+        print(f"\n🇵🇱 Testing PL-only reachestimate bounds (fallback disabled)")
+        local_account_id = "act_3182643988557192"
+        targeting_spec = {"geo_locations": {"countries": ["PL"]}}
+        expected_lower = 18600000
+        expected_upper = 21900000
+        expected_midpoint = 20250000
+
+        result = self._make_request("tools/call", {
+            "name": "estimate_audience_size",
+            "arguments": {
+                "account_id": local_account_id,
+                "targeting": targeting_spec,
+                "optimization_goal": "REACH"
+            }
+        })
+
+        if not result["success"]:
+            print(f"   ❌ Request failed: {result.get('text', 'Unknown error')}")
+            return {"success": False, "error": result.get("text", "Unknown error")}
+
+        response_data = result["json"]["result"]
+        content = response_data.get("content", [{}])[0].get("text", "")
+        try:
+            parsed_content = json.loads(content)
+        except json.JSONDecodeError:
+            print(f"   ❌ Invalid JSON response")
+            return {"success": False, "error": "Invalid JSON"}
+
+        error_info = self._check_for_errors(parsed_content)
+        if error_info["has_error"]:
+            print(f"   ❌ API Error: {error_info['error_message']}")
+            return {"success": False, "error": error_info["error_message"], "error_format": error_info["format"]}
+
+        if not parsed_content.get("success", False):
+            print(f"   ❌ Response indicates failure but no error message found")
+            return {"success": False, "error": "Unexpected failure"}
+
+        details = parsed_content.get("estimate_details", {}) or {}
+        lower = details.get("users_lower_bound")
+        upper = details.get("users_upper_bound")
+        midpoint = parsed_content.get("estimated_audience_size")
+        fallback_used = parsed_content.get("fallback_endpoint_used")
+
+        ok = (
+            lower == expected_lower and
+            upper == expected_upper and
+            midpoint == expected_midpoint and
+            (fallback_used is None)
+        )
+
+        if ok:
+            print(f"   ✅ Bounds: {lower:,}–{upper:,}; midpoint: {midpoint:,}")
+            return {
+                "success": True,
+                "users_lower_bound": lower,
+                "users_upper_bound": upper,
+                "midpoint": midpoint
+            }
+        else:
+            print(f"   ❌ Unexpected values: lower={lower}, upper={upper}, midpoint={midpoint}, fallback={fallback_used}")
+            return {
+                "success": False,
+                "users_lower_bound": lower,
+                "users_upper_bound": upper,
+                "midpoint": midpoint,
+                "fallback_endpoint_used": fallback_used
+            }
+
     def test_comprehensive_audience_estimation(self) -> Dict[str, Any]:
         """Test comprehensive audience estimation with complex targeting"""
         
@@ -491,6 +567,24 @@ class AudienceEstimationTester:
         
         results["invalid_targeting"] = self._parse_error_response(result, "Should handle invalid targeting")
         
+        # Test 4: Missing location in targeting (no geo_locations or custom audiences)
+        print(f"   🚫 Testing missing location in targeting")
+        result = self._make_request("tools/call", {
+            "name": "estimate_audience_size",
+            "arguments": {
+                "account_id": self.account_id,
+                # Interests present but no geo_locations and no custom_audiences
+                "targeting": {
+                    "age_min": 18,
+                    "age_max": 35,
+                    "flexible_spec": [
+                        {"interests": [{"id": "6003371567474"}]}
+                    ]
+                }
+            }
+        })
+        results["missing_location"] = self._parse_error_response(result, "Should require a location or custom audience")
+        
         return results
     
     def _parse_error_response(self, result: Dict[str, Any], description: str) -> Dict[str, Any]:
@@ -546,6 +640,13 @@ class AudienceEstimationTester:
         print("🔐 Using implicit authentication from server")
         print(f"🏢 Using account ID: {self.account_id}")
         
+        # Test 0: PL-only reachestimate bounds verification
+        print("\n" + "="*70)
+        print("📋 PHASE 0: PL-only reachestimate bounds verification (fallback disabled)")
+        print("="*70)
+        pl_only_results = self.test_pl_only_reachestimate_bounds()
+        pl_only_success = pl_only_results.get("success", False)
+
         # Test 1: Comprehensive Audience Estimation
         print("\n" + "="*70)
         print("📋 PHASE 1: Testing Comprehensive Audience Estimation")
@@ -595,6 +696,7 @@ class AudienceEstimationTester:
         print("="*70)
         
         all_tests = [
+            ("PL-only Reachestimate Bounds", pl_only_success),
             ("Comprehensive Estimation", comprehensive_success),
             ("Backwards Compatibility", compat_success),
             ("Optimization Goals", goals_success),

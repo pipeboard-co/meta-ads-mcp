@@ -2,6 +2,7 @@
 
 import json
 from typing import Optional, List, Dict, Any
+import os
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
 
@@ -147,6 +148,49 @@ async def estimate_audience_size(
             }
         }, indent=2)
     
+    # Preflight validation: require at least one location OR a custom audience
+    def _has_location_or_custom_audience(t: Dict[str, Any]) -> bool:
+        if not isinstance(t, dict):
+            return False
+        geo = t.get("geo_locations") or {}
+        if isinstance(geo, dict):
+            for key in [
+                "countries",
+                "regions",
+                "cities",
+                "zips",
+                "geo_markets",
+                "country_groups"
+            ]:
+                val = geo.get(key)
+                if isinstance(val, list) and len(val) > 0:
+                    return True
+        # Top-level custom audiences
+        ca = t.get("custom_audiences")
+        if isinstance(ca, list) and len(ca) > 0:
+            return True
+        # Custom audiences within flexible_spec
+        flex = t.get("flexible_spec")
+        if isinstance(flex, list):
+            for spec in flex:
+                if isinstance(spec, dict):
+                    ca_spec = spec.get("custom_audiences")
+                    if isinstance(ca_spec, list) and len(ca_spec) > 0:
+                        return True
+        return False
+
+    if not _has_location_or_custom_audience(targeting):
+        return json.dumps({
+            "error": "Missing target audience location",
+            "details": "Select at least one location in targeting.geo_locations or include a custom audience.",
+            "action_required": "Add geo_locations with countries/regions/cities/zips or include custom_audiences.",
+            "example": {
+                "geo_locations": {"countries": ["US"]},
+                "age_min": 25,
+                "age_max": 65
+            }
+        }, indent=2)
+    
     # Build reach estimate request (using correct Meta API endpoint)
     endpoint = f"{account_id}/reachestimate"
     params = {
@@ -158,25 +202,153 @@ async def estimate_audience_size(
     try:
         data = await make_api_request(endpoint, access_token, params, method="GET")
         
+        # Surface Graph API errors directly for better diagnostics.
+        # If reachestimate fails, optionally attempt a fallback using delivery_estimate.
+        if isinstance(data, dict) and "error" in data:
+            # Special handling for Missing Target Audience Location error (subcode 1885364)
+            try:
+                err_wrapper = data.get("error", {})
+                details_obj = err_wrapper.get("details", {})
+                raw_err = details_obj.get("error", {}) if isinstance(details_obj, dict) else {}
+                if (
+                    isinstance(raw_err, dict) and (
+                        raw_err.get("error_subcode") == 1885364 or
+                        raw_err.get("error_user_title") == "Missing Target Audience Location"
+                    )
+                ):
+                    return json.dumps({
+                        "error": "Missing target audience location",
+                        "details": raw_err.get("error_user_msg") or "Select at least one location, or choose a custom audience.",
+                        "endpoint_used": f"{account_id}/reachestimate",
+                        "action_required": "Add geo_locations with at least one of countries/regions/cities/zips or include custom_audiences.",
+                        "blame_field_specs": raw_err.get("error_data", {}).get("blame_field_specs") if isinstance(raw_err.get("error_data"), dict) else None
+                    }, indent=2)
+            except Exception:
+                pass
+            # Allow disabling fallback via environment variable
+            # Default: fallback disabled unless explicitly enabled by setting DISABLE flag to "0"
+            disable_fallback = os.environ.get("META_MCP_DISABLE_DELIVERY_FALLBACK", "1") == "1"
+            if disable_fallback:
+                return json.dumps({
+                    "error": "Graph API returned an error for reachestimate",
+                    "details": data.get("error"),
+                    "endpoint_used": f"{account_id}/reachestimate",
+                    "request_params": {
+                        "has_targeting_spec": bool(targeting),
+                    },
+                    "note": "delivery_estimate fallback disabled via META_MCP_DISABLE_DELIVERY_FALLBACK"
+                }, indent=2)
+
+            # Try fallback to delivery_estimate endpoint
+            try:
+                fallback_endpoint = f"{account_id}/delivery_estimate"
+                fallback_params = {
+                    "targeting_spec": json.dumps(targeting),
+                    # Some API versions accept optimization_goal here
+                    "optimization_goal": optimization_goal
+                }
+                fallback_data = await make_api_request(fallback_endpoint, access_token, fallback_params, method="GET")
+                
+                # If fallback returns usable data, format similarly
+                if isinstance(fallback_data, dict) and "data" in fallback_data and len(fallback_data["data"]) > 0:
+                    estimate_data = fallback_data["data"][0]
+                    formatted_response = {
+                        "success": True,
+                        "account_id": account_id,
+                        "targeting": targeting,
+                        "optimization_goal": optimization_goal,
+                        "estimated_audience_size": estimate_data.get("estimate_mau", 0),
+                        "estimate_details": {
+                            "monthly_active_users": estimate_data.get("estimate_mau", 0),
+                            "daily_outcomes_curve": estimate_data.get("estimate_dau", []),
+                            "bid_estimate": estimate_data.get("bid_estimates", {}),
+                            "unsupported_targeting": estimate_data.get("unsupported_targeting", [])
+                        },
+                        "raw_response": fallback_data,
+                        "fallback_endpoint_used": "delivery_estimate"
+                    }
+                    return json.dumps(formatted_response, indent=2)
+                
+                # Fallback returned but not in expected format
+                return json.dumps({
+                    "error": "Graph API returned an error for reachestimate; delivery_estimate fallback did not return usable data",
+                    "reachestimate_error": data.get("error"),
+                    "fallback_endpoint_used": "delivery_estimate",
+                    "fallback_raw_response": fallback_data,
+                    "endpoint_used": f"{account_id}/reachestimate",
+                    "request_params": {
+                        "has_targeting_spec": bool(targeting)
+                    }
+                }, indent=2)
+            except Exception as _fallback_exc:
+                return json.dumps({
+                    "error": "Graph API returned an error for reachestimate; delivery_estimate fallback also failed",
+                    "reachestimate_error": data.get("error"),
+                    "fallback_endpoint_used": "delivery_estimate",
+                    "fallback_exception": str(_fallback_exc),
+                    "endpoint_used": f"{account_id}/reachestimate",
+                    "request_params": {
+                        "has_targeting_spec": bool(targeting)
+                    }
+                }, indent=2)
+
         # Format the response for easier consumption
-        if "data" in data and len(data["data"]) > 0:
-            estimate_data = data["data"][0]
-            formatted_response = {
-                "success": True,
-                "account_id": account_id,
-                "targeting": targeting,
-                "optimization_goal": optimization_goal,
-                "estimated_audience_size": estimate_data.get("estimate_mau", 0),
-                "estimate_details": {
-                    "monthly_active_users": estimate_data.get("estimate_mau", 0),
-                    "daily_outcomes_curve": estimate_data.get("estimate_dau", []),
-                    "bid_estimate": estimate_data.get("bid_estimates", {}),
-                    "unsupported_targeting": estimate_data.get("unsupported_targeting", [])
-                },
-                "raw_response": data
-            }
-            
-            return json.dumps(formatted_response, indent=2)
+        if "data" in data:
+            response_data = data["data"]
+            # Case 1: delivery_estimate-like list structure
+            if isinstance(response_data, list) and len(response_data) > 0:
+                estimate_data = response_data[0]
+                formatted_response = {
+                    "success": True,
+                    "account_id": account_id,
+                    "targeting": targeting,
+                    "optimization_goal": optimization_goal,
+                    "estimated_audience_size": estimate_data.get("estimate_mau", 0),
+                    "estimate_details": {
+                        "monthly_active_users": estimate_data.get("estimate_mau", 0),
+                        "daily_outcomes_curve": estimate_data.get("estimate_dau", []),
+                        "bid_estimate": estimate_data.get("bid_estimates", {}),
+                        "unsupported_targeting": estimate_data.get("unsupported_targeting", [])
+                    },
+                    "raw_response": data
+                }
+                return json.dumps(formatted_response, indent=2)
+            # Case 1b: explicit handling for empty list responses
+            if isinstance(response_data, list) and len(response_data) == 0:
+                return json.dumps({
+                    "error": "No estimation data returned from Meta API",
+                    "raw_response": data,
+                    "debug_info": {
+                        "response_keys": list(data.keys()) if isinstance(data, dict) else "not_a_dict",
+                        "response_type": str(type(data)),
+                        "endpoint_used": f"{account_id}/reachestimate"
+                    }
+                }, indent=2)
+            # Case 2: reachestimate dict structure with bounds
+            if isinstance(response_data, dict):
+                lower = response_data.get("users_lower_bound", response_data.get("estimate_mau_lower_bound"))
+                upper = response_data.get("users_upper_bound", response_data.get("estimate_mau_upper_bound"))
+                estimate_ready = response_data.get("estimate_ready")
+                midpoint = None
+                try:
+                    if isinstance(lower, (int, float)) and isinstance(upper, (int, float)):
+                        midpoint = int((lower + upper) / 2)
+                except Exception:
+                    midpoint = None
+                formatted_response = {
+                    "success": True,
+                    "account_id": account_id,
+                    "targeting": targeting,
+                    "optimization_goal": optimization_goal,
+                    "estimated_audience_size": midpoint if midpoint is not None else 0,
+                    "estimate_details": {
+                        "users_lower_bound": lower,
+                        "users_upper_bound": upper,
+                        "estimate_ready": estimate_ready
+                    },
+                    "raw_response": data
+                }
+                return json.dumps(formatted_response, indent=2)
         else:
             return json.dumps({
                 "error": "No estimation data returned from Meta API",
@@ -189,6 +361,40 @@ async def estimate_audience_size(
             }, indent=2)
     
     except Exception as e:
+        # Try fallback to delivery_estimate first when an exception occurs (unless disabled)
+        # Default: fallback disabled unless explicitly enabled by setting DISABLE flag to "0"
+        disable_fallback = os.environ.get("META_MCP_DISABLE_DELIVERY_FALLBACK", "1") == "1"
+        if not disable_fallback:
+            try:
+                fallback_endpoint = f"{account_id}/delivery_estimate"
+                fallback_params = {
+                "targeting_spec": json.dumps(targeting) if isinstance(targeting, dict) else targeting,
+                "optimization_goal": optimization_goal
+            }
+                fallback_data = await make_api_request(fallback_endpoint, access_token, fallback_params, method="GET")
+            
+                if isinstance(fallback_data, dict) and "data" in fallback_data and len(fallback_data["data"]) > 0:
+                    estimate_data = fallback_data["data"][0]
+                    formatted_response = {
+                        "success": True,
+                        "account_id": account_id,
+                        "targeting": targeting,
+                        "optimization_goal": optimization_goal,
+                        "estimated_audience_size": estimate_data.get("estimate_mau", 0),
+                        "estimate_details": {
+                            "monthly_active_users": estimate_data.get("estimate_mau", 0),
+                            "daily_outcomes_curve": estimate_data.get("estimate_dau", []),
+                            "bid_estimate": estimate_data.get("bid_estimates", {}),
+                            "unsupported_targeting": estimate_data.get("unsupported_targeting", [])
+                        },
+                        "raw_response": fallback_data,
+                        "fallback_endpoint_used": "delivery_estimate"
+                    }
+                    return json.dumps(formatted_response, indent=2)
+            except Exception as _fallback_exc:
+                # If fallback also fails, proceed to detailed error handling below
+                pass
+
         # Check if this is the specific Business Manager system user permission error
         error_str = str(e)
         if "100" in error_str and "33" in error_str:

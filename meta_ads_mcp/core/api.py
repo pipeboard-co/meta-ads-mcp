@@ -87,7 +87,14 @@ async def make_api_request(
     async with httpx.AsyncClient() as client:
         try:
             if method == "GET":
-                response = await client.get(url, params=request_params, headers=headers, timeout=30.0)
+                # For GET, JSON-encode dict/list params (e.g., targeting_spec) to proper strings
+                encoded_params = {}
+                for key, value in request_params.items():
+                    if isinstance(value, (dict, list)):
+                        encoded_params[key] = json.dumps(value)
+                    else:
+                        encoded_params[key] = value
+                response = await client.get(url, params=encoded_params, headers=headers, timeout=30.0)
             elif method == "POST":
                 # For Meta API, POST requests need data, not JSON
                 if 'targeting' in request_params and isinstance(request_params['targeting'], dict):
