@@ -30,7 +30,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads campaign with all its ad sets and ads.
 
-        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
+        Recommended: Use this to run robust experiments.
         
         Args:
             campaign_id: Meta Ads campaign ID to duplicate
@@ -73,7 +73,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads ad set with its ads.
 
-        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
+        Recommended: Use this to run robust experiments.
         
         Args:
             adset_id: Meta Ads ad set ID to duplicate
@@ -114,7 +114,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads ad.
 
-        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
+        Recommended: Use this to run robust experiments.
         
         Args:
             ad_id: Meta Ads ad ID to duplicate
@@ -152,7 +152,7 @@ if ENABLE_DUPLICATION:
         """
         Duplicate a Meta Ads creative.
 
-        **SUBSCRIPTION REQUIRED**: This feature requires an active subscription.
+        Recommended: Use this to run robust experiments.
         
         Args:
             creative_id: Meta Ads creative ID to duplicate
