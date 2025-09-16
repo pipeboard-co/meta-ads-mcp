@@ -8,7 +8,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 
 ## Community & Support
 
-- [Discord](https://discord.gg/YNjF7gUb5h). Join the community.
+- [Discord](https://discord.gg/YzMwQ8zrjr). Join the community.
 - [Email Support](info@pipeboard.co). Email us for support.
 
 ## Table of Contents
