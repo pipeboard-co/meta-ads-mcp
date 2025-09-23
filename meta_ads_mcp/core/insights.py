@@ -13,7 +13,7 @@ import datetime
 @meta_api_tool
 async def get_insights(object_id: str, access_token: Optional[str] = None, 
                       time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "", 
-                      level: str = "ad") -> str:
+                      level: str = "ad", limit: int = 25, after: str = "") -> str:
     """
     Get performance insights for a campaign, ad set, ad or account.
     
@@ -49,6 +49,8 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
                             marketing_messages_btn_name, impression_view_time_advertiser_hour_v2, comscore_market,
                             comscore_market_code
         level: Level of aggregation (ad, adset, campaign, account)
+        limit: Maximum number of results to return per page (default: 25, Meta API allows much higher values)
+        after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
     """
     if not object_id:
         return json.dumps({"error": "No object ID provided"}, indent=2)
@@ -56,7 +58,8 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
     endpoint = f"{object_id}/insights"
     params = {
         "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type",
-        "level": level
+        "level": level,
+        "limit": limit
     }
     
     # Handle time range based on type
@@ -72,6 +75,9 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
     
     if breakdown:
         params["breakdowns"] = breakdown
+    
+    if after:
+        params["after"] = after
     
     data = await make_api_request(endpoint, access_token, params)
     
