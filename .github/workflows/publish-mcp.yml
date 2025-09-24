@@ -59,9 +59,9 @@ jobs:
 
       - name: Login to MCP Registry (DNS auth)
         run: |
-          # Extract 32-byte private key seed from PEM format
+          # Extract private key using official MCP publisher method
           echo "${{ secrets.MCP_PRIVATE_KEY }}" > temp_key.pem
-          PRIVATE_KEY_HEX=$(openssl pkey -in temp_key.pem -noout -text | awk '/priv:/{getline; gsub(/[^0-9a-f]/,""); print}' | head -c 64)
+          PRIVATE_KEY_HEX=$(openssl pkey -in temp_key.pem -noout -text | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')
           ./mcp-publisher login dns --domain pipeboard.co --private-key "$PRIVATE_KEY_HEX"
           rm -f temp_key.pem
 
