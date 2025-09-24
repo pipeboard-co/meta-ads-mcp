@@ -1,6 +1,8 @@
-from openai import OpenAI
 import os
 import pytest
+
+# Skip this test entirely if the optional 'openai' dependency is not installed
+openai = pytest.importorskip("openai", reason="openai package not installed")
 
 
 @pytest.mark.skipif(
@@ -9,7 +11,7 @@ import pytest
 )
 def test_openai_mcp_integration():
     """Test OpenAI integration with Meta Ads MCP via Pipeboard."""
-    client = OpenAI()
+    client = openai.OpenAI()
 
     resp = client.responses.create(
         model="gpt-4.1",
