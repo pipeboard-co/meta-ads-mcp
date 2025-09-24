@@ -8,6 +8,16 @@
       "type": "streamable-http",
       "url": "https://mcp.pipeboard.co/meta-ads-mcp"
     }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "meta-ads-mcp",
+      "version": "1.0.11",
+      "transport": {
+        "type": "stdio"
+      }
+    }
   ]
 }
 
