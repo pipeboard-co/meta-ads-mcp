@@ -59,7 +59,11 @@ jobs:
 
       - name: Login to MCP Registry (DNS auth)
         run: |
-          ./mcp-publisher login dns --domain pipeboard.co --private-key "${{ secrets.MCP_PRIVATE_KEY }}"
+          # Convert PEM private key to hex format
+          echo "${{ secrets.MCP_PRIVATE_KEY }}" | openssl pkey -outform DER | xxd -p -c 256 > private_key_hex.txt
+          PRIVATE_KEY_HEX=$(cat private_key_hex.txt)
+          ./mcp-publisher login dns --domain pipeboard.co --private-key "$PRIVATE_KEY_HEX"
+          rm -f private_key_hex.txt
 
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
