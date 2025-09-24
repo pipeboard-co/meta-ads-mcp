@@ -11,7 +11,7 @@ This repository uses GitHub Actions to automatically publish releases to PyPI. H
 
 ### Optimal Release Process
 
-1. **Update version in both files** (use consistent versioning):
+1. **Update version in three files** (use consistent versioning):
    
    ```bash
    # Update pyproject.toml
@@ -19,15 +19,19 @@ This repository uses GitHub Actions to automatically publish releases to PyPI. H
    
    # Update __init__.py  
    sed -i '' 's/__version__ = "0.7.7"/__version__ = "0.7.8"/' meta_ads_mcp/__init__.py
+
+   # Update server.json (both top-level and package versions)
+   sed -i '' 's/"version": "0.7.7"/"version": "0.7.8"/g' server.json
    ```
    
-   Or manually edit:
-   - `pyproject.toml`: `version = "0.7.8"`
-   - `meta_ads_mcp/__init__.py`: `__version__ = "0.7.8"`
+  Or manually edit:
+  - `pyproject.toml`: `version = "0.7.8"`
+  - `meta_ads_mcp/__init__.py`: `__version__ = "0.7.8"`
+  - `server.json`: set `"version": "0.7.8"` and package `"version": "0.7.8"`
 
 2. **Commit and push version changes**:
    ```bash
-   git add pyproject.toml meta_ads_mcp/__init__.py
+   git add pyproject.toml meta_ads_mcp/__init__.py server.json
    git commit -m "Bump version to 0.7.8"
    git push origin main
    ```
@@ -66,7 +70,7 @@ git status
 uv run python -m pytest tests/ -v
 
 # 3. Check current version
-grep -E "version =|__version__" pyproject.toml meta_ads_mcp/__init__.py
+grep -E 'version =|__version__|"version":' pyproject.toml meta_ads_mcp/__init__.py server.json
 ```
 
 ### Release Commands (One-liner)
@@ -76,7 +80,8 @@ grep -E "version =|__version__" pyproject.toml meta_ads_mcp/__init__.py
 VERSION="0.7.8" && \
 sed -i '' "s/version = \"0.7.7\"/version = \"$VERSION\"/" pyproject.toml && \
 sed -i '' "s/__version__ = \"0.7.7\"/__version__ = \"$VERSION\"/" meta_ads_mcp/__init__.py && \
-git add pyproject.toml meta_ads_mcp/__init__.py && \
+sed -i '' "s/\"version\": \"0.7.7\"/\"version\": \"$VERSION\"/g" server.json && \
+git add pyproject.toml meta_ads_mcp/__init__.py server.json && \
 git commit -m "Bump version to $VERSION" && \
 git push origin main && \
 bash -c "gh release create $VERSION --title '$VERSION' --generate-notes"
@@ -108,8 +113,8 @@ bash -c "gh release create $VERSION --title '$VERSION' --generate-notes"
 
 2. **Version mismatch**:
    ```bash
-   # Verify both files have same version
-   grep -E "version =|__version__" pyproject.toml meta_ads_mcp/__init__.py
+   # Verify all three files have the same version
+   grep -E 'version =|__version__|"version":' pyproject.toml meta_ads_mcp/__init__.py server.json
    ```
 
 3. **PyPI not updated**:
