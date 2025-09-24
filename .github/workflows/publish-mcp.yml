@@ -59,9 +59,7 @@ jobs:
 
       - name: Login to MCP Registry (DNS auth)
         run: |
-          echo "${{ secrets.MCP_PRIVATE_KEY }}" > key.pem
-          ./mcp-publisher login dns --domain pipeboard.co --private-key-file key.pem
-          shred -u key.pem || rm -f key.pem
+          ./mcp-publisher login dns --domain pipeboard.co --private-key "${{ secrets.MCP_PRIVATE_KEY }}"
 
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
