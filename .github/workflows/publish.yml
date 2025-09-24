@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: "Release: Test, PyPI, MCP"
 
 on:
   release:
@@ -7,7 +7,57 @@ on:
   workflow_dispatch:
 
 jobs:
-  publish:
+  test_and_build:
+    name: Test and Build (pre-release gate)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Install dependencies
+      run: |
+        uv sync --all-extras --dev
+
+    - name: Run tests
+      run: |
+        uv run pytest -q
+
+    - name: Build wheel and sdist
+      run: |
+        uv build
+
+    - name: Validate server.json against schema
+      run: |
+        uv run python - <<'PY'
+        import json, sys, urllib.request
+        from jsonschema import validate
+        from jsonschema.exceptions import ValidationError
+        server = json.load(open('server.json'))
+        schema_url = server.get('$schema')
+        with urllib.request.urlopen(schema_url) as r:
+            schema = json.load(r)
+        try:
+            validate(instance=server, schema=schema)
+        except ValidationError as e:
+            print('Schema validation failed:', e, file=sys.stderr)
+            sys.exit(1)
+        print('server.json is valid')
+        PY
+
+  publish_pypi:
+    name: Publish to PyPI
+    needs: test_and_build
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -34,6 +84,31 @@ jobs:
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        # Using trusted publishing (no API token needed)
-        # Make sure to configure trusted publishing in PyPI project settings
-        verbose: true 
+        verbose: true
+
+  publish_mcp:
+    name: Publish to MCP Registry
+    needs: publish_pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Install MCP Publisher
+      run: |
+        curl -L "https://github.com/modelcontextprotocol/registry/releases/download/v1.1.0/mcp-publisher_1.1.0_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+    - name: Login to MCP Registry (DNS auth)
+      run: |
+        # Extract private key using official MCP publisher method
+        echo "${{ secrets.MCP_PRIVATE_KEY }}" > temp_key.pem
+        PRIVATE_KEY_HEX=$(openssl pkey -in temp_key.pem -noout -text | grep -A3 "priv:" | tail -n +2 | tr -d ' :\n')
+        ./mcp-publisher login dns --domain pipeboard.co --private-key "$PRIVATE_KEY_HEX"
+        rm -f temp_key.pem
+
+    - name: Publish to MCP Registry
+      run: ./mcp-publisher publish
