@@ -6,6 +6,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 
 [![Meta Ads MCP Server Demo](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)
 
+<!-- mcp-name: co.pipeboard/meta-ads-mcp -->
+
 ## Community & Support
 
 - [Discord](https://discord.gg/YzMwQ8zrjr). Join the community.
