@@ -31,3 +31,6 @@ startCommand:
         env: env
       };
     } 
+remotes:
+  - type: streamable-http
+    url: "https://mcp.pipeboard.co/meta-ads-mcp"
