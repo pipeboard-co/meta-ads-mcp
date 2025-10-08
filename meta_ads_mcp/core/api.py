@@ -6,7 +6,8 @@ import httpx
 import asyncio
 import functools
 import os
-from .auth import needs_authentication, get_current_access_token, auth_manager, start_callback_server, shutdown_callback_server
+from . import auth
+from .auth import needs_authentication, auth_manager, start_callback_server, shutdown_callback_server
 from .utils import logger
 
 # Constants
@@ -203,7 +204,7 @@ def meta_api_tool(func):
             # If access_token is not in kwargs or not kwargs['access_token'], try to get it from auth_manager
             if 'access_token' not in kwargs or not kwargs['access_token']:
                 try:
-                    access_token = await get_current_access_token()
+                    access_token = await auth.get_current_access_token()
                     if access_token:
                         kwargs['access_token'] = access_token
                         logger.debug("Using access token from auth_manager")

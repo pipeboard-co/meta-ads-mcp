@@ -6,7 +6,7 @@ import httpx
 from typing import Optional, Dict, Any, List, Union
 from .server import mcp_server
 from .api import meta_api_tool
-from .auth import get_current_access_token
+from . import auth
 from .http_auth_integration import FastMCPAuthIntegration
 
 
@@ -204,7 +204,7 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
         
         # Use provided access_token parameter if no Facebook token found in context
         if not facebook_token:
-            facebook_token = access_token if access_token else await get_current_access_token()
+            facebook_token = access_token if access_token else await auth.get_current_access_token()
         
         # Validate we have both required tokens
         if not pipeboard_token:
