@@ -29,7 +29,8 @@ from typing import Optional
 import asyncio
 import os
 from .api import meta_api_tool
-from .auth import start_callback_server, shutdown_callback_server, auth_manager, get_current_access_token
+from . import auth
+from .auth import start_callback_server, shutdown_callback_server, auth_manager
 from .server import mcp_server
 from .utils import logger, META_APP_SECRET
 from .pipeboard_auth import pipeboard_auth_manager
