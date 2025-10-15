@@ -44,7 +44,7 @@ class TestDynamicCreatives:
             result_data = json.loads(result)
             assert result_data["success"] is True
             
-            # Verify the API call was made with single headline converted to array
+            # Verify the API call was made with single headline in object_story_spec
             call_args_list = mock_api.call_args_list
             assert len(call_args_list) >= 1
             
@@ -52,12 +52,11 @@ class TestDynamicCreatives:
             first_call = call_args_list[0]
             creative_data = first_call[0][2]  # params is the third argument
             
-            # Should use asset_feed_spec with headlines array format (internally converted)
-            assert "asset_feed_spec" in creative_data
-            assert "headlines" in creative_data["asset_feed_spec"]
-            assert creative_data["asset_feed_spec"]["headlines"] == [
-                {"text": "Single Headline"}
-            ]
+            # Should use object_story_spec with link_data for simple creatives (not asset_feed_spec)
+            assert "object_story_spec" in creative_data
+            assert "link_data" in creative_data["object_story_spec"]
+            assert creative_data["object_story_spec"]["link_data"]["name"] == "Single Headline"
+            assert "asset_feed_spec" not in creative_data
     
     async def test_create_ad_creative_single_description(self):
         """Test creating ad creative with single description (simple case)."""
@@ -86,7 +85,7 @@ class TestDynamicCreatives:
             result_data = json.loads(result)
             assert result_data["success"] is True
             
-            # Verify the API call was made with single description converted to array
+            # Verify the API call was made with single description in object_story_spec
             call_args_list = mock_api.call_args_list
             assert len(call_args_list) >= 1
             
@@ -94,12 +93,11 @@ class TestDynamicCreatives:
             first_call = call_args_list[0]
             creative_data = first_call[0][2]  # params is the third argument
             
-            # Should use asset_feed_spec with descriptions array format (internally converted)
-            assert "asset_feed_spec" in creative_data
-            assert "descriptions" in creative_data["asset_feed_spec"]
-            assert creative_data["asset_feed_spec"]["descriptions"] == [
-                {"text": "Single Description"}
-            ]
+            # Should use object_story_spec with link_data for simple creatives (not asset_feed_spec)
+            assert "object_story_spec" in creative_data
+            assert "link_data" in creative_data["object_story_spec"]
+            assert creative_data["object_story_spec"]["link_data"]["description"] == "Single Description"
+            assert "asset_feed_spec" not in creative_data
     
     async def test_create_ad_creative_cannot_mix_headline_and_headlines(self):
         """Test that mixing headline and headlines parameters raises error."""
