@@ -84,7 +84,7 @@ class TestSearchInterests:
         
         # Mock both the API request and the auth system to bypass decorator issues
         with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token') as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_auth:
                 mock_auth.return_value = "test_token"
                 mock_api.return_value = mock_response
                 
@@ -426,7 +426,7 @@ class TestSearchGeoLocations:
         
         # Mock both the API request and the auth system to bypass decorator issues
         with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token') as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_auth:
                 mock_auth.return_value = "test_token"
                 mock_api.return_value = mock_response
                 

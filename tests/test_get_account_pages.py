@@ -77,7 +77,7 @@ class TestGetAccountPages:
             }
         }
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -145,7 +145,7 @@ class TestGetAccountPages:
             ]
         }
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -189,7 +189,7 @@ class TestGetAccountPages:
             "category": "Business"
         }
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -228,7 +228,7 @@ class TestGetAccountPages:
     @pytest.mark.asyncio
     async def test_get_account_pages_no_pages_found(self):
         """Test when no pages are found through any approach."""
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -247,7 +247,7 @@ class TestGetAccountPages:
     @pytest.mark.asyncio
     async def test_get_account_pages_error_handling(self):
         """Test error handling when API calls fail."""
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -312,7 +312,7 @@ class TestGetAccountPages:
         from meta_ads_mcp.core.ads import get_account_pages
         
         # Mock the function to bypass decorator authentication  
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
             mock_auth.return_value = "test_token"
             
             # Call with empty string (should be treated as None)
@@ -347,7 +347,7 @@ class TestGetAccountPages:
             "222222222": {"id": "222222222", "name": "Page 2"}
         }
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"
@@ -374,7 +374,7 @@ class TestGetAccountPages:
     @pytest.mark.asyncio
     async def test_get_account_pages_act_prefix_handling(self):
         """Test that account IDs without 'act_' prefix are handled correctly."""
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth, \
              patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
             
             mock_auth.return_value = "test_access_token"

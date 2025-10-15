@@ -280,7 +280,7 @@ class TestEstimateAudienceSize:
         """Test error when no parameters provided"""
         # Since we're using the @meta_api_tool decorator, we need to simulate
         # its behavior for error handling
-        with patch('meta_ads_mcp.core.api.get_current_access_token') as mock_auth:
+        with patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_auth:
             mock_auth.return_value = "test_token"
             
             result = await estimate_audience_size()

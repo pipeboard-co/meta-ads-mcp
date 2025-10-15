@@ -32,7 +32,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_account_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_account_api.return_value = mock_account_response
                 
@@ -59,7 +59,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_adset_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_adset_api.return_value = mock_adset_response
                 
@@ -100,7 +100,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.side_effect = Exception(json.dumps(mock_error_response))
                 
@@ -127,7 +127,7 @@ class TestDSAIntegration:
         
         # Test 2: Permission error for DSA beneficiary
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.side_effect = Exception("Permission denied: business_management permission required")
                 
@@ -165,7 +165,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_de_account_response
                 
@@ -190,7 +190,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_us_account_response
                 
@@ -228,7 +228,7 @@ class TestDSAIntegration:
             }
             
             with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-                with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+                with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                     mock_auth.return_value = "test_access_token"
                     mock_api.return_value = mock_response
                     
@@ -259,7 +259,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_create_response
                 
@@ -298,7 +298,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_details_response
                 
@@ -329,7 +329,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_us_account_response
                 
@@ -348,7 +348,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_create_response
                 
@@ -383,7 +383,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.adsets.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_details_response
                 
@@ -398,7 +398,7 @@ class TestDSAIntegration:
     async def test_account_info_requires_account_id(self):
         """Test that get_account_info requires an account_id parameter"""
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
             mock_auth.return_value = "test_access_token"
             
             # Test without account_id parameter
@@ -438,7 +438,7 @@ class TestDSAIntegration:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 # First call returns permission error, second call returns accessible accounts
                 mock_api.side_effect = [mock_permission_error, mock_accessible_accounts]

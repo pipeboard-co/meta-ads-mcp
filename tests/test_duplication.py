@@ -54,7 +54,7 @@ async def test_forward_duplication_request_no_facebook_token():
         mock_auth.get_auth_token.return_value = None  # No Facebook token
         
         # Mock get_current_access_token to also return None
-        with patch("meta_ads_mcp.core.duplication.get_current_access_token") as mock_get_token:
+        with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
             mock_get_token.return_value = None
             
             result = await _forward_duplication_request("campaign", "123456789", None, {})

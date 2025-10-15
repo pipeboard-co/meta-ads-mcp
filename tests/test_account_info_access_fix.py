@@ -38,7 +38,7 @@ class TestAccountInfoAccessFix:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_account_response
                 
@@ -95,7 +95,7 @@ class TestAccountInfoAccessFix:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 
                 # First call returns permission error, second call returns accessible accounts
@@ -158,7 +158,7 @@ class TestAccountInfoAccessFix:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_error_response
                 
@@ -180,7 +180,7 @@ class TestAccountInfoAccessFix:
     async def test_account_info_missing_account_id_error(self):
         """Test that missing account_id parameter returns appropriate error"""
         
-        with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+        with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
             mock_auth.return_value = "test_access_token"
             
             result = await get_account_info(account_id=None)
@@ -207,7 +207,7 @@ class TestAccountInfoAccessFix:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_account_response
                 
@@ -236,7 +236,7 @@ class TestAccountInfoAccessFix:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_account_response
                 
@@ -272,7 +272,7 @@ class TestAccountInfoAccessRegression:
         }
         
         with patch('meta_ads_mcp.core.accounts.make_api_request', new_callable=AsyncMock) as mock_api:
-            with patch('meta_ads_mcp.core.api.get_current_access_token', new_callable=AsyncMock) as mock_auth:
+            with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.return_value = mock_account_response
                 

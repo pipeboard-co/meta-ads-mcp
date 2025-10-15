@@ -238,7 +238,7 @@ class TestDuplicationErrorHandling:
             mock_auth.get_pipeboard_token.return_value = "pipeboard_token"  # Has Pipeboard token
             mock_auth.get_auth_token.return_value = None  # No Facebook token
             
-            with patch("meta_ads_mcp.core.duplication.get_current_access_token") as mock_get_token:
+            with patch("meta_ads_mcp.core.auth.get_current_access_token") as mock_get_token:
                 mock_get_token.return_value = None  # No fallback token
                 
                 result = await duplication._forward_duplication_request("campaign", "123", None, {})

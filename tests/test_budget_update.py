@@ -40,7 +40,7 @@ class TestBudgetUpdateFunctionality:
     def mock_auth_manager(self):
         """Mock for the authentication manager"""
         with patch('meta_ads_mcp.core.api.auth_manager') as mock, \
-             patch('meta_ads_mcp.core.api.get_current_access_token') as mock_get_token:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             # Mock a valid access token
             mock.get_current_access_token.return_value = "test_access_token"
             mock.is_token_valid.return_value = True
@@ -433,7 +433,7 @@ class TestBudgetUpdateIntegration:
         # Test that the function accepts the new parameters
         with patch('meta_ads_mcp.core.adsets.make_api_request') as mock_api, \
              patch('meta_ads_mcp.core.api.auth_manager') as mock_auth, \
-             patch('meta_ads_mcp.core.api.get_current_access_token') as mock_get_token:
+             patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
             
             mock_api.return_value = {"id": "test_id", "daily_budget": "5000"}
             mock_auth.get_current_access_token.return_value = "test_access_token"
