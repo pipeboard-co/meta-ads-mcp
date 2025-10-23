@@ -17,6 +17,7 @@ poetry.lock
 uv.lock
 .uv.toml
 .cursor/
+.env
 
 # Generated content
 ad_creatives/

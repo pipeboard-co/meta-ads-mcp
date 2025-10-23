@@ -19,15 +19,13 @@ from .callback_server import (
     callback_server_port
 )
 
-# Import the new Pipeboard authentication
-from .pipeboard_auth import pipeboard_auth_manager
 
 # Auth constants
 # Scope includes pages_show_list and pages_read_engagement to fix issue #16
 # where get_account_pages failed for regular users due to missing page permissions
 AUTH_SCOPE = "business_management,public_profile,pages_show_list,pages_read_engagement"
 AUTH_REDIRECT_URI = "http://localhost:8888/callback"
-AUTH_RESPONSE_TYPE = "token"
+AUTH_RESPONSE_TYPE = "code"  # Use authorization code flow (not implicit token flow)
 
 # Log important configuration information
 logger.info("Authentication module initialized")
@@ -129,10 +127,7 @@ class AuthManager:
         self.app_id = app_id
         self.redirect_uri = redirect_uri
         self.token_info = None
-        # Check for Pipeboard token first
-        self.use_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
-        if not self.use_pipeboard:
-            self._load_cached_token()
+        self._load_cached_token()
     
     def _get_token_cache_path(self) -> pathlib.Path:
         """Get the platform-specific path for token cache file"""
@@ -243,12 +238,6 @@ class AuthManager:
         Returns:
             Access token if successful, None otherwise
         """
-        # If Pipeboard auth is available, use that instead
-        if self.use_pipeboard:
-            logger.info("Using Pipeboard authentication")
-            return pipeboard_auth_manager.get_access_token(force_refresh=force_refresh)
-        
-        # Otherwise, use the original OAuth flow
         # Check if we already have a valid token
         if not force_refresh and self.token_info and not self.token_info.is_expired():
             return self.token_info.access_token
@@ -283,10 +272,6 @@ class AuthManager:
         Returns:
             Access token if available, None otherwise
         """
-        # If using Pipeboard, always delegate to the Pipeboard auth manager
-        if self.use_pipeboard:
-            return pipeboard_auth_manager.get_access_token()
-            
         if not self.token_info or self.token_info.is_expired():
             return None
         
@@ -294,11 +279,6 @@ class AuthManager:
         
     def invalidate_token(self) -> None:
         """Invalidate the current token, usually because it has expired or is invalid"""
-        # If using Pipeboard, delegate to the Pipeboard auth manager
-        if self.use_pipeboard:
-            pipeboard_auth_manager.invalidate_token()
-            return
-            
         if self.token_info:
             logger.info(f"Invalidating token: {self.token_info.access_token[:10]}...")
             self.token_info = None
@@ -321,15 +301,86 @@ class AuthManager:
         self.invalidate_token()
 
 
+def exchange_authorization_code(auth_code: str) -> Optional[TokenInfo]:
+    """
+    Exchange an authorization code for an access token.
+    
+    Args:
+        auth_code: The authorization code received from OAuth redirect
+        
+    Returns:
+        TokenInfo object with the access token, or None if exchange failed
+    """
+    logger.info("Exchanging authorization code for access token")
+    
+    try:
+        # Get the app ID and secret from configuration
+        app_id = meta_config.get_app_id()
+        app_secret = os.environ.get("META_APP_SECRET", "")
+        
+        if not app_id or not app_secret:
+            logger.error("Missing app_id or app_secret for code exchange")
+            return None
+        
+        # Get redirect URI
+        redirect_uri = os.environ.get("META_REDIRECT_URI", auth_manager.redirect_uri)
+        
+        # Make the API request to exchange the code for a token
+        url = "https://graph.facebook.com/v22.0/oauth/access_token"
+        params = {
+            "client_id": app_id,
+            "redirect_uri": redirect_uri,
+            "client_secret": app_secret,
+            "code": auth_code
+        }
+        
+        logger.debug(f"Making code exchange request to {url}")
+        response = requests.get(url, params=params)
+        
+        if response.status_code == 200:
+            data = response.json()
+            logger.debug(f"Code exchange response: {data}")
+            
+            # Create TokenInfo from the response
+            access_token = data.get("access_token")
+            expires_in = data.get("expires_in")
+            
+            if access_token:
+                logger.info(f"Received access token from code exchange, expires in {expires_in} seconds")
+                return TokenInfo(
+                    access_token=access_token,
+                    expires_in=expires_in
+                )
+            else:
+                logger.error("No access_token in code exchange response")
+                return None
+        else:
+            logger.error(f"Code exchange failed with status {response.status_code}: {response.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Error exchanging code: {e}")
+        return None
+
+
 def process_token_response(token_container):
-    """Process the token response from Facebook."""
+    """Process the token response from Facebook OAuth callback."""
     global needs_authentication, auth_manager
     
-    if token_container and token_container.get('token'):
-        logger.info("Processing token response from Facebook OAuth")
+    # Check if we received an authorization code
+    if token_container and token_container.get('auth_code'):
+        logger.info("Processing authorization code from Facebook OAuth")
         
-        # Exchange the short-lived token for a long-lived token
-        short_lived_token = token_container['token']
+        # Exchange the authorization code for an access token
+        auth_code = token_container['auth_code']
+        short_lived_token_info = exchange_authorization_code(auth_code)
+        
+        if not short_lived_token_info:
+            logger.error("Failed to exchange authorization code for access token")
+            needs_authentication = True
+            return False
+        
+        # Now exchange the short-lived token for a long-lived token
+        short_lived_token = short_lived_token_info.access_token
         long_lived_token_info = exchange_token_for_long_lived(short_lived_token)
         
         if long_lived_token_info:
@@ -460,11 +511,8 @@ async def get_current_access_token() -> Optional[str]:
     app_id = meta_config.get_app_id()
     logger.debug(f"Current app_id: {app_id}")
     
-    # Check if using Pipeboard authentication
-    using_pipeboard = auth_manager.use_pipeboard
-    
-    # Check if app_id is valid - but only if not using Pipeboard authentication
-    if not app_id and not using_pipeboard:
+    # Check if app_id is valid
+    if not app_id:
         logger.error("TOKEN VALIDATION FAILED: No valid app_id configured")
         logger.error("Please set META_APP_ID environment variable or configure via meta_config.set_app_id()")
         return None
@@ -522,11 +570,13 @@ def login():
         # Start the callback server first
         try:
             port = start_callback_server()
+            # Update the redirect URI to use the actual callback server port
+            auth_manager.redirect_uri = f"http://localhost:{port}/callback"
         except Exception as callback_error:
             print(f"Error: {callback_error}")
             print("Callback server is disabled. Please use alternative authentication methods:")
-            print("- Set PIPEBOARD_API_TOKEN environment variable for Pipeboard authentication")
-            print("- Or provide a direct META_ACCESS_TOKEN environment variable")
+            print("- Provide a direct META_ACCESS_TOKEN environment variable")
+            print("- Or set META_REDIRECT_URI to use a public OAuth redirect endpoint")
             return
         
         # Get the auth URL and open the browser
@@ -540,17 +590,29 @@ def login():
         wait_interval = 2  # 2 seconds
         
         for _ in range(max_wait // wait_interval):
-            if token_container["token"]:
-                token = token_container["token"]
-                print("Authentication successful!")
-                # Verify token works by getting basic user info
-                try:
-                    from .api import make_api_request
-                    result = asyncio.run(make_api_request("me", token, {}))
-                    print(f"Authenticated as: {result.get('name', 'Unknown')} (ID: {result.get('id', 'Unknown')})")
+            # Check if we received an authorization code
+            if token_container.get("auth_code"):
+                auth_code = token_container["auth_code"]
+                print(f"Received authorization code, exchanging for access token...")
+                
+                # Process the token response to exchange code for token
+                success = process_token_response(token_container)
+                if success:
+                    print("✅ Authentication successful!")
+                    # Get the token from auth_manager
+                    token = auth_manager.get_access_token()
+                    if token:
+                        print(f"Token preview: {token[:10]}...")
+                        # Verify token works by getting basic user info
+                        try:
+                            from .api import make_api_request
+                            result = asyncio.run(make_api_request("me", token, {}))
+                            print(f"Authenticated as: {result.get('name', 'Unknown')} (ID: {result.get('id', 'Unknown')})")
+                        except Exception as e:
+                            print(f"Warning: Could not verify token: {e}")
                     return
-                except Exception as e:
-                    print(f"Warning: Could not verify token: {e}")
+                else:
+                    print("❌ Failed to exchange authorization code for token")
                     return
             time.sleep(wait_interval)
         
@@ -564,4 +626,4 @@ def login():
 META_APP_ID = os.environ.get("META_APP_ID", "YOUR_META_APP_ID")
 
 # Create the auth manager
-auth_manager = AuthManager(META_APP_ID) 
+auth_manager = AuthManager(META_APP_ID)

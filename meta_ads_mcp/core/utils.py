@@ -17,20 +17,13 @@ import platform
 META_APP_ID = os.environ.get("META_APP_ID", "")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 
-# Only show warnings about Meta credentials if we're not using Pipeboard
-# Check for Pipeboard token in environment
-using_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
-
-# Print warning if Meta app credentials are not configured and not using Pipeboard
-if not using_pipeboard:
-    if not META_APP_ID:
-        print("WARNING: META_APP_ID environment variable is not set.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
-        print("ALTERNATIVE: For direct Meta authentication, set META_APP_ID to your Meta App ID.")
-    if not META_APP_SECRET:
-        print("WARNING: META_APP_SECRET environment variable is not set.")
-        print("NOTE: This is only needed for direct Meta authentication. Pipeboard authentication doesn't require this.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
+# Print warning if Meta app credentials are not configured
+if not META_APP_ID:
+    print("WARNING: META_APP_ID environment variable is not set.")
+    print("REQUIRED: Set META_APP_ID to your Meta App ID for authentication.")
+if not META_APP_SECRET:
+    print("WARNING: META_APP_SECRET environment variable is not set.")
+    print("REQUIRED: Set META_APP_SECRET to your Meta App Secret for OAuth token exchange.")
 
 # Configure logging to file
 def setup_logging():
@@ -64,7 +57,6 @@ def setup_logging():
     # Log startup information
     logger.info(f"Logging initialized. Log file: {log_file}")
     logger.info(f"Platform: {platform.system()} {platform.release()}")
-    logger.info(f"Using Pipeboard authentication: {using_pipeboard}")
     
     return logger
 
@@ -258,4 +250,4 @@ def create_resource_from_image(image_bytes: bytes, resource_id: str, name: str) 
         "resource_uri": f"meta-ads://images/{resource_id}",
         "name": name,
         "size": len(image_bytes)
-    } 
+    }

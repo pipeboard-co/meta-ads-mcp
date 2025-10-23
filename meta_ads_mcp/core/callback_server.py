@@ -82,10 +82,11 @@ class CallbackHandler(BaseHTTPRequestHandler):
             
             # Store the authorization code temporarily
             # The auth module will exchange this for an access token
+            import time
             token_container.update({
                 "auth_code": code,
                 "state": state,
-                "timestamp": asyncio.get_event_loop().time()
+                "timestamp": time.time()
             })
             
             html = """
@@ -254,4 +255,4 @@ def server_thread():
         callback_server_running = False
     finally:
         print("Callback server thread finished")
-        callback_server_running = False 
+        callback_server_running = False

@@ -13,7 +13,6 @@ import json
 
 # Use context variables instead of thread-local storage for better async support
 _auth_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('auth_token', default=None)
-_pipeboard_token: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar('pipeboard_token', default=None)
 
 class FastMCPAuthIntegration:
     """Direct integration with FastMCP for HTTP authentication"""
@@ -36,33 +35,11 @@ class FastMCPAuthIntegration:
         """
         return _auth_token.get(None)
     
-    @staticmethod
-    def set_pipeboard_token(token: str) -> None:
-        """Set Pipeboard token for the current context
-        
-        Args:
-            token: Pipeboard API token to use for this request
-        """
-        _pipeboard_token.set(token)
-    
-    @staticmethod
-    def get_pipeboard_token() -> Optional[str]:
-        """Get Pipeboard token for the current context
-        
-        Returns:
-            Pipeboard token if set, None otherwise
-        """
-        return _pipeboard_token.get(None)
     
     @staticmethod
     def clear_auth_token() -> None:
         """Clear authentication token for the current context"""
         _auth_token.set(None)
-    
-    @staticmethod
-    def clear_pipeboard_token() -> None:
-        """Clear Pipeboard token for the current context"""
-        _pipeboard_token.set(None)
     
     @staticmethod
     def extract_token_from_headers(headers: dict) -> Optional[str]:
@@ -84,37 +61,8 @@ class FastMCPAuthIntegration:
         # Check for direct Meta access token
         meta_token = headers.get('X-META-ACCESS-TOKEN') or headers.get('x-meta-access-token')
         if meta_token:
+            logger.debug("Found Meta access token in X-META-ACCESS-TOKEN header")
             return meta_token
-        
-        # Check for Pipeboard token (legacy support, to be removed)
-        pipeboard_token = headers.get('X-PIPEBOARD-API-TOKEN') or headers.get('x-pipeboard-api-token')
-        if pipeboard_token:
-            logger.debug("Found Pipeboard token in legacy headers")
-            return pipeboard_token
-        
-        return None
-    
-    @staticmethod
-    def extract_pipeboard_token_from_headers(headers: dict) -> Optional[str]:
-        """Extract Pipeboard token from HTTP headers
-        
-        Args:
-            headers: HTTP request headers
-            
-        Returns:
-            Pipeboard token if found, None otherwise
-        """
-        # Check for Pipeboard token in X-Pipeboard-Token header (duplication API pattern)
-        pipeboard_token = headers.get('X-Pipeboard-Token') or headers.get('x-pipeboard-token')
-        if pipeboard_token:
-            logger.debug("Found Pipeboard token in X-Pipeboard-Token header")
-            return pipeboard_token
-        
-        # Check for legacy Pipeboard token header
-        legacy_token = headers.get('X-PIPEBOARD-API-TOKEN') or headers.get('x-pipeboard-api-token')
-        if legacy_token:
-            logger.debug("Found Pipeboard token in legacy X-PIPEBOARD-API-TOKEN header")
-            return legacy_token
         
         return None
 
@@ -244,42 +192,128 @@ def setup_fastmcp_http_auth(mcp_server):
 # --- AuthInjectionMiddleware definition ---
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from datetime import datetime
 import json # Ensure json is imported if not already at the top
 
 class AuthInjectionMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app):
+        super().__init__(app)
+        logger.info("🔐 AuthInjectionMiddleware instantiated")
+    
     async def dispatch(self, request: Request, call_next):
-        logger.debug(f"HTTP Auth Middleware: Processing request to {request.url.path}")
-        logger.debug(f"HTTP Auth Middleware: Request headers: {list(request.headers.keys())}")
+        logger.info(f"🔐 HTTP Auth Middleware: Processing request to {request.url.path}")
         
-        # Extract both types of tokens for dual-header authentication
-        auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
-        pipeboard_token = FastMCPAuthIntegration.extract_pipeboard_token_from_headers(dict(request.headers))
+        auth_token = None
+        user = None
+        
+        # Check for PAT authentication first
+        auth_header = request.headers.get('Authorization') or request.headers.get('authorization')
+        if auth_header and auth_header.lower().startswith('bearer '):
+            token = auth_header[7:].strip()
+            logger.info(f"🔑 Found Bearer token: {token[:10]}...")
+            
+            # Check if it's a PAT (starts with mcp_ or pat_)
+            if token.startswith('mcp_') or token.startswith('pat_'):
+                logger.info("✅ Detected PAT token, verifying...")
+                user_info, meta_token = await self._verify_pat_and_get_meta_token(token)
+                if user_info and meta_token:
+                    logger.info(f"✅ PAT verified for user: {user_info['email']}")
+                    logger.info(f"✅ Meta token retrieved: {meta_token[:20]}...")
+                    request.state.user = user_info
+                    auth_token = meta_token
+                else:
+                    logger.warning("❌ PAT verification failed or no Meta token found")
+            else:
+                # Direct token (not a PAT)
+                logger.info("ℹ️  Using direct bearer token (not a PAT)")
+                auth_token = token
+        else:
+            logger.warning("⚠️  No Authorization header found")
+        
+        # Fallback: Extract Meta access token from X-META-ACCESS-TOKEN header
+        if not auth_token:
+            auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
         
         if auth_token:
-            logger.debug(f"HTTP Auth Middleware: Extracted auth token: {auth_token[:10]}...")
-            logger.debug("Injecting auth token into request context")
+            logger.info(f"✅ HTTP Auth Middleware: Injecting Meta token into context")
             FastMCPAuthIntegration.set_auth_token(auth_token)
-        
-        if pipeboard_token:
-            logger.debug(f"HTTP Auth Middleware: Extracted Pipeboard token: {pipeboard_token[:10]}...")
-            logger.debug("Injecting Pipeboard token into request context")
-            FastMCPAuthIntegration.set_pipeboard_token(pipeboard_token)
-        
-        if not auth_token and not pipeboard_token:
-            logger.warning("HTTP Auth Middleware: No authentication tokens found in headers")
+        else:
+            logger.warning("❌ HTTP Auth Middleware: No authentication token available")
         
         try:
             response = await call_next(request)
             return response
         finally:
-            # Clear tokens that were set for this request
+            # Clear token that was set for this request
             if auth_token:
                 FastMCPAuthIntegration.clear_auth_token()
-            if pipeboard_token:
-                FastMCPAuthIntegration.clear_pipeboard_token()
+    
+    async def _verify_pat_and_get_meta_token(self, raw_token: str):
+        """Verify PAT and return user + Meta access token."""
+        try:
+            from .db import get_db
+            from .models import User, PersonalAccessToken, OAuthToken
+            from .pat import extract_prefix, verify_pat
+            from sqlalchemy import select
+            
+            prefix = extract_prefix(raw_token)
+            
+            with get_db() as db:
+                # Find PATs with matching prefix
+                candidates = db.execute(
+                    select(PersonalAccessToken)
+                    .where(PersonalAccessToken.token_prefix == prefix)
+                ).scalars().all()
+                
+                # Verify hash for each candidate
+                for pat in candidates:
+                    if verify_pat(raw_token, pat.token_hash):
+                        # Check if token is active
+                        if not pat.is_active:
+                            logger.warning(f"PAT {pat.id} is not active (revoked or expired)")
+                            continue
+                        
+                        # Update last_used_at
+                        pat.last_used_at = datetime.utcnow()
+                        db.commit()
+                        
+                        # Get user (may not exist if only OAuth tokens were created)
+                        user = db.get(User, pat.user_id)
+                        user_email = user.email if user else f"user_{pat.user_id[:8]}"
+                        user_id = pat.user_id
+                        
+                        # Get Meta token for this user
+                        meta_token = db.execute(
+                            select(OAuthToken)
+                            .where(
+                                OAuthToken.user_id == pat.user_id,
+                                OAuthToken.provider == "meta"
+                            )
+                        ).scalar_one_or_none()
+                        
+                        if not meta_token:
+                            logger.warning(f"No Meta token found for user {user_email}")
+                            return None, None
+                        
+                        access_token = meta_token.access_token
+                        logger.debug(f"PAT verified for user: {user_email}")
+                        
+                        # Return a simple dict with user info instead of the detached object
+                        user_info = {
+                            'id': user_id,
+                            'email': user_email
+                        }
+                        return user_info, access_token
+                
+                logger.warning(f"No valid PAT found for prefix {prefix}")
+                return None, None
+        
+        except Exception as e:
+            logger.error(f"Error verifying PAT: {e}", exc_info=True)
+            return None, None
 
 def setup_starlette_middleware(app):
-    """Add AuthInjectionMiddleware to the Starlette app if not already present.
+    """Add AuthInjectionMiddleware and mount HTTP routes to the Starlette app.
     
     Args:
         app: Starlette app instance
@@ -304,4 +338,26 @@ def setup_starlette_middleware(app):
         except Exception as e:
             logger.error(f"Failed to add AuthInjectionMiddleware to Starlette app: {e}", exc_info=True)
     else:
-        logger.debug("AuthInjectionMiddleware already present in Starlette app's middleware stack.") 
+        logger.debug("AuthInjectionMiddleware already present in Starlette app's middleware stack.")
+    
+    # Mount HTTP routes for user/token management
+    try:
+        from .http_routes import routes
+        from starlette.routing import Mount
+        
+        # Check if routes are already mounted
+        routes_mounted = any(
+            isinstance(route, Mount) and route.path == ""
+            for route in app.routes
+        )
+        
+        if not routes_mounted:
+            # Mount all routes
+            for route in routes:
+                app.routes.append(route)
+            logger.info(f"Mounted {len(routes)} HTTP routes for user/token management")
+        else:
+            logger.debug("HTTP routes already mounted")
+    
+    except Exception as e:
+        logger.error(f"Failed to mount HTTP routes: {e}", exc_info=True)

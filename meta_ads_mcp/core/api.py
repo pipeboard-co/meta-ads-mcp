@@ -211,12 +211,9 @@ def meta_api_tool(func):
                     else:
                         logger.warning("No access token available from auth_manager")
                         # Add more details about why token might be missing
-                        if (auth_manager.app_id == "YOUR_META_APP_ID" or not auth_manager.app_id) and not auth_manager.use_pipeboard:
+                        if auth_manager.app_id == "YOUR_META_APP_ID" or not auth_manager.app_id:
                             logger.error("TOKEN VALIDATION FAILED: No valid app_id configured")
                             logger.error("Please set META_APP_ID environment variable or configure in your code")
-                        elif auth_manager.use_pipeboard:
-                            logger.error("TOKEN VALIDATION FAILED: Pipeboard authentication enabled but no valid token available")
-                            logger.error("Complete authentication via Pipeboard service or check PIPEBOARD_API_TOKEN")
                         else:
                             logger.error("Check logs above for detailed token validation failures")
                 except Exception as e:
@@ -232,59 +229,32 @@ def meta_api_tool(func):
                 # Add more specific troubleshooting information
                 auth_url = auth_manager.get_auth_url()
                 app_id = auth_manager.app_id
-                using_pipeboard = auth_manager.use_pipeboard
-                
                 logger.error("TOKEN VALIDATION SUMMARY:")
                 logger.error(f"- Current app_id: '{app_id}'")
                 logger.error(f"- Environment META_APP_ID: '{os.environ.get('META_APP_ID', 'Not set')}'")
-                logger.error(f"- Pipeboard API token configured: {'Yes' if os.environ.get('PIPEBOARD_API_TOKEN') else 'No'}")
-                logger.error(f"- Using Pipeboard authentication: {'Yes' if using_pipeboard else 'No'}")
+                logger.error(f"- Environment META_ACCESS_TOKEN: {'Set' if os.environ.get('META_ACCESS_TOKEN') else 'Not set'}")
                 
-                # Check for common configuration issues - but only if not using Pipeboard
-                if not using_pipeboard and (app_id == "YOUR_META_APP_ID" or not app_id):
+                # Check for common configuration issues
+                if app_id == "YOUR_META_APP_ID" or not app_id:
                     logger.error("ISSUE DETECTED: No valid Meta App ID configured")
                     logger.error("ACTION REQUIRED: Set META_APP_ID environment variable with a valid App ID")
-                elif using_pipeboard:
-                    logger.error("ISSUE DETECTED: Pipeboard authentication configured but no valid token available")
-                    logger.error("ACTION REQUIRED: Complete authentication via Pipeboard service")
                 
-                # Provide different guidance based on authentication method
-                if using_pipeboard:
-                    return json.dumps({
-                        "error": {
-                            "message": "Pipeboard Authentication Required",
-                            "details": {
-                                "description": "Your Pipeboard API token is invalid or has expired",
-                                "action_required": "Update your Pipeboard token",
-                                "setup_url": "https://pipeboard.co/setup",
-                                "token_url": "https://pipeboard.co/api-tokens",
-                                "configuration_status": {
-                                    "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
-                                    "pipeboard_enabled": True,
-                                },
-                                "troubleshooting": "Go to https://pipeboard.co/setup to verify your account setup, then visit https://pipeboard.co/api-tokens to obtain a new API token",
-                                "setup_link": "[Verify your Pipeboard account setup](https://pipeboard.co/setup)",
-                                "token_link": "[Get a new Pipeboard API token](https://pipeboard.co/api-tokens)"
-                            }
+                return json.dumps({
+                    "error": {
+                        "message": "Authentication Required",
+                        "details": {
+                            "description": "You need to authenticate with the Meta API before using this tool",
+                            "action_required": "Please authenticate first using the get_login_link tool or set META_ACCESS_TOKEN",
+                            "auth_url": auth_url,
+                            "configuration_status": {
+                                "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
+                                "access_token_provided": bool(os.environ.get('META_ACCESS_TOKEN')),
+                            },
+                            "troubleshooting": "Check logs for TOKEN VALIDATION FAILED messages",
+                            "markdown_link": f"[Click here to authenticate with Meta Ads API]({auth_url})"
                         }
-                    }, indent=2)
-                else:
-                    return json.dumps({
-                        "error": {
-                            "message": "Authentication Required",
-                            "details": {
-                                "description": "You need to authenticate with the Meta API before using this tool",
-                                "action_required": "Please authenticate first",
-                                "auth_url": auth_url,
-                                "configuration_status": {
-                                    "app_id_configured": bool(app_id) and app_id != "YOUR_META_APP_ID",
-                                    "pipeboard_enabled": False,
-                                },
-                                "troubleshooting": "Check logs for TOKEN VALIDATION FAILED messages",
-                                "markdown_link": f"[Click here to authenticate with Meta Ads API]({auth_url})"
-                            }
-                        }
-                    }, indent=2)
+                    }
+                }, indent=2)
                 
             # Call the original function
             result = await func(*args, **kwargs)
@@ -326,4 +296,4 @@ def meta_api_tool(func):
             logger.error(f"Error in {func.__name__}: {str(e)}")
             return json.dumps({"error": str(e)}, indent=2)
     
-    return wrapper 
+    return wrapper
