@@ -5,3 +5,13 @@ requests>=2.32.3
 Pillow>=10.0.0
 pathlib>=1.0.1
 python-dateutil>=2.8.2
+# Multi-tenant database support
+sqlalchemy>=2.0.0
+alembic>=1.13.0
+psycopg[binary]>=3.2.0
+# Token encryption and hashing
+cryptography>=42.0.0
+argon2-cffi>=23.1.0
+# HTTP server dependencies
+uvicorn>=0.27.0
+starlette>=0.36.0

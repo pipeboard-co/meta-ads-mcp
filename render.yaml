@@ -1,0 +1,50 @@
+# Render Blueprint for Meta Ads MCP
+# Deploy this entire stack with one click: https://render.com/docs/infrastructure-as-code
+
+services:
+  # Backend MCP Server
+  - type: web
+    name: meta-ads-mcp-backend
+    runtime: python
+    plan: starter
+    region: ohio
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run_http_server.py
+    envVars:
+      - key: META_APP_ID
+        value: "665587869862344"
+      - key: META_APP_SECRET
+        value: "2eebb6109153f476f9df8625d673917e"
+      - key: POSTGRES_URL
+        value: "postgresql://neondb_owner:npg_0GKMQL1jJPBS@ep-lucky-sunset-adv3mq0g-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+      - key: PYTHON_VERSION
+        value: "3.11"
+    healthCheckPath: /health
+
+  # Frontend Next.js App
+  - type: web
+    name: meta-ads-mcp-frontend
+    runtime: node
+    plan: starter
+    region: ohio
+    branch: main
+    rootDir: frontend
+    buildCommand: corepack enable && pnpm install && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: POSTGRES_URL
+        value: "postgresql://neondb_owner:npg_0GKMQL1jJPBS@ep-lucky-sunset-adv3mq0g-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require"
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: META_APP_ID
+        value: "665587869862344"
+      - key: META_APP_SECRET
+        value: "2eebb6109153f476f9df8625d673917e"
+      - key: NEXT_PUBLIC_META_APP_ID
+        value: "665587869862344"
+      - key: META_REDIRECT_URI
+        sync: false  # Set to: https://meta-ads-mcp-frontend.onrender.com/setup/callback after deployment
+      - key: NEXT_PUBLIC_MCP_SERVER_URL
+        sync: false  # Set to: https://meta-ads-mcp-backend.onrender.com/mcp after deployment
+
