@@ -83,6 +83,16 @@ curl -H "Authorization: Bearer your_pipeboard_token" \
      -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
+#### Remote MCP: Token in URL
+
+When using the hosted Remote MCP at `https://mcp.pipeboard.co/meta-ads-mcp`, you can alternatively authenticate by including the token as a URL parameter:
+
+```
+https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
+```
+
+This is particularly useful for MCP clients that don't support interactive authentication flows.
+
 ### Alternative Method: Direct Meta Token
 
 If you have a Meta Developer App, you can use a direct access token via the `X-META-ACCESS-TOKEN` header. This is less common.

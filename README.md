@@ -43,6 +43,16 @@ The fastest and most reliable way to get started is to **[🚀 Get started with 
 
 That's it! You can now ask Claude to analyze your Meta ad campaigns, get performance insights, and manage your advertising.
 
+#### Advanced: Direct Token Authentication (Claude)
+
+For direct token-based authentication without the interactive flow, use this URL format when adding the integration:
+
+```
+https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
+```
+
+Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
+
 ### For Cursor Users
 
 Add the following to your `~/.cursor/mcp.json`. Once you enable the remote MCP, click on "Needs login" to finish the login process.
@@ -58,11 +68,37 @@ Add the following to your `~/.cursor/mcp.json`. Once you enable the remote MCP, 
 }
 ```
 
+#### Advanced: Direct Token Authentication (Cursor)
+
+If you prefer to authenticate without the interactive login flow, you can include your Pipeboard API token directly in the URL:
+
+```json
+{
+  "mcpServers": {
+    "meta-ads-remote": {
+      "url": "https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN"
+    }
+  }
+}
+```
+
+Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
+
 ### For Other MCP Clients
 
 Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
 
 **[📖 Get detailed setup instructions for your AI client here](https://pipeboard.co)**
+
+#### Advanced: Direct Token Authentication (Other Clients)
+
+For MCP clients that support token-based authentication, you can append your Pipeboard API token to the URL:
+
+```
+https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
+```
+
+This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
 
 ## Local Installation (Technical Users Only)
 
