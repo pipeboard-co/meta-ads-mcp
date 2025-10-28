@@ -9,7 +9,14 @@ from .server import mcp_server
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_campaigns(account_id: str, access_token: Optional[str] = None, limit: int = 10, status_filter: str = "", after: str = "") -> str:
+async def get_campaigns(
+    account_id: str, 
+    access_token: Optional[str] = None, 
+    limit: int = 10, 
+    status_filter: str = "", 
+    objective_filter: Union[str, List[str]] = "", 
+    after: str = ""
+) -> str:
     """
     Get campaigns for a Meta Ads account with optional filtering.
     
@@ -26,6 +33,11 @@ async def get_campaigns(account_id: str, access_token: Optional[str] = None, lim
         status_filter: Filter by effective status (e.g., 'ACTIVE', 'PAUSED', 'ARCHIVED').
                        Maps to the 'effective_status' API parameter, which expects an array
                        (this function handles the required JSON formatting). Leave empty for all statuses.
+        objective_filter: Filter by campaign objective(s). Can be a single objective string or a list of objectives.
+                         Valid objectives: 'OUTCOME_AWARENESS', 'OUTCOME_TRAFFIC', 'OUTCOME_ENGAGEMENT',
+                         'OUTCOME_LEADS', 'OUTCOME_SALES', 'OUTCOME_APP_PROMOTION'.
+                         Examples: 'OUTCOME_LEADS' or ['OUTCOME_LEADS', 'OUTCOME_SALES'].
+                         Leave empty for all objectives.
         after: Pagination cursor to get the next set of results
     """
     # Require explicit account_id
@@ -38,9 +50,31 @@ async def get_campaigns(account_id: str, access_token: Optional[str] = None, lim
         "limit": limit
     }
     
+    # Build filtering array for complex filtering
+    filters = []
+    
     if status_filter:
         # API expects an array, encode it as a JSON string
         params["effective_status"] = json.dumps([status_filter])
+    
+    # Handle objective filtering - supports both single string and list of objectives
+    if objective_filter:
+        # Convert single string to list for consistent handling
+        objectives = [objective_filter] if isinstance(objective_filter, str) else objective_filter
+        
+        # Filter out empty strings
+        objectives = [obj for obj in objectives if obj]
+        
+        if objectives:
+            filters.append({
+                "field": "objective",
+                "operator": "IN",
+                "value": objectives
+            })
+    
+    # Add filtering parameter if we have filters
+    if filters:
+        params["filtering"] = json.dumps(filters)
     
     if after:
         params["after"] = after
