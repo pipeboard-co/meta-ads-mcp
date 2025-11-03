@@ -100,25 +100,13 @@ https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
 
 This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
 
-## Local Installation (Technical Users Only)
+## Local Installation (Advanced Technical Users Only)
 
-If you're a developer or need to customize the installation, you can run Meta Ads MCP locally. **Most marketers should use the Remote MCP above instead!** For complete technical setup instructions, see our **[Local Installation Guide](LOCAL_INSTALLATION.md)**.
+🚀 **We strongly recommend using [Remote MCP](https://pipeboard.co) instead** - it's faster, more reliable, and requires no technical setup.
+
+For developers who need to self-host, the package is available via pip. Local installations require creating your own Meta Developer App and implementing the complete OAuth flow. See the source repository for technical details.
 
 Meta Ads MCP also supports **streamable HTTP transport**, allowing you to run it as a standalone HTTP API for web applications and custom integrations. See **[Streamable HTTP Setup Guide](STREAMABLE_HTTP_SETUP.md)** for complete instructions.
-
-### Quick Local Setup
-
-```bash
-# Install via uvx (recommended)
-uvx meta-ads-mcp
-
-# Set your Pipeboard token
-export PIPEBOARD_API_TOKEN=your_pipeboard_token
-
-# Add to your MCP client configuration
-```
-
-For detailed step-by-step instructions, authentication setup, debugging, and troubleshooting, visit **[LOCAL_INSTALLATION.md](LOCAL_INSTALLATION.md)**.
 
 ## Features
 
@@ -141,9 +129,9 @@ For detailed step-by-step instructions, authentication setup, debugging, and tro
 
 **[✨ Get started with Remote MCP here](https://pipeboard.co)** - no technical setup required! Just connect your Facebook Ads account and start asking AI to analyze your campaigns.
 
-### Local Installation (Technical Users)
+### Local Installation (Advanced Technical Users)
 
-For local installation configuration, authentication options, and advanced technical setup, see our **[Local Installation Guide](LOCAL_INSTALLATION.md)**.
+For advanced users who need to self-host, the package can be installed from source. Local installations require creating your own Meta Developer App. **We recommend using [Remote MCP](https://pipeboard.co) for a simpler experience.**
 
 ### Available MCP Tools
 
@@ -469,7 +457,7 @@ The only restriction is that you cannot offer this as a competing hosted service
 Meta Ads MCP follows security best practices with secure token management and automatic authentication handling. 
 
 - **Remote MCP**: All authentication is handled securely in the cloud - no local token storage required
-- **Local Installation**: Tokens are cached securely on your local machine - see [Local Installation Guide](LOCAL_INSTALLATION.md) for details
+- **Local Installation**: Tokens are cached securely on your local machine
 
 ## Testing
 
@@ -481,7 +469,7 @@ Test your Meta Ads MCP connection with any MCP client:
 2. **Check Account Details**: Use `mcp_meta_ads_get_account_info` with your account ID
 3. **List Campaigns**: Try `mcp_meta_ads_get_campaigns` to see your ad campaigns
 
-For detailed local installation testing, see [Local Installation Guide](LOCAL_INSTALLATION.md).
+For detailed local installation testing, see the source repository.
 
 ## Troubleshooting
 
@@ -491,10 +479,4 @@ The easiest way to avoid any setup issues is to **[🎯 use our Remote MCP inste
 
 ### Local Installation Issues
 
-For comprehensive troubleshooting, debugging, and local installation issues, see our **[Local Installation Guide](LOCAL_INSTALLATION.md)** which includes:
-
-- Authentication troubleshooting
-- Installation issues and solutions
-- API error resolution
-- Debug logs and diagnostic commands
-- Performance optimization tips
+For local installation issues, refer to the source repository. **For the easiest experience, we recommend using [Remote MCP](https://pipeboard.co) instead.**
