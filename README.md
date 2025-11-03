@@ -104,8 +104,6 @@ This bypasses the interactive login flow and authenticates immediately. Get your
 
 🚀 **We strongly recommend using [Remote MCP](https://pipeboard.co) instead** - it's faster, more reliable, and requires no technical setup.
 
-For developers who need to self-host, the package is available via pip. Local installations require creating your own Meta Developer App and implementing the complete OAuth flow. See the source repository for technical details.
-
 Meta Ads MCP also supports **streamable HTTP transport**, allowing you to run it as a standalone HTTP API for web applications and custom integrations. See **[Streamable HTTP Setup Guide](STREAMABLE_HTTP_SETUP.md)** for complete instructions.
 
 ## Features
