@@ -53,12 +53,6 @@ pip install -e .
 
 ## Authentication Setup
 
-You have two authentication options:
-
-### Option 1: Pipeboard Authentication (Recommended)
-
-This is the easiest method that handles all OAuth complexity for you:
-
 1. **Sign up to Pipeboard**
    - Visit [Pipeboard.co](https://pipeboard.co)
    - Create an account
@@ -87,10 +81,6 @@ This is the easiest method that handles all OAuth complexity for you:
    echo 'export PIPEBOARD_API_TOKEN=your_pipeboard_token_here' >> ~/.bashrc
    source ~/.bashrc
    ```
-
-### Option 2: Custom Meta App
-
-If you prefer to use your own Meta Developer App, see [CUSTOM_META_APP.md](CUSTOM_META_APP.md) for detailed instructions.
 
 ## MCP Client Configuration
 
@@ -451,7 +441,6 @@ export META_ADS_CACHE_DIR=/custom/cache/path
 export META_ADS_CACHE_DURATION=3600
 
 # Pipeboard Configuration
-export PIPEBOARD_API_BASE=https://api.pipeboard.co
 export PIPEBOARD_API_TOKEN=your_token_here
 ```
 
@@ -460,19 +449,6 @@ export PIPEBOARD_API_TOKEN=your_token_here
 Meta Ads MCP uses **stdio transport** by default. For HTTP transport:
 
 See [STREAMABLE_HTTP_SETUP.md](STREAMABLE_HTTP_SETUP.md) for streamable HTTP transport configuration.
-
-### Custom Meta App Integration
-
-For advanced users who want to use their own Meta Developer App:
-
-1. Follow [CUSTOM_META_APP.md](CUSTOM_META_APP.md) guide
-2. Set up OAuth flow
-3. Configure environment variables:
-   ```bash
-   export META_APP_ID=your_app_id
-   export META_APP_SECRET=your_app_secret
-   export META_REDIRECT_URI=your_redirect_uri
-   ```
 
 ## Getting Help
 
