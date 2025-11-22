@@ -1,0 +1,15 @@
+# MCP requirements
+mcp>=0.0.11
+
+# Google API requirements
+google-auth>=2.25.2
+google-auth-oauthlib>=1.1.0
+google-auth-httplib2>=0.1.1
+requests>=2.31.0
+
+# Environment configuration
+python-dotenv>=1.0.0
+
+# Optional visualization dependencies
+matplotlib>=3.7.3
+pandas>=2.1.4
