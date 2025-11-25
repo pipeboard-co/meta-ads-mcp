@@ -9,15 +9,21 @@
 
 ## 🎯 Overview
 
-Fix Your Tracking is a unified repository providing two complementary Model Context Protocol (MCP) servers that enable complete control over Meta's advertising and tracking infrastructure:
+Fix Your Tracking is a unified repository providing comprehensive advertising platform integration through MCP servers and CLI tools:
 
 ### 🎨 **Meta Ads MCP** (Python)
 Campaign management, ad performance analysis, and creative optimization
 
-### 🏭️ **Gateway MCP** (TypeScript)  
+### 🏭️ **Gateway MCP** (TypeScript)
 CAPI Gateway, Signals Gateway, and tracking infrastructure management
 
-Together, these MCPs enable comprehensive data audit workflows, from analyzing ad performance to validating tracking infrastructure.
+### 🔧 **Google Ads MCP & CLI** (Python/TypeScript)
+Google Ads campaign management, auditing, and AI-powered optimization
+
+### 🛠️ **Platform CLI Tools** (TypeScript)
+Direct API access for GoHighLevel, TripleWhale, and cross-platform data synchronization
+
+Together, these tools enable comprehensive data audit workflows across Meta, Google, and CRM platforms - from analyzing ad performance to validating tracking infrastructure and syncing attribution data.
 
 > **DISCLAIMER:** This is an unofficial third-party tool and is not associated with, endorsed by, or affiliated with Meta in any way.
 
@@ -56,6 +62,103 @@ npm install && npm run build
 | **Event Validation** | - | ✅ Primary |
 | **Tracking Infrastructure** | Support | ✅ Primary |
 | **Complete Data Audits** | ✅ Required | ✅ Required |
+
+## 🛠️ CLI Tools
+
+### **ghl-cli** - GoHighLevel Management
+Command-line tool for managing GoHighLevel contacts and opportunities.
+
+```bash
+cd ghl-cli
+npm install
+npm run dev setup  # Check configuration
+
+# List and export contacts
+npm run dev contacts list --location-id <location_id>
+npm run dev contacts list --export contacts.json
+
+# Manage opportunities
+npm run dev opportunities list --pipeline-id <pipeline_id>
+npm run dev opportunities list --status won --export won_deals.json
+```
+
+**Features:**
+- List/export contacts with filtering by tags and status
+- Opportunity management by pipeline and status
+- Rate limiting (100 req/10s)
+- JSON export format
+- Beautiful terminal output
+
+**Setup:** See [ghl-cli/README.md](ghl-cli/README.md)
+
+### **triplewhale-cli** - TripleWhale Attribution
+Push offline events and view attribution metrics for e-commerce analytics.
+
+```bash
+cd triplewhale-cli
+npm install
+
+# Push single event
+npm run dev push-event --shop <shop_id> --event <event_type> --value <value>
+
+# Push batch events from JSON
+npm run dev push-events --file events.json
+```
+
+**Features:**
+- Push offline conversion events
+- View attribution metrics
+- Batch event processing
+- E-commerce analytics integration
+
+### **ghl-tw-sync** - Data Synchronization
+Automated sync tool to push GoHighLevel data to TripleWhale attribution dashboard.
+
+```bash
+cd ghl-tw-sync
+npm install
+
+# Test connection
+npm run dev test
+
+# Sync opportunities to TripleWhale
+npm run dev sync --days 30
+
+# Import from CSV
+npm run dev import-csv --file opportunities.csv
+```
+
+**Features:**
+- Automated GHL → TripleWhale sync
+- Transform GHL opportunities to TW attribution events
+- CSV import support
+- Progress tracking and error handling
+- Configurable sync intervals
+
+**Setup & Documentation:** See [ghl-tw-sync/TRIPLEWHALE_DATA_IN_DOCS.md](ghl-tw-sync/TRIPLEWHALE_DATA_IN_DOCS.md)
+
+### **google-ads-wizard** - Google Ads CLI
+AI-powered Google Ads campaign auditing and management.
+
+```bash
+cd google-ads-wizard/google-ads-wizard
+npm install
+
+# List campaigns
+npm run dev campaigns list
+
+# Run AI-powered audit
+npm run dev audit --account-id <account_id> --output report.pdf
+```
+
+**Features:**
+- Campaign listing with performance metrics
+- AI-powered audits using Claude Sonnet 4
+- PDF and JSON report generation
+- RTT methodology (Tracking, Targeting, Testing)
+- Auto-generated .cursor/rules AI context
+
+**Documentation:** See [google-ads-wizard/google-ads-wizard/README.md](google-ads-wizard/google-ads-wizard/README.md)
 
 ## 🔧 Configuration
 
@@ -99,10 +202,18 @@ See [Integration Guide](docs/INTEGRATION_GUIDE.md) for detailed setup instructio
 
 ## 📚 Documentation
 
-- **[Integration Guide](docs/INTEGRATION_GUIDE.md)** - Complete setup and configuration
-- **[Data Audit Workflow](docs/DATA_AUDIT_WORKFLOW.md)** - End-to-end audit examples
+### MCP Servers
+- **[Integration Guide](docs/INTEGRATION.md)** - Complete setup and configuration
+- **[Data Audit Workflow](docs/DATA_AUDIT.md)** - End-to-end audit examples
 - **[Meta Ads Tools Reference](META_API_NOTES.md)** - Complete tool reference (29 tools)
 - **[Streamable HTTP Setup](STREAMABLE_HTTP_SETUP.md)** - Advanced HTTP transport
+
+### CLI Tools
+- **[ghl-cli Documentation](ghl-cli/README.md)** - GoHighLevel CLI setup and usage
+- **[triplewhale-cli Documentation](triplewhale-cli/)** - TripleWhale event pushing
+- **[ghl-tw-sync Documentation](ghl-tw-sync/TRIPLEWHALE_DATA_IN_DOCS.md)** - Sync setup guide
+- **[google-ads-wizard Documentation](google-ads-wizard/google-ads-wizard/README.md)** - Google Ads CLI guide
+- **[Google Ads API Reference](docs/google_ads/)** - GAQL queries and best practices
 
 ## 🎯 Use Cases
 
@@ -126,27 +237,89 @@ See [Integration Guide](docs/INTEGRATION_GUIDE.md) for detailed setup instructio
 "Show me the creative performance for campaign X and suggest improvements for underperforming ads"
 ```
 
+### CRM Data Export (CLI)
+```bash
+# Export all won opportunities from GoHighLevel
+ghl-cli opportunities list --status won --export won_deals.json
+```
+
+### Attribution Tracking (CLI)
+```bash
+# Push offline conversion events to TripleWhale
+triplewhale-cli push-events --file offline_conversions.json
+```
+
+### Cross-Platform Sync (CLI)
+```bash
+# Sync 30 days of GHL opportunities to TripleWhale attribution
+ghl-tw-sync sync --days 30
+```
+
+### Google Ads Audit (CLI)
+```bash
+# Run AI-powered audit of Google Ads account
+google-ads-wizard audit --account-id 123456789 --output audit-report.pdf
+```
+
 ## 🏭️ Repository Structure
 
 ```
 fix-your-tracking/
-├── meta_ads_mcp/           # Python - Campaign Management (Production)
+├── meta_ads_mcp/           # Python - Meta Campaign Management (Production)
 │   ├── core/               # Core API client and auth
 │   ├── __init__.py
 │   └── __main__.py
-├── gateway_mcp/            # TypeScript - Infrastructure (In Development)
+├── gateway_mcp/            # TypeScript - Meta Infrastructure (In Development)
 │   ├── src/
 │   │   ├── tools/          # Gateway management tools
 │   │   ├── api/            # Meta API clients
 │   │   └── utils/          # Utilities and helpers
 │   ├── package.json
 │   └── tsconfig.json
+├── google_ads_mcp/         # Python - Google Ads MCP Server
+│   ├── core/               # Google Ads API client
+│   ├── __init__.py
+│   └── server.py
+├── google-ads-wizard/      # TypeScript - Google Ads CLI & Wizard
+│   ├── google-ads-wizard/  # Main CLI application
+│   │   ├── src/            # Analysis, API, generators, integrations
+│   │   ├── dist/           # Compiled output
+│   │   └── README.md       # Setup and usage guide
+│   └── src/                # CLI wrapper
+├── ghl-cli/                # TypeScript - GoHighLevel CLI
+│   ├── src/
+│   │   ├── api/            # GHL API client
+│   │   ├── commands/       # Contacts & opportunities commands
+│   │   ├── types/          # TypeScript definitions
+│   │   └── utils/          # Export & formatting utilities
+│   ├── package.json
+│   └── README.md           # Complete usage guide
+├── triplewhale-cli/        # TypeScript - TripleWhale CLI
+│   ├── src/
+│   │   ├── api/            # TripleWhale API client
+│   │   ├── commands/       # Event push commands
+│   │   ├── types/          # TypeScript definitions
+│   │   └── utils/          # File reader utilities
+│   └── package.json
+├── ghl-tw-sync/            # TypeScript - GHL to TripleWhale Sync
+│   ├── src/
+│   │   ├── ghl-api/        # GoHighLevel API client
+│   │   ├── tw-api/         # TripleWhale API client
+│   │   ├── sync/           # Sync engine
+│   │   ├── transform/      # GHL to TW data transformation
+│   │   ├── commands/       # Sync, test, import commands
+│   │   └── types/          # Shared type definitions
+│   ├── package.json
+│   └── TRIPLEWHALE_DATA_IN_DOCS.md
 ├── docs/                   # Comprehensive documentation
-│   ├── INTEGRATION_GUIDE.md
-│   └── DATA_AUDIT_WORKFLOW.md
-├── README.md              # This file
-├── pyproject.toml         # Python dependencies
-└── package.json           # Root package management
+│   ├── INTEGRATION.md      # Integration guide
+│   ├── DATA_AUDIT.md       # Data audit workflows
+│   └── google_ads/         # Google Ads documentation
+├── tests/                  # Test suite (40+ tests)
+├── examples/               # Usage examples
+├── README.md               # This file
+├── pyproject.toml          # Python dependencies
+└── package.json            # Root package management
 ```
 
 ## 🤝 Integration with Data Audit Skill
@@ -213,6 +386,11 @@ npm test
 
 ### Current Status
 - ✅ Meta Ads MCP - Production Ready (29 tools)
+- ✅ Google Ads MCP - Production Ready
+- ✅ Google Ads Wizard CLI - Production Ready
+- ✅ GoHighLevel CLI - Production Ready
+- ✅ TripleWhale CLI - Production Ready
+- ✅ GHL-TW Sync Tool - Production Ready
 - 🚧 Gateway MCP - In Development (Foundation complete)
 
 ### Upcoming Features
@@ -229,11 +407,19 @@ npm test
 - [ ] Multi-account management
 - [ ] Advanced analytics
 
+**CLI Tools Enhancements**
+- [ ] Interactive setup wizards for all CLI tools
+- [ ] Automated scheduling for ghl-tw-sync
+- [ ] Real-time sync monitoring dashboard
+- [ ] Bulk operations and batch processing
+- [ ] Enhanced error reporting and retry logic
+
 **Integration Enhancements**
-- [ ] Unified authentication flow
-- [ ] Cross-MCP workflow automation
-- [ ] Enhanced audit reporting
+- [ ] Unified authentication flow across all tools
+- [ ] Cross-platform workflow automation
+- [ ] Enhanced audit reporting with multi-platform support
 - [ ] Real-time monitoring dashboards
+- [ ] Webhook support for event-driven automation
 
 ## 🙏 Acknowledgments
 
