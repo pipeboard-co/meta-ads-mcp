@@ -12,6 +12,8 @@ wheels/
 .DS_Store
 
 # Development environment files
+.env
+.env.local
 .python-version
 poetry.lock
 uv.lock

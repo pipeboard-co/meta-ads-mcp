@@ -1,0 +1,35 @@
+{
+  "name": "ghl-cli",
+  "version": "1.0.0",
+  "description": "GoHighLevel CLI tool for contacts and opportunities management",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test": "echo \"Tests coming soon\" && exit 0"
+  },
+  "keywords": [
+    "gohighlevel",
+    "ghl",
+    "crm",
+    "cli",
+    "contacts",
+    "opportunities"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.2",
+    "chalk": "^5.3.0",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}
