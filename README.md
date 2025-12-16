@@ -364,6 +364,7 @@ For advanced users who need to self-host, the package can be installed from sour
       - `time_range`: Time range for insights (default: maximum)
       - `breakdown`: Optional breakdown dimension (e.g., age, gender, country)
       - `level`: Level of aggregation (ad, adset, campaign, account)
+      - `action_attribution_windows` (optional): List of attribution windows for conversion data (e.g., ["1d_click", "1d_view", "7d_click", "7d_view"]). When specified, actions and cost_per_action_type include additional fields for each window. The 'value' field always shows 7d_click attribution.
     - Returns: Performance metrics for the specified object
 
 21. `mcp_meta_ads_get_login_link`
