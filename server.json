@@ -1,5 +1,5 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-16/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "co.pipeboard/meta-ads-mcp",
   "description": "Facebook / Meta Ads automation with AI: analyze performance, test creatives, optimize spend.",
   "version": "1.0.18",
