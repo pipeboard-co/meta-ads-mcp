@@ -759,6 +759,7 @@ async def create_ad_creative(
     descriptions: Optional[List[str]] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
+    lead_gen_form_id: Optional[str] = None,
     instagram_actor_id: Optional[str] = None
 ) -> str:
     """
@@ -778,6 +779,8 @@ async def create_ad_creative(
         descriptions: List of descriptions for dynamic creative testing (cannot be used with description)
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW')
+        lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
+                         lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements
     
     Returns:
@@ -910,9 +913,13 @@ async def create_ad_creative(
         
         # Add call_to_action to link_data for simple creatives
         if call_to_action_type:
-            creative_data["object_story_spec"]["link_data"]["call_to_action"] = {
-                "type": call_to_action_type
-            }
+            cta_data = {"type": call_to_action_type}
+            
+            # Add lead form ID to value object if provided (required for lead generation campaigns)
+            if lead_gen_form_id:
+                cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+            
+            creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
     
     # Add dynamic creative spec if provided
     if dynamic_creative_spec:
@@ -965,7 +972,8 @@ async def update_ad_creative(
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
-    call_to_action_type: Optional[str] = None
+    call_to_action_type: Optional[str] = None,
+    lead_gen_form_id: Optional[str] = None
 ) -> str:
     """
     Update an existing ad creative with new content or settings.
@@ -981,6 +989,8 @@ async def update_ad_creative(
         descriptions: New list of descriptions for dynamic creative testing (cannot be used with description)
         dynamic_creative_spec: New dynamic creative optimization settings
         call_to_action_type: New call to action button type
+        lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
+                         lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
     
     Returns:
         JSON response with updated creative details
@@ -1045,7 +1055,7 @@ async def update_ad_creative(
         update_data["asset_feed_spec"] = asset_feed_spec
     else:
         # Use traditional object_story_spec with link_data for simple creatives
-        if message or headline or description or call_to_action_type:
+        if message or headline or description or call_to_action_type or lead_gen_form_id:
             update_data["object_story_spec"] = {"link_data": {}}
             
             if message:
@@ -1060,10 +1070,17 @@ async def update_ad_creative(
                 update_data["object_story_spec"]["link_data"]["description"] = description
             
             # Add call_to_action to link_data for simple creatives
-            if call_to_action_type:
-                update_data["object_story_spec"]["link_data"]["call_to_action"] = {
-                    "type": call_to_action_type
-                }
+            if call_to_action_type or lead_gen_form_id:
+                cta_data = {}
+                if call_to_action_type:
+                    cta_data["type"] = call_to_action_type
+                
+                # Add lead form ID to value object if provided (required for lead generation campaigns)
+                if lead_gen_form_id:
+                    cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+                
+                if cta_data:
+                    update_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
     
     # Add dynamic creative spec if provided
     if dynamic_creative_spec:
