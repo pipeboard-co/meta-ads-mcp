@@ -1,7 +1,7 @@
 """Insights and Reporting functionality for Meta Ads API."""
 
 import json
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, List
 from .api import meta_api_tool, make_api_request
 from .utils import download_image, try_multiple_download_methods, ad_creative_images, create_resource_from_image
 from .server import mcp_server
@@ -11,9 +11,10 @@ import datetime
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_insights(object_id: str, access_token: Optional[str] = None, 
-                      time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "", 
-                      level: str = "ad", limit: int = 25, after: str = "") -> str:
+async def get_insights(object_id: str, access_token: Optional[str] = None,
+                      time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "",
+                      level: str = "ad", limit: int = 25, after: str = "",
+                      action_attribution_windows: Optional[List[str]] = None) -> str:
     """
     Get performance insights for a campaign, ad set, ad or account.
     
@@ -51,6 +52,8 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         level: Level of aggregation (ad, adset, campaign, account)
         limit: Maximum number of results to return per page (default: 25, Meta API allows much higher values)
         after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
+        action_attribution_windows: Optional list of attribution windows (e.g., ["1d_click", "7d_click", "1d_view"]).
+                   When specified, actions include additional fields for each window. The 'value' field always shows 7d_click.
     """
     if not object_id:
         return json.dumps({"error": "No object ID provided"}, indent=2)
@@ -78,7 +81,11 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
     
     if after:
         params["after"] = after
-    
+
+    if action_attribution_windows:
+        # Meta API expects single-quote format: ['1d_click','7d_click']
+        params["action_attribution_windows"] = "[" + ",".join(f"'{w}'" for w in action_attribution_windows) + "]"
+
     data = await make_api_request(endpoint, access_token, params)
     
     return json.dumps(data, indent=2)
