@@ -881,14 +881,10 @@ async def create_ad_creative(
         
         creative_data["asset_feed_spec"] = asset_feed_spec
         
-        # For dynamic creatives with asset_feed_spec, object_story_spec needs page_id
-        # According to Meta API docs, link_data should have link and call_to_action
+        # For dynamic creatives with asset_feed_spec, object_story_spec only needs page_id
+        # Link information is already in asset_feed_spec.link_urls
         creative_data["object_story_spec"] = {
-            "page_id": page_id,
-            "link_data": {
-                "link": link_url if link_url else "https://facebook.com",
-                "call_to_action": {"type": call_to_action_type if call_to_action_type else "LEARN_MORE"}
-            }
+            "page_id": page_id
         }
     else:
         # Use traditional object_story_spec with link_data for simple creatives
