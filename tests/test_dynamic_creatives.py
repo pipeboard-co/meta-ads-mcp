@@ -190,10 +190,10 @@ class TestDynamicCreatives:
             first_call = call_args_list[0]
             creative_data = first_call[0][2]  # params is the third argument
             
-            # Should use asset_feed_spec with headlines array format
+            # Should use asset_feed_spec with titles array format (Meta API uses "titles" not "headlines")
             assert "asset_feed_spec" in creative_data
-            assert "headlines" in creative_data["asset_feed_spec"]
-            assert creative_data["asset_feed_spec"]["headlines"] == [
+            assert "titles" in creative_data["asset_feed_spec"]
+            assert creative_data["asset_feed_spec"]["titles"] == [
                 {"text": "Headline 1"}, 
                 {"text": "Headline 2"}, 
                 {"text": "Headline 3"}
@@ -331,7 +331,7 @@ class TestDynamicCreatives:
             creative_data = first_call[0][2]  # params is the third argument
             
             assert "asset_feed_spec" in creative_data
-            assert "headlines" in creative_data["asset_feed_spec"]
+            assert "titles" in creative_data["asset_feed_spec"]
             assert "descriptions" in creative_data["asset_feed_spec"]
             assert "dynamic_creative_spec" in creative_data
     
@@ -418,8 +418,8 @@ class TestDynamicCreatives:
             creative_data = first_call[0][2]  # params is the third argument
             
             assert "asset_feed_spec" in creative_data
-            assert "headlines" in creative_data["asset_feed_spec"]
-            assert creative_data["asset_feed_spec"]["headlines"] == [
+            assert "titles" in creative_data["asset_feed_spec"]
+            assert creative_data["asset_feed_spec"]["titles"] == [
                 {"text": "New Headline 1"}, 
                 {"text": "New Headline 2"}, 
                 {"text": "New Headline 3"}
@@ -814,19 +814,19 @@ class TestDynamicCreatives:
             
             # Should have asset_feed_spec with all dynamic content
             assert "asset_feed_spec" in creative_data
-            assert "headlines" in creative_data["asset_feed_spec"]
+            assert "titles" in creative_data["asset_feed_spec"]
             assert "descriptions" in creative_data["asset_feed_spec"]
-            assert "primary_texts" in creative_data["asset_feed_spec"]
+            assert "bodies" in creative_data["asset_feed_spec"]
             assert "call_to_action_types" in creative_data["asset_feed_spec"]
             
             # Verify content
-            assert creative_data["asset_feed_spec"]["headlines"] == [
+            assert creative_data["asset_feed_spec"]["titles"] == [
                 {"text": "New Headline 1"}, {"text": "New Headline 2"}
             ]
             assert creative_data["asset_feed_spec"]["descriptions"] == [
                 {"text": "New Description 1"}
             ]
-            assert creative_data["asset_feed_spec"]["primary_texts"] == [
+            assert creative_data["asset_feed_spec"]["bodies"] == [
                 {"text": "Updated message"}
             ]
             assert creative_data["asset_feed_spec"]["call_to_action_types"] == ["SIGN_UP"]

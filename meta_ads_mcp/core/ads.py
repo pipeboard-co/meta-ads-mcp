@@ -855,23 +855,25 @@ async def create_ad_creative(
     # ONLY use asset_feed_spec when user explicitly provides plural parameters (headlines/descriptions)
     if headlines or descriptions:
         # Use asset_feed_spec for dynamic creatives with multiple variants
+        # Structure based on Meta API working example from documentation
+        # ad_formats must be specified with exactly one format
         asset_feed_spec = {
-            "ad_formats": ["SINGLE_IMAGE"],
             "images": [{"hash": image_hash}],
-            "link_urls": [{"website_url": link_url if link_url else "https://facebook.com"}]
+            "link_urls": [{"website_url": link_url if link_url else "https://facebook.com"}],
+            "ad_formats": ["SINGLE_IMAGE"]
         }
         
-        # Handle headlines
+        # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
         if headlines:
-            asset_feed_spec["headlines"] = [{"text": headline_text} for headline_text in headlines]
+            asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
             
         # Handle descriptions  
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
         
-        # Add message as primary_texts if provided
+        # Add message as bodies - Meta API uses "bodies" not "primary_texts" in asset_feed_spec
         if message:
-            asset_feed_spec["primary_texts"] = [{"text": message}]
+            asset_feed_spec["bodies"] = [{"text": message}]
         
         # Add call_to_action_types if provided
         if call_to_action_type:
@@ -879,9 +881,14 @@ async def create_ad_creative(
         
         creative_data["asset_feed_spec"] = asset_feed_spec
         
-        # For dynamic creatives, we need a simplified object_story_spec
+        # For dynamic creatives with asset_feed_spec, object_story_spec needs page_id
+        # According to Meta API docs, link_data should have link and call_to_action
         creative_data["object_story_spec"] = {
-            "page_id": page_id
+            "page_id": page_id,
+            "link_data": {
+                "link": link_url if link_url else "https://facebook.com",
+                "call_to_action": {"type": call_to_action_type if call_to_action_type else "LEARN_MORE"}
+            }
         }
     else:
         # Use traditional object_story_spec with link_data for simple creatives
@@ -1023,17 +1030,17 @@ async def update_ad_creative(
         # Add required ad_formats field for dynamic creatives
         asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
         
-        # Handle headlines
+        # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
         if headlines:
-            asset_feed_spec["headlines"] = [{"text": headline_text} for headline_text in headlines]
+            asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
             
         # Handle descriptions  
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
         
-        # Add message as primary_texts if provided
+        # Add message as bodies - Meta API uses "bodies" not "primary_texts" in asset_feed_spec
         if message:
-            asset_feed_spec["primary_texts"] = [{"text": message}]
+            asset_feed_spec["bodies"] = [{"text": message}]
         
         # Add call_to_action_types if provided
         if call_to_action_type:

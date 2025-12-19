@@ -118,10 +118,10 @@ async def test_dynamic_creative_uses_asset_feed_spec():
         # Verify it uses asset_feed_spec for dynamic creatives
         assert "asset_feed_spec" in creative_data, "Should use asset_feed_spec for dynamic creatives"
         
-        # Verify asset_feed_spec structure
+        # Verify asset_feed_spec structure (Meta API uses "titles" not "headlines")
         asset_feed_spec = creative_data["asset_feed_spec"]
-        assert "headlines" in asset_feed_spec
-        assert len(asset_feed_spec["headlines"]) == 2
+        assert "titles" in asset_feed_spec
+        assert len(asset_feed_spec["titles"]) == 2
         assert "descriptions" in asset_feed_spec
         assert len(asset_feed_spec["descriptions"]) == 2
 
