@@ -1728,6 +1728,176 @@ async def create_ad_creative(
 
 @mcp_server.tool()
 @meta_api_tool
+async def create_carousel_ad_creative(
+    account_id: str,
+    page_id: str,
+    child_attachments: List[Dict[str, Any]],
+    access_token: Optional[str] = None,
+    name: Optional[str] = None,
+    link: Optional[str] = None,
+    message: Optional[str] = None,
+    call_to_action_type: Optional[str] = None,
+    multi_share_end_card: bool = True,
+    multi_share_optimized: bool = False,
+    instagram_actor_id: Optional[str] = None
+) -> str:
+    """
+    Create a carousel ad creative with multiple images/videos (2-10 cards).
+    
+    Args:
+        account_id: Meta Ads account ID (format: act_XXXXXXXXX)
+        page_id: Facebook Page ID for the ad
+        child_attachments: Array of carousel cards (2-10 items). Each card should have:
+            - link (required): Destination URL for this card
+            - image_hash (optional): Image hash from upload_ad_image. Required if no video_id
+            - video_id (optional): Video ID. Required if no image_hash
+            - name (optional): Headline for this card (max 40 chars)
+            - description (optional): Description for this card (max 20 chars)
+            - call_to_action (optional): CTA button configuration for this card
+        access_token: Meta API access token (optional - will use cached token if not provided)
+        name: Creative name (auto-generated if not provided)
+        link: Main landing page URL (shown when carousel reaches end)
+        message: Primary text shown above the carousel
+        call_to_action_type: Default CTA for all cards (e.g., 'SHOP_NOW', 'LEARN_MORE')
+        multi_share_end_card: Show end card with Page profile photo and link (default: True)
+        multi_share_optimized: Let Meta optimize card order (default: False)
+        instagram_actor_id: Optional Instagram account ID for Instagram placements
+    
+    Returns:
+        JSON response with created carousel creative details
+    """
+    # Check required parameters
+    if not account_id:
+        return json.dumps({"error": "No account ID provided"}, indent=2)
+    
+    if not page_id:
+        return json.dumps({"error": "No page ID provided"}, indent=2)
+    
+    if not child_attachments:
+        return json.dumps({"error": "No child_attachments provided. Carousel ads require 2-10 cards."}, indent=2)
+    
+    # Validate child_attachments count
+    if len(child_attachments) < 2:
+        return json.dumps({"error": f"Carousel ads require at least 2 cards. You provided {len(child_attachments)}."}, indent=2)
+    
+    if len(child_attachments) > 10:
+        return json.dumps({"error": f"Carousel ads support maximum 10 cards. You provided {len(child_attachments)}."}, indent=2)
+    
+    # Validate each card
+    for i, card in enumerate(child_attachments):
+        if not isinstance(card, dict):
+            return json.dumps({"error": f"Card {i+1} must be an object with link, image_hash/video_id, etc."}, indent=2)
+        
+        if "link" not in card:
+            return json.dumps({"error": f"Card {i+1} is missing required 'link' field."}, indent=2)
+        
+        if "image_hash" not in card and "video_id" not in card:
+            return json.dumps({"error": f"Card {i+1} must have either 'image_hash' or 'video_id'."}, indent=2)
+        
+        # Validate name length
+        if "name" in card and card["name"] and len(card["name"]) > 40:
+            return json.dumps({"error": f"Card {i+1} headline exceeds 40 character limit ({len(card['name'])} chars)."}, indent=2)
+        
+        # Validate description length
+        if "description" in card and card["description"] and len(card["description"]) > 20:
+            return json.dumps({"error": f"Card {i+1} description exceeds 20 character limit ({len(card['description'])} chars)."}, indent=2)
+    
+    if not name:
+        name = f"Carousel Creative {int(time.time())}"
+    
+    # Ensure account_id has the 'act_' prefix
+    if not account_id.startswith("act_"):
+        account_id = f"act_{account_id}"
+    
+    # Build child_attachments for the API
+    api_child_attachments = []
+    for card in child_attachments:
+        card_data = {
+            "link": card["link"]
+        }
+        
+        if "image_hash" in card and card["image_hash"]:
+            card_data["image_hash"] = card["image_hash"]
+        
+        if "video_id" in card and card["video_id"]:
+            card_data["video_id"] = card["video_id"]
+        
+        if "name" in card and card["name"]:
+            card_data["name"] = card["name"]
+        
+        if "description" in card and card["description"]:
+            card_data["description"] = card["description"]
+        
+        # Handle per-card call_to_action
+        if "call_to_action" in card and card["call_to_action"]:
+            card_data["call_to_action"] = card["call_to_action"]
+        elif call_to_action_type:
+            # Apply default CTA to cards without specific CTA
+            card_data["call_to_action"] = {"type": call_to_action_type}
+        
+        api_child_attachments.append(card_data)
+    
+    # Build the creative data with object_story_spec for carousel
+    creative_data = {
+        "name": name,
+        "object_story_spec": {
+            "page_id": page_id,
+            "link_data": {
+                "child_attachments": api_child_attachments,
+                "multi_share_end_card": multi_share_end_card,
+                "multi_share_optimized": multi_share_optimized
+            }
+        }
+    }
+    
+    # Add main link if provided
+    if link:
+        creative_data["object_story_spec"]["link_data"]["link"] = link
+    
+    # Add message if provided
+    if message:
+        creative_data["object_story_spec"]["link_data"]["message"] = message
+    
+    # Add Instagram actor if provided
+    if instagram_actor_id:
+        creative_data["instagram_actor_id"] = instagram_actor_id
+    
+    # Prepare the API endpoint for creating a creative
+    endpoint = f"{account_id}/adcreatives"
+    
+    try:
+        # Make API request to create the creative
+        data = await make_api_request(endpoint, access_token, creative_data, method="POST")
+        
+        # If successful, get more details about the created creative
+        if "id" in data:
+            creative_id = data["id"]
+            creative_endpoint = f"{creative_id}"
+            creative_params = {
+                "fields": "id,name,status,thumbnail_url,object_story_spec"
+            }
+            
+            creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
+            return json.dumps({
+                "success": True,
+                "creative_id": creative_id,
+                "format": "carousel",
+                "cards_count": len(child_attachments),
+                "details": creative_details
+            }, indent=2)
+        
+        return json.dumps(data, indent=2)
+    
+    except Exception as e:
+        return json.dumps({
+            "error": "Failed to create carousel ad creative",
+            "details": str(e),
+            "creative_data_sent": creative_data
+        }, indent=2)
+
+
+@mcp_server.tool()
+@meta_api_tool
 async def update_ad_creative(
     creative_id: str,
     access_token: Optional[str] = None,
