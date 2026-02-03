@@ -117,8 +117,29 @@ async def create_adset(
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
         targeting: Targeting specifications including age, location, interests, etc.
                   Use targeting_automation.advantage_audience=1 for automatic audience finding
-        bid_amount: Bid amount in account currency (in cents)
-        bid_strategy: Bid strategy (e.g., 'LOWEST_COST', 'LOWEST_COST_WITH_BID_CAP')
+        bid_amount: Bid amount in account currency (in cents).
+                   REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, LOWEST_COST_WITH_MIN_ROAS.
+                   NOT REQUIRED for: LOWEST_COST_WITHOUT_CAP (recommended default).
+                   Note: May also be required if the parent campaign uses a bid strategy that requires it.
+        bid_strategy: Bid strategy determines how Meta optimizes your bids.
+                     Valid values:
+                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required, most flexible
+                     - 'LOWEST_COST_WITH_BID_CAP' - Sets max bid cap, REQUIRES bid_amount
+                     - 'COST_CAP' - Caps cost per result, REQUIRES bid_amount
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - Sets minimum ROAS, REQUIRES bid_amount
+                     
+                     IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
+                     
+                     IMPORTANT: Campaign-level bid strategy constrains ad set choices. If the parent campaign 
+                     uses LOWEST_COST_WITH_BID_CAP, all child ad sets MUST provide bid_amount regardless of 
+                     their own bid_strategy setting.
+                     
+                     Examples:
+                     1. Recommended (no bid amount needed):
+                        bid_strategy="LOWEST_COST_WITHOUT_CAP"
+                        
+                     2. With bid cap (bid_amount required):
+                        bid_strategy="LOWEST_COST_WITH_BID_CAP", bid_amount=500
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
         end_time: End time in ISO 8601 format
         dsa_beneficiary: DSA beneficiary (person/organization benefiting from ads) for European compliance
@@ -208,6 +229,39 @@ async def create_adset(
             "geo_locations": {"countries": ["US"]},
             "targeting_automation": {"advantage_audience": 1}
         }
+    
+    # Validate bid_strategy and bid_amount requirements
+    if bid_strategy:
+        # Check for invalid 'LOWEST_COST' value (common mistake)
+        if bid_strategy == 'LOWEST_COST':
+            return json.dumps({
+                "error": "'LOWEST_COST' is not a valid bid_strategy value",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v22.0",
+                "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
+                "valid_values": [
+                    "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
+                    "LOWEST_COST_WITH_BID_CAP (requires bid_amount)",
+                    "COST_CAP (requires bid_amount)",
+                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_amount)"
+                ],
+                "example": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
+            }, indent=2)
+        
+        # Bid strategies that require bid_amount
+        strategies_requiring_bid_amount = [
+            'LOWEST_COST_WITH_BID_CAP',
+            'COST_CAP',
+            'LOWEST_COST_WITH_MIN_ROAS'
+        ]
+        
+        if bid_strategy in strategies_requiring_bid_amount and bid_amount is None:
+            return json.dumps({
+                "error": f"bid_amount is required when using bid_strategy '{bid_strategy}'",
+                "details": f"The '{bid_strategy}' bid strategy requires you to specify a bid amount in cents",
+                "workaround": "Either provide the bid_amount parameter, or use bid_strategy='LOWEST_COST_WITHOUT_CAP' which does not require a bid amount",
+                "example_with_bid_amount": f'{{"bid_strategy": "{bid_strategy}", "bid_amount": 500}}',
+                "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
+            }, indent=2)
     
     endpoint = f"{account_id}/adsets"
     
@@ -305,8 +359,16 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         adset_id: Meta Ads ad set ID
         frequency_control_specs: List of frequency control specifications 
                                  (e.g. [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 3}])
-        bid_strategy: Bid strategy (e.g., 'LOWEST_COST_WITH_BID_CAP')
-        bid_amount: Bid amount in account currency (in cents for USD)
+        bid_strategy: Bid strategy determines how Meta optimizes your bids.
+                     Valid values:
+                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required
+                     - 'LOWEST_COST_WITH_BID_CAP' - REQUIRES bid_amount
+                     - 'COST_CAP' - REQUIRES bid_amount
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_amount
+                     
+                     IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
+        bid_amount: Bid amount in account currency (in cents for USD).
+                   REQUIRED when using LOWEST_COST_WITH_BID_CAP, COST_CAP, or LOWEST_COST_WITH_MIN_ROAS.
         status: Update ad set status (ACTIVE, PAUSED, etc.)
         targeting: Complete targeting specifications (will replace existing targeting)
                   (e.g. {"targeting_automation":{"advantage_audience":1}, "geo_locations": {"countries": ["US"]}})
@@ -318,6 +380,39 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
     """
     if not adset_id:
         return json.dumps({"error": "No ad set ID provided"}, indent=2)
+    
+    # Validate bid_strategy if provided
+    if bid_strategy is not None:
+        # Check for invalid 'LOWEST_COST' value (common mistake)
+        if bid_strategy == 'LOWEST_COST':
+            return json.dumps({
+                "error": "'LOWEST_COST' is not a valid bid_strategy value",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v22.0",
+                "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
+                "valid_values": [
+                    "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
+                    "LOWEST_COST_WITH_BID_CAP (requires bid_amount)",
+                    "COST_CAP (requires bid_amount)",
+                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_amount)"
+                ],
+                "example": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
+            }, indent=2)
+        
+        # Bid strategies that require bid_amount
+        strategies_requiring_bid_amount = [
+            'LOWEST_COST_WITH_BID_CAP',
+            'COST_CAP',
+            'LOWEST_COST_WITH_MIN_ROAS'
+        ]
+        
+        if bid_strategy in strategies_requiring_bid_amount and bid_amount is None:
+            return json.dumps({
+                "error": f"bid_amount is required when using bid_strategy '{bid_strategy}'",
+                "details": f"The '{bid_strategy}' bid strategy requires you to specify a bid amount in cents",
+                "workaround": "Either provide the bid_amount parameter, or use bid_strategy='LOWEST_COST_WITHOUT_CAP' which does not require a bid amount",
+                "example_with_bid_amount": f'{{"bid_strategy": "{bid_strategy}", "bid_amount": 500}}',
+                "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
+            }, indent=2)
     
     params = {}
     
