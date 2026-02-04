@@ -117,6 +117,7 @@ async def create_adset(
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
         targeting: Targeting specifications including age, location, interests, etc.
                   Use targeting_automation.advantage_audience=1 for automatic audience finding
+                  For interest targeting, obtain Interest targeting IDs using the search_interests tool.
         bid_amount: Bid amount in account currency (in cents).
                    REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, LOWEST_COST_WITH_MIN_ROAS.
                    NOT REQUIRED for: LOWEST_COST_WITHOUT_CAP (recommended default).
