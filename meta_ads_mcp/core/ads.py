@@ -162,10 +162,10 @@ async def create_ad(
 @meta_api_tool
 async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> str:
     """
-    Get creative details for a specific ad. Best if combined with get_ad_image to get the full image.
+    Get creative details for a specific ad. Requires an ad_id (not account_id). Use get_ads first to find ad IDs.
     
     Args:
-        ad_id: Meta Ads ad ID
+        ad_id: Meta Ads ad ID (required)
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id:
