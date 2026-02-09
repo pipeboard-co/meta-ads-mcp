@@ -9,12 +9,48 @@ import base64
 import datetime
 
 
+# Prefixes of action_type values that are always redundant duplicates of other
+# action types already present in the response.  For every canonical event
+# (e.g. "purchase"), the Meta API returns 5-8 variants that carry the exact
+# same numeric value:
+#   omni_purchase, onsite_web_purchase, onsite_web_app_purchase,
+#   web_in_store_purchase, web_app_in_store_purchase,
+#   offsite_conversion.fb_pixel_purchase  …
+# Removing these cuts each insight row from ~4 KB to ~1 KB without any
+# information loss.
+_REDUNDANT_ACTION_PREFIXES = (
+    "omni_",                       # omnichannel roll-up  (== onsite_web_app_*)
+    "onsite_web_app_",             # web+app combined     (== onsite_web_*)
+    "onsite_web_",                 # web-only subset      (== canonical + onsite)
+    "onsite_app_",                 # app-only subset      (== onsite_conversion.*)
+    "web_app_in_store_",           # web+app in-store     (== web_in_store_*)
+    "offsite_conversion.fb_pixel_",  # pixel attribution  (== canonical type)
+)
+
+
+def _strip_redundant_actions(row: dict) -> dict:
+    """Remove redundant action-type entries from a single insight row."""
+    for key in ("actions", "action_values", "cost_per_action_type"):
+        items = row.get(key)
+        if not isinstance(items, list):
+            continue
+        row[key] = [
+            item for item in items
+            if not any(
+                item.get("action_type", "").startswith(prefix)
+                for prefix in _REDUNDANT_ACTION_PREFIXES
+            )
+        ]
+    return row
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def get_insights(object_id: str, access_token: Optional[str] = None,
                       time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "",
                       level: str = "ad", limit: int = 25, after: str = "",
-                      action_attribution_windows: Optional[List[str]] = None) -> str:
+                      action_attribution_windows: Optional[List[str]] = None,
+                      compact: bool = False) -> str:
     """
     Get performance insights for a campaign, ad set, ad or account.
     
@@ -54,6 +90,10 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
         action_attribution_windows: Optional list of attribution windows (e.g., ["1d_click", "7d_click", "1d_view"]).
                    When specified, actions include additional fields for each window. The 'value' field always shows 7d_click.
+        compact: When True, strips redundant action-type duplicates from the response
+                 (omni_*, onsite_web_*, offsite_conversion.fb_pixel_*, etc.) to reduce
+                 payload size by ~60%. The canonical action types (purchase, add_to_cart,
+                 view_content, etc.) are always preserved. Default: False.
     """
     if not object_id:
         return json.dumps({"error": "No object ID provided"}, indent=2)
@@ -87,7 +127,13 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         params["action_attribution_windows"] = "[" + ",".join(f"'{w}'" for w in action_attribution_windows) + "]"
 
     data = await make_api_request(endpoint, access_token, params)
-    
+
+    # In compact mode, strip redundant action-type duplicates to reduce response size.
+    if compact and isinstance(data, dict):
+        for row in data.get("data", []):
+            if isinstance(row, dict):
+                _strip_redundant_actions(row)
+
     return json.dumps(data, indent=2)
 
 
