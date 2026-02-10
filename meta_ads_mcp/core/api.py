@@ -11,7 +11,7 @@ from .auth import needs_authentication, auth_manager, start_callback_server, shu
 from .utils import logger
 
 # Constants
-META_GRAPH_API_VERSION = "v22.0"
+META_GRAPH_API_VERSION = "v24.0"
 META_GRAPH_API_BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"
 USER_AGENT = "meta-ads-mcp/1.0"
 

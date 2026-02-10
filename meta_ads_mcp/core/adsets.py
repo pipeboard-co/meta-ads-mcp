@@ -237,7 +237,7 @@ async def create_adset(
         if bid_strategy == 'LOWEST_COST':
             return json.dumps({
                 "error": "'LOWEST_COST' is not a valid bid_strategy value",
-                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v22.0",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v24.0",
                 "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
                 "valid_values": [
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
@@ -388,7 +388,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         if bid_strategy == 'LOWEST_COST':
             return json.dumps({
                 "error": "'LOWEST_COST' is not a valid bid_strategy value",
-                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v22.0",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v24.0",
                 "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
                 "valid_values": [
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
