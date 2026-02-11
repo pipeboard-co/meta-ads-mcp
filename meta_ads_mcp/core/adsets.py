@@ -27,14 +27,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -67,7 +67,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,is_dynamic_creative"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,is_dynamic_creative"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -95,6 +95,7 @@ async def create_adset(
     targeting: Optional[Dict[str, Any]] = None,
     bid_amount: Optional[int] = None,
     bid_strategy: Optional[str] = None,
+    bid_constraints: Optional[Dict[str, Any]] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     dsa_beneficiary: Optional[str] = None,
@@ -105,12 +106,12 @@ async def create_adset(
 ) -> str:
     """
     Create a new ad set in a Meta Ads account.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         campaign_id: Meta Ads campaign ID this ad set belongs to
         name: Ad set name
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS')
+        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS', 'VALUE')
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
         daily_budget: Daily budget in account currency (in cents) as a string
@@ -120,39 +121,25 @@ async def create_adset(
                   For interest targeting, obtain Interest targeting IDs using the search_interests tool.
         bid_amount: Bid amount in account currency (in cents).
                    REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
-                   NOT REQUIRED for: LOWEST_COST_WITHOUT_CAP (recommended default).
                    NOT USED by: LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
-                   Note: May also be required if the parent campaign uses a bid strategy that requires it.
-        bid_strategy: Bid strategy determines how Meta optimizes your bids.
-                     Valid values:
-                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required, most flexible
-                     - 'LOWEST_COST_WITH_BID_CAP' - Sets max bid cap, REQUIRES bid_amount
-                     - 'COST_CAP' - Caps cost per result, REQUIRES bid_amount
-                     - 'LOWEST_COST_WITH_MIN_ROAS' - Sets minimum ROAS, REQUIRES bid_constraints
-                       with roas_average_floor (not bid_amount). Also requires optimization_goal=VALUE.
-
-                     IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
-
-                     IMPORTANT: Campaign-level bid strategy constrains ad set choices. If the parent campaign
-                     uses LOWEST_COST_WITH_BID_CAP, all child ad sets MUST provide bid_amount regardless of
-                     their own bid_strategy setting.
-
-                     Examples:
-                     1. Recommended (no bid amount needed):
-                        bid_strategy="LOWEST_COST_WITHOUT_CAP"
-
-                     2. With bid cap (bid_amount required):
-                        bid_strategy="LOWEST_COST_WITH_BID_CAP", bid_amount=500
+                   May also be required if the parent campaign's bid strategy requires it.
+        bid_strategy: Bid strategy. Valid values:
+                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - no bid_amount required
+                     - 'LOWEST_COST_WITH_BID_CAP' - REQUIRES bid_amount
+                     - 'COST_CAP' - REQUIRES bid_amount
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_constraints with roas_average_floor,
+                       and optimization_goal='VALUE'. Does NOT use bid_amount.
+                     Note: 'LOWEST_COST' is NOT valid - use 'LOWEST_COST_WITHOUT_CAP'.
+                     Campaign-level bid strategy may constrain ad set choices.
+        bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
+                        Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
+                        Example: 2.0x ROAS -> {"roas_average_floor": 20000}
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
         end_time: End time in ISO 8601 format
-        dsa_beneficiary: DSA beneficiary (person/organization benefiting from ads) for European compliance
-        promoted_object: Mobile app configuration for APP_INSTALLS campaigns. Required fields: application_id, object_store_url.
-                        Optional fields: custom_event_type, pixel_id, page_id.
-                        Example: {"application_id": "123456789012345", "object_store_url": "https://apps.apple.com/app/id123456789"}
-        destination_type: Where users are directed after clicking the ad (e.g., 'APP_STORE', 'DEEPLINK', 'APP_INSTALL', 'ON_AD').
-                          Required for mobile app campaigns and lead generation campaigns.
-                          Use 'ON_AD' for lead generation campaigns where user interaction happens within the ad.
-        is_dynamic_creative: Enable Dynamic Creative for this ad set (required when using dynamic creatives with asset_feed_spec/dynamic_creative_spec).
+        dsa_beneficiary: DSA beneficiary for European compliance
+        promoted_object: App config for APP_INSTALLS. Required: application_id, object_store_url.
+        destination_type: Where users go after click (e.g., 'APP_STORE', 'ON_AD').
+        is_dynamic_creative: Enable Dynamic Creative for this ad set.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -266,6 +253,14 @@ async def create_adset(
                 "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
 
+        # LOWEST_COST_WITH_MIN_ROAS requires bid_constraints with roas_average_floor
+        if bid_strategy == 'LOWEST_COST_WITH_MIN_ROAS' and not bid_constraints:
+            return json.dumps({
+                "error": "bid_constraints is required when using bid_strategy 'LOWEST_COST_WITH_MIN_ROAS'",
+                "details": "Provide bid_constraints with roas_average_floor (target ROAS * 10000)",
+                "example": '{"bid_strategy": "LOWEST_COST_WITH_MIN_ROAS", "bid_constraints": {"roas_average_floor": 20000}, "optimization_goal": "VALUE"}'
+            }, indent=2)
+
     # Pre-flight check: if no bid_amount provided, check whether the parent campaign's
     # bid_strategy requires one. This prevents a confusing error from Meta's API when
     # the campaign-level bid strategy forces child ad sets to provide bid_amount.
@@ -311,7 +306,10 @@ async def create_adset(
     
     if bid_strategy:
         params["bid_strategy"] = bid_strategy
-    
+
+    if bid_constraints:
+        params["bid_constraints"] = json.dumps(bid_constraints)
+
     if start_time:
         params["start_time"] = start_time
     
@@ -371,35 +369,35 @@ async def create_adset(
 
 @mcp_server.tool()
 @meta_api_tool
-async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None, 
-                        bid_amount: Optional[int] = None, status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None, 
-                        optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None, 
+async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None,
+                        bid_amount: Optional[int] = None, bid_constraints: Optional[Dict[str, Any]] = None,
+                        status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None,
+                        optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None,
                         is_dynamic_creative: Optional[bool] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
-    
+
     Args:
         adset_id: Meta Ads ad set ID
-        frequency_control_specs: List of frequency control specifications 
+        frequency_control_specs: Frequency control specs
                                  (e.g. [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 3}])
-        bid_strategy: Bid strategy determines how Meta optimizes your bids.
-                     Valid values:
-                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required
+        bid_strategy: Bid strategy. Valid values:
+                     - 'LOWEST_COST_WITHOUT_CAP' (recommended) - no bid_amount required
                      - 'LOWEST_COST_WITH_BID_CAP' - REQUIRES bid_amount
                      - 'COST_CAP' - REQUIRES bid_amount
-                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_constraints (not bid_amount)
-
-                     IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
-        bid_amount: Bid amount in account currency (in cents for USD).
-                   REQUIRED when using LOWEST_COST_WITH_BID_CAP, COST_CAP, or TARGET_COST.
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_constraints with roas_average_floor
+                     Note: 'LOWEST_COST' is NOT valid - use 'LOWEST_COST_WITHOUT_CAP'.
+        bid_amount: Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
                    NOT USED by LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
+        bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
+                        Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
+                        Example: 2.0x ROAS -> {"roas_average_floor": 20000}
         status: Update ad set status (ACTIVE, PAUSED, etc.)
-        targeting: Complete targeting specifications (will replace existing targeting)
-                  (e.g. {"targeting_automation":{"advantage_audience":1}, "geo_locations": {"countries": ["US"]}})
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'APP_INSTALLS', etc.)
-        daily_budget: Daily budget in account currency (in cents) as a string
-        lifetime_budget: Lifetime budget in account currency (in cents) as a string
+        targeting: Complete targeting specifications (replaces existing targeting)
+        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'VALUE')
+        daily_budget: Daily budget in account currency (in cents)
+        lifetime_budget: Lifetime budget in account currency (in cents)
         is_dynamic_creative: Enable/disable Dynamic Creative for this ad set.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
@@ -439,16 +437,27 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                 "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
 
+        # LOWEST_COST_WITH_MIN_ROAS requires bid_constraints with roas_average_floor
+        if bid_strategy == 'LOWEST_COST_WITH_MIN_ROAS' and not bid_constraints:
+            return json.dumps({
+                "error": "bid_constraints is required when using bid_strategy 'LOWEST_COST_WITH_MIN_ROAS'",
+                "details": "Provide bid_constraints with roas_average_floor (target ROAS * 10000)",
+                "example": '{"bid_strategy": "LOWEST_COST_WITH_MIN_ROAS", "bid_constraints": {"roas_average_floor": 20000}, "optimization_goal": "VALUE"}'
+            }, indent=2)
+
     params = {}
-    
+
     if frequency_control_specs is not None:
         params['frequency_control_specs'] = frequency_control_specs
-    
+
     if bid_strategy is not None:
         params['bid_strategy'] = bid_strategy
-        
+
     if bid_amount is not None:
         params['bid_amount'] = str(bid_amount)
+
+    if bid_constraints is not None:
+        params['bid_constraints'] = json.dumps(bid_constraints)
         
     if status is not None:
         params['status'] = status

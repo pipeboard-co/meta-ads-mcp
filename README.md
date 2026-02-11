@@ -242,8 +242,9 @@ For advanced users who need to self-host, the package can be installed from sour
      - `targeting`: Targeting specifications (e.g., age, location, interests)
      - `optimization_goal`: Conversion optimization goal (e.g., 'LINK_CLICKS')
      - `billing_event`: How you're charged (e.g., 'IMPRESSIONS')
-     - `bid_amount`: Bid amount in account currency (in cents)
-     - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST')
+     - `bid_amount`: Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
+     - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_MIN_ROAS')
+     - `bid_constraints`: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS (e.g., `{"roas_average_floor": 20000}`)
      - `start_time`, `end_time`: Optional start/end times (ISO 8601)
      - `access_token` (optional): Meta API access token
    - Returns: Confirmation with new ad set details
@@ -349,8 +350,9 @@ For advanced users who need to self-host, the package can be installed from sour
     - Inputs:
       - `adset_id`: Meta Ads ad set ID
       - `frequency_control_specs`: List of frequency control specifications
-      - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST_WITH_BID_CAP')
-      - `bid_amount`: Bid amount in account currency (in cents for USD)
+      - `bid_strategy`: Bid strategy (e.g., 'LOWEST_COST_WITH_BID_CAP', 'LOWEST_COST_WITH_MIN_ROAS')
+      - `bid_amount`: Bid amount in cents. Required for LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
+      - `bid_constraints`: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS (e.g., `{"roas_average_floor": 20000}`)
       - `status`: Update ad set status (ACTIVE, PAUSED, etc.)
       - `targeting`: Targeting specifications including targeting_automation
       - `access_token` (optional): Meta API access token (will use cached token if not provided)
