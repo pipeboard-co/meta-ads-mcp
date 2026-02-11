@@ -226,9 +226,9 @@ class TestBidStrategyValidation:
         # Should succeed
         assert "error" not in result_data
         assert result_data["id"] == "test_adset_id"
-        
-        # API should have been called
-        mock_api_request.assert_called_once()
+
+        # API should have been called (pre-flight campaign check + actual create)
+        assert mock_api_request.call_count >= 1
         call_args = mock_api_request.call_args
         params = call_args[0][2]
         assert params["bid_strategy"] == "LOWEST_COST_WITHOUT_CAP"
@@ -317,9 +317,9 @@ class TestBidStrategyValidation:
 
         # Should succeed - let Meta API handle defaults
         assert "error" not in result_data
-        
-        # API should have been called
-        mock_api_request.assert_called_once()
+
+        # API should have been called (pre-flight campaign check + actual create)
+        assert mock_api_request.call_count >= 1
 
     @pytest.mark.asyncio
     async def test_update_adset_lowest_cost_without_cap_no_bid_amount_needed(

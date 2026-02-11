@@ -231,6 +231,14 @@ async def create_adset(
             "targeting_automation": {"advantage_audience": 1}
         }
     
+    # Bid strategies that require bid_amount
+    strategies_requiring_bid_amount = [
+        'LOWEST_COST_WITH_BID_CAP',
+        'COST_CAP',
+        'LOWEST_COST_WITH_MIN_ROAS',
+        'TARGET_COST',
+    ]
+
     # Validate bid_strategy and bid_amount requirements
     if bid_strategy:
         # Check for invalid 'LOWEST_COST' value (common mistake)
@@ -247,14 +255,7 @@ async def create_adset(
                 ],
                 "example": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
-        
-        # Bid strategies that require bid_amount
-        strategies_requiring_bid_amount = [
-            'LOWEST_COST_WITH_BID_CAP',
-            'COST_CAP',
-            'LOWEST_COST_WITH_MIN_ROAS'
-        ]
-        
+
         if bid_strategy in strategies_requiring_bid_amount and bid_amount is None:
             return json.dumps({
                 "error": f"bid_amount is required when using bid_strategy '{bid_strategy}'",
@@ -263,7 +264,28 @@ async def create_adset(
                 "example_with_bid_amount": f'{{"bid_strategy": "{bid_strategy}", "bid_amount": 500}}',
                 "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
-    
+
+    # Pre-flight check: if no bid_amount provided, check whether the parent campaign's
+    # bid_strategy requires one. This prevents a confusing error from Meta's API when
+    # the campaign-level bid strategy forces child ad sets to provide bid_amount.
+    if bid_amount is None:
+        try:
+            campaign_data = await make_api_request(
+                campaign_id, access_token, {"fields": "bid_strategy,name"}
+            )
+            campaign_bid_strategy = campaign_data.get("bid_strategy")
+            if campaign_bid_strategy and campaign_bid_strategy in strategies_requiring_bid_amount:
+                campaign_name = campaign_data.get("name", campaign_id)
+                return json.dumps({
+                    "error": f"bid_amount is required because the parent campaign uses bid_strategy '{campaign_bid_strategy}'",
+                    "details": f"Campaign '{campaign_name}' ({campaign_id}) uses '{campaign_bid_strategy}', which requires all child ad sets to provide a bid_amount (in cents).",
+                    "workaround": "Either provide the bid_amount parameter, or change the campaign's bid_strategy to 'LOWEST_COST_WITHOUT_CAP'",
+                    "example_with_bid_amount": f'{{"bid_amount": 500}}  (= $5.00 bid cap)',
+                    "example_without_bid_amount": 'Change campaign bid strategy: update_campaign(campaign_id="' + campaign_id + '", bid_strategy="LOWEST_COST_WITHOUT_CAP")'
+                }, indent=2)
+        except Exception:
+            pass  # If the pre-flight check fails, let the create request proceed normally
+
     endpoint = f"{account_id}/adsets"
     
     params = {
@@ -403,9 +425,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         strategies_requiring_bid_amount = [
             'LOWEST_COST_WITH_BID_CAP',
             'COST_CAP',
-            'LOWEST_COST_WITH_MIN_ROAS'
+            'LOWEST_COST_WITH_MIN_ROAS',
+            'TARGET_COST',
         ]
-        
+
         if bid_strategy in strategies_requiring_bid_amount and bid_amount is None:
             return json.dumps({
                 "error": f"bid_amount is required when using bid_strategy '{bid_strategy}'",
@@ -414,7 +437,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                 "example_with_bid_amount": f'{{"bid_strategy": "{bid_strategy}", "bid_amount": 500}}',
                 "example_without_bid_amount": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
-    
+
     params = {}
     
     if frequency_control_specs is not None:
