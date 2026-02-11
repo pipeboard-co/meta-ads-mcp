@@ -800,10 +800,6 @@ async def create_ad_creative(
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
     
-    # Normalize page_id to string (Meta API and get_account_pages often return id as int in JSON)
-    if page_id is not None:
-        page_id = str(page_id).strip() or None
-    
     # Enhanced page discovery: If no page ID is provided, use robust discovery methods
     if not page_id:
         try:
@@ -830,7 +826,10 @@ async def create_ad_creative(
                 "details": str(e),
                 "suggestion": "Please provide a page_id parameter or use get_account_pages to find available pages"
             }, indent=2)
-    
+
+    # Normalize page_id to string after all assignment paths (input param + discovery)
+    page_id = str(page_id)
+
     # Validate headline/description parameters - cannot mix simple and complex
     if headline and headlines:
         return json.dumps({"error": "Cannot specify both 'headline' and 'headlines'. Use 'headline' for single headline or 'headlines' for multiple."}, indent=2)
