@@ -770,7 +770,7 @@ async def create_ad_creative(
         image_hash: Hash of the uploaded image
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
-        page_id: Facebook Page ID to be used for the ad
+        page_id: Facebook Page ID (string or int; coerced to string)
         link_url: Destination URL for the ad
         message: Ad copy/text
         headline: Single headline for simple ads (cannot be used with headlines)
@@ -799,6 +799,10 @@ async def create_ad_creative(
     # Ensure account_id has the 'act_' prefix
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
+    
+    # Normalize page_id to string (Meta API and get_account_pages often return id as int in JSON)
+    if page_id is not None:
+        page_id = str(page_id).strip() or None
     
     # Enhanced page discovery: If no page ID is provided, use robust discovery methods
     if not page_id:
@@ -1175,7 +1179,7 @@ async def _discover_pages_for_account(account_id: str, access_token: str) -> dic
             page = client_pages_data["data"][0]
             return {
                 "success": True,
-                "page_id": page["id"],
+                "page_id": str(page["id"]),
                 "page_name": page.get("name", "Unknown"),
                 "source": "client_pages"
             }
@@ -1193,7 +1197,7 @@ async def _discover_pages_for_account(account_id: str, access_token: str) -> dic
             page = pages_data["data"][0]
             return {
                 "success": True,
-                "page_id": page["id"],
+                "page_id": str(page["id"]),
                 "page_name": page.get("name", "Unknown"),
                 "source": "assigned_pages"
             }
