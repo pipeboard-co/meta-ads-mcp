@@ -165,25 +165,25 @@ class TestBidStrategyValidation:
         mock_api_request.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_create_adset_lowest_cost_with_min_roas_requires_bid_amount(
+    async def test_create_adset_lowest_cost_with_min_roas_does_not_require_bid_amount(
         self, mock_api_request, basic_adset_params
     ):
-        """Test that LOWEST_COST_WITH_MIN_ROAS requires bid_amount"""
+        """Test that LOWEST_COST_WITH_MIN_ROAS does NOT require bid_amount.
+
+        This strategy uses bid_constraints with roas_average_floor instead of bid_amount.
+        The validation should NOT block the request for missing bid_amount.
+        """
         result = await create_adset(
             **basic_adset_params,
             bid_strategy="LOWEST_COST_WITH_MIN_ROAS"
-            # Missing bid_amount
+            # No bid_amount - should be fine, this strategy uses bid_constraints instead
         )
 
         result_data = parse_result(result)
 
-        # Should return error
-        assert "error" in result_data
-        assert "bid_amount is required" in result_data["error"]
-        assert "LOWEST_COST_WITH_MIN_ROAS" in result_data["error"]
-        
-        # API should NOT have been called
-        mock_api_request.assert_not_called()
+        # Should NOT return a bid_amount validation error
+        if "error" in result_data:
+            assert "bid_amount is required" not in result_data.get("error", "")
 
     @pytest.mark.asyncio
     async def test_update_adset_lowest_cost_with_bid_cap_requires_bid_amount(
@@ -432,7 +432,6 @@ class TestBidStrategyValidation:
         valid_strategies_requiring_bid_amount = [
             "LOWEST_COST_WITH_BID_CAP",
             "COST_CAP",
-            "LOWEST_COST_WITH_MIN_ROAS"
         ]
         
         for strategy in valid_strategies_requiring_bid_amount:

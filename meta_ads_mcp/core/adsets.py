@@ -119,26 +119,28 @@ async def create_adset(
                   Use targeting_automation.advantage_audience=1 for automatic audience finding
                   For interest targeting, obtain Interest targeting IDs using the search_interests tool.
         bid_amount: Bid amount in account currency (in cents).
-                   REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, LOWEST_COST_WITH_MIN_ROAS.
+                   REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
                    NOT REQUIRED for: LOWEST_COST_WITHOUT_CAP (recommended default).
+                   NOT USED by: LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
                    Note: May also be required if the parent campaign uses a bid strategy that requires it.
         bid_strategy: Bid strategy determines how Meta optimizes your bids.
                      Valid values:
                      - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required, most flexible
                      - 'LOWEST_COST_WITH_BID_CAP' - Sets max bid cap, REQUIRES bid_amount
                      - 'COST_CAP' - Caps cost per result, REQUIRES bid_amount
-                     - 'LOWEST_COST_WITH_MIN_ROAS' - Sets minimum ROAS, REQUIRES bid_amount
-                     
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - Sets minimum ROAS, REQUIRES bid_constraints
+                       with roas_average_floor (not bid_amount). Also requires optimization_goal=VALUE.
+
                      IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
-                     
-                     IMPORTANT: Campaign-level bid strategy constrains ad set choices. If the parent campaign 
-                     uses LOWEST_COST_WITH_BID_CAP, all child ad sets MUST provide bid_amount regardless of 
+
+                     IMPORTANT: Campaign-level bid strategy constrains ad set choices. If the parent campaign
+                     uses LOWEST_COST_WITH_BID_CAP, all child ad sets MUST provide bid_amount regardless of
                      their own bid_strategy setting.
-                     
+
                      Examples:
                      1. Recommended (no bid amount needed):
                         bid_strategy="LOWEST_COST_WITHOUT_CAP"
-                        
+
                      2. With bid cap (bid_amount required):
                         bid_strategy="LOWEST_COST_WITH_BID_CAP", bid_amount=500
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
@@ -231,11 +233,10 @@ async def create_adset(
             "targeting_automation": {"advantage_audience": 1}
         }
     
-    # Bid strategies that require bid_amount
+    # Bid strategies that require bid_amount (not bid_constraints)
     strategies_requiring_bid_amount = [
         'LOWEST_COST_WITH_BID_CAP',
         'COST_CAP',
-        'LOWEST_COST_WITH_MIN_ROAS',
         'TARGET_COST',
     ]
 
@@ -251,7 +252,7 @@ async def create_adset(
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
                     "LOWEST_COST_WITH_BID_CAP (requires bid_amount)",
                     "COST_CAP (requires bid_amount)",
-                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_amount)"
+                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_constraints with roas_average_floor)"
                 ],
                 "example": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
@@ -387,11 +388,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                      - 'LOWEST_COST_WITHOUT_CAP' (recommended) - No bid_amount required
                      - 'LOWEST_COST_WITH_BID_CAP' - REQUIRES bid_amount
                      - 'COST_CAP' - REQUIRES bid_amount
-                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_amount
-                     
+                     - 'LOWEST_COST_WITH_MIN_ROAS' - REQUIRES bid_constraints (not bid_amount)
+
                      IMPORTANT: 'LOWEST_COST' is NOT a valid value - use 'LOWEST_COST_WITHOUT_CAP' instead.
         bid_amount: Bid amount in account currency (in cents for USD).
-                   REQUIRED when using LOWEST_COST_WITH_BID_CAP, COST_CAP, or LOWEST_COST_WITH_MIN_ROAS.
+                   REQUIRED when using LOWEST_COST_WITH_BID_CAP, COST_CAP, or TARGET_COST.
+                   NOT USED by LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
         status: Update ad set status (ACTIVE, PAUSED, etc.)
         targeting: Complete targeting specifications (will replace existing targeting)
                   (e.g. {"targeting_automation":{"advantage_audience":1}, "geo_locations": {"countries": ["US"]}})
@@ -416,16 +418,15 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
                     "LOWEST_COST_WITH_BID_CAP (requires bid_amount)",
                     "COST_CAP (requires bid_amount)",
-                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_amount)"
+                    "LOWEST_COST_WITH_MIN_ROAS (requires bid_constraints with roas_average_floor)"
                 ],
                 "example": '{"bid_strategy": "LOWEST_COST_WITHOUT_CAP"}'
             }, indent=2)
-        
-        # Bid strategies that require bid_amount
+
+        # Bid strategies that require bid_amount (not bid_constraints)
         strategies_requiring_bid_amount = [
             'LOWEST_COST_WITH_BID_CAP',
             'COST_CAP',
-            'LOWEST_COST_WITH_MIN_ROAS',
             'TARGET_COST',
         ]
 
