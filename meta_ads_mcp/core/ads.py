@@ -1,12 +1,15 @@
 """Ad and Creative-related functionality for Meta Ads API."""
 
 import json
+import logging
 from typing import Optional, Dict, Any, List
 import io
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image
 import os
 import time
+
+logger = logging.getLogger(__name__)
 
 from .api import meta_api_tool, make_api_request
 from .accounts import get_ad_accounts
@@ -774,7 +777,7 @@ async def create_ad_creative(
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
-        link_url: Destination URL for the ad
+        link_url: Destination URL for the ad (required unless using lead_gen_form_id)
         message: Single ad copy/text (cannot be used with messages)
         messages: List of primary text variants for FLEX/dynamic creatives (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
@@ -783,8 +786,9 @@ async def create_ad_creative(
         descriptions: List of descriptions for dynamic creative testing (cannot be used with description)
         image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash)
         optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that allow
-                          Meta to auto-optimize across all asset combinations without requiring
-                          is_dynamic_creative=true on the ad set
+                          Meta to auto-optimize across all asset combinations. When using
+                          DEGREES_OF_FREEDOM, at least one asset field (image_hashes, messages,
+                          headlines, or descriptions) must contain more than one variant.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW')
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
@@ -797,6 +801,39 @@ async def create_ad_creative(
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
+
+    # Defensive coercion: some MCP transports deliver array params as JSON strings
+    for _param_name, _param_val in [
+        ('image_hashes', image_hashes),
+        ('messages', messages),
+        ('headlines', headlines),
+        ('descriptions', descriptions),
+    ]:
+        if isinstance(_param_val, str):
+            try:
+                _parsed = json.loads(_param_val)
+                if isinstance(_parsed, list):
+                    if _param_name == 'image_hashes':
+                        image_hashes = _parsed
+                    elif _param_name == 'messages':
+                        messages = _parsed
+                    elif _param_name == 'headlines':
+                        headlines = _parsed
+                    elif _param_name == 'descriptions':
+                        descriptions = _parsed
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    logger.debug(
+        "create_ad_creative called: image_hash=%s, image_hashes=%s(%s), "
+        "messages=%s, headlines=%s, descriptions=%s, optimization_type=%s",
+        type(image_hash).__name__,
+        type(image_hashes).__name__, image_hashes,
+        type(messages).__name__,
+        type(headlines).__name__,
+        type(descriptions).__name__,
+        optimization_type,
+    )
 
     # Validate image_hash / image_hashes mutual exclusivity
     if image_hash and image_hashes:
@@ -818,9 +855,12 @@ async def create_ad_creative(
     if message and messages:
         return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
     
+    if not link_url and not lead_gen_form_id:
+        return json.dumps({"error": "No link_url provided. A destination URL is required for ad creatives (unless using lead_gen_form_id)."}, indent=2)
+
     if not name:
         name = f"Creative {int(time.time())}"
-    
+
     # Ensure account_id has the 'act_' prefix
     if not account_id.startswith("act_"):
         account_id = f"act_{account_id}"
@@ -877,104 +917,114 @@ async def create_ad_creative(
             if len(d) > 125:
                 return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
 
-    # Prepare the creative data
-    creative_data = {
-        "name": name
-    }
-
-    # Determine whether to use asset_feed_spec path:
-    # - plural parameters (headlines/descriptions/messages/image_hashes), OR
-    # - optimization_type is set (FLEX creatives always use asset_feed_spec)
-    use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type)
-
-    if use_asset_feed:
-        # Build the images array from image_hashes (plural) or image_hash (singular)
-        if image_hashes:
-            images_array = [{"hash": h} for h in image_hashes]
-        else:
-            images_array = [{"hash": image_hash}]
-
-        # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
-        asset_feed_spec = {
-            "images": images_array,
-            "link_urls": [{"website_url": link_url if link_url else "https://facebook.com"}],
-            "ad_formats": ["SINGLE_IMAGE"]
-        }
-
-        # Add optimization_type for FLEX (Advantage+) creatives
-        if optimization_type:
-            asset_feed_spec["optimization_type"] = optimization_type
-
-        # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
-        if headlines:
-            asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
-
-        # Handle descriptions
-        if descriptions:
-            asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
-
-        # Handle bodies: messages (plural) or message (singular)
-        if messages:
-            asset_feed_spec["bodies"] = [{"text": m} for m in messages]
-        elif message:
-            asset_feed_spec["bodies"] = [{"text": message}]
-
-        # Add call_to_action_types if provided
-        if call_to_action_type:
-            asset_feed_spec["call_to_action_types"] = [call_to_action_type]
-
-        creative_data["asset_feed_spec"] = asset_feed_spec
-
-        # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec only needs page_id
-        creative_data["object_story_spec"] = {
-            "page_id": page_id
-        }
-    else:
-        # Use traditional object_story_spec with link_data for simple creatives
-        creative_data["object_story_spec"] = {
-            "page_id": page_id,
-            "link_data": {
-                "image_hash": image_hash,
-                "link": link_url if link_url else "https://facebook.com"
-            }
-        }
-
-        # Add optional parameters if provided
-        if message:
-            creative_data["object_story_spec"]["link_data"]["message"] = message
-
-        # Add headline (singular) to link_data
-        if headline:
-            creative_data["object_story_spec"]["link_data"]["name"] = headline
-
-        # Add description (singular) to link_data
-        if description:
-            creative_data["object_story_spec"]["link_data"]["description"] = description
-
-        # Add call_to_action to link_data for simple creatives
-        if call_to_action_type:
-            cta_data = {"type": call_to_action_type}
-
-            # Add lead form ID to value object if provided (required for lead generation campaigns)
-            if lead_gen_form_id:
-                cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
-
-            creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
-    
-    # Add dynamic creative spec if provided
-    if dynamic_creative_spec:
-        creative_data["dynamic_creative_spec"] = dynamic_creative_spec
-    
-    if instagram_actor_id:
-        creative_data["instagram_actor_id"] = instagram_actor_id
-    
     # Prepare the API endpoint for creating a creative
     endpoint = f"{account_id}/adcreatives"
-    
+
     try:
+        # Prepare the creative data
+        creative_data = {
+            "name": name
+        }
+
+        # Determine whether to use asset_feed_spec path:
+        # - plural parameters (headlines/descriptions/messages/image_hashes), OR
+        # - optimization_type is set (FLEX creatives always use asset_feed_spec)
+        use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type)
+
+        if use_asset_feed:
+            # Build the images array from image_hashes (plural) or image_hash (singular)
+            if image_hashes:
+                images_array = [{"hash": h} for h in image_hashes]
+            else:
+                images_array = [{"hash": image_hash}]
+
+            # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
+            asset_feed_spec = {
+                "images": images_array,
+                "link_urls": [{"website_url": link_url}],
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
+
+            # Add optimization_type for FLEX (Advantage+) creatives
+            if optimization_type:
+                asset_feed_spec["optimization_type"] = optimization_type
+
+            # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
+            # Auto-promote singular headline to single-element array when in asset_feed_spec path
+            if headlines:
+                asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
+            elif headline:
+                asset_feed_spec["titles"] = [{"text": headline}]
+
+            # Handle descriptions
+            # Auto-promote singular description to single-element array when in asset_feed_spec path
+            if descriptions:
+                asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
+            elif description:
+                asset_feed_spec["descriptions"] = [{"text": description}]
+
+            # Handle bodies: messages (plural) or message (singular)
+            if messages:
+                asset_feed_spec["bodies"] = [{"text": m} for m in messages]
+            elif message:
+                asset_feed_spec["bodies"] = [{"text": message}]
+
+            # Add call_to_action_types if provided
+            if call_to_action_type:
+                asset_feed_spec["call_to_action_types"] = [call_to_action_type]
+
+            creative_data["asset_feed_spec"] = asset_feed_spec
+
+            # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec still
+            # needs page_id and a link_data.link (Meta API requires the link field).
+            creative_data["object_story_spec"] = {
+                "page_id": page_id,
+                "link_data": {
+                    "link": link_url
+                }
+            }
+        else:
+            # Use traditional object_story_spec with link_data for simple creatives
+            creative_data["object_story_spec"] = {
+                "page_id": page_id,
+                "link_data": {
+                    "image_hash": image_hash,
+                    "link": link_url
+                }
+            }
+
+            # Add optional parameters if provided
+            if message:
+                creative_data["object_story_spec"]["link_data"]["message"] = message
+
+            # Add headline (singular) to link_data
+            if headline:
+                creative_data["object_story_spec"]["link_data"]["name"] = headline
+
+            # Add description (singular) to link_data
+            if description:
+                creative_data["object_story_spec"]["link_data"]["description"] = description
+
+            # Add call_to_action to link_data for simple creatives
+            if call_to_action_type:
+                cta_data = {"type": call_to_action_type}
+
+                # Add lead form ID to value object if provided (required for lead generation campaigns)
+                if lead_gen_form_id:
+                    cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+
+                creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
+
+        # Add dynamic creative spec if provided
+        if dynamic_creative_spec:
+            creative_data["dynamic_creative_spec"] = dynamic_creative_spec
+
+        if instagram_actor_id:
+            creative_data["instagram_actor_id"] = instagram_actor_id
+
         # Make API request to create the creative
         data = await make_api_request(endpoint, access_token, creative_data, method="POST")
-        
+
         # If successful, get more details about the created creative
         if "id" in data:
             creative_id = data["id"]
@@ -982,21 +1032,21 @@ async def create_ad_creative(
             creative_params = {
                 "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,url_tags,link_url"
             }
-            
+
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
             return json.dumps({
                 "success": True,
                 "creative_id": creative_id,
                 "details": creative_details
             }, indent=2)
-        
+
         return json.dumps(data, indent=2)
-    
+
     except Exception as e:
+        logger.exception("create_ad_creative failed")
         return json.dumps({
             "error": "Failed to create ad creative",
-            "details": str(e),
-            "creative_data_sent": creative_data
+            "details": str(e)
         }, indent=2)
 
 
@@ -1094,12 +1144,18 @@ async def update_ad_creative(
             asset_feed_spec["optimization_type"] = optimization_type
 
         # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
+        # Auto-promote singular headline to single-element array when in asset_feed_spec path
         if headlines:
             asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
+        elif headline:
+            asset_feed_spec["titles"] = [{"text": headline}]
 
         # Handle descriptions
+        # Auto-promote singular description to single-element array when in asset_feed_spec path
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
+        elif description:
+            asset_feed_spec["descriptions"] = [{"text": description}]
 
         # Handle bodies: messages (plural) or message (singular)
         if messages:

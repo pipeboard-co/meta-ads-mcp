@@ -238,8 +238,11 @@ class TestFlexCreatives:
             assert "asset_feed_spec" in creative_data
             assert creative_data["asset_feed_spec"]["images"] == [{"hash": "abc123"}]
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
-            # object_story_spec should only have page_id (no link_data)
-            assert creative_data["object_story_spec"] == {"page_id": "987654321"}
+            # object_story_spec needs page_id and link_data (Meta API requires the link field)
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+                "link_data": {"link": "https://example.com"}
+            }
 
     async def test_no_optimization_type_unchanged_behavior(self):
         """Without optimization_type, single image+headline uses object_story_spec (backward compat)."""
@@ -492,3 +495,140 @@ class TestFlexCreativesUpdate:
 
             assert "asset_feed_spec" in creative_data
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
+
+
+@pytest.mark.asyncio
+class TestSingularParamPromotion:
+    """Test that singular headline/description/message are auto-promoted in asset_feed_spec path."""
+
+    async def test_singular_headline_promoted_with_optimization_type(self):
+        """Singular headline is auto-promoted to titles array when optimization_type forces asset_feed_spec."""
+        sample_creative_data = {
+            "id": "123456789",
+            "name": "FLEX with singular headline",
+            "status": "ACTIVE"
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="FLEX with singular headline",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                headline="My Single Headline",
+                optimization_type="DEGREES_OF_FREEDOM"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            call_args_list = mock_api.call_args_list
+            first_call = call_args_list[0]
+            creative_data = first_call[0][2]
+
+            assert "asset_feed_spec" in creative_data
+            assert creative_data["asset_feed_spec"]["titles"] == [{"text": "My Single Headline"}]
+
+    async def test_singular_description_promoted_with_optimization_type(self):
+        """Singular description is auto-promoted to descriptions array when optimization_type forces asset_feed_spec."""
+        sample_creative_data = {
+            "id": "123456789",
+            "name": "FLEX with singular description",
+            "status": "ACTIVE"
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="FLEX with singular description",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                description="My Single Description",
+                optimization_type="DEGREES_OF_FREEDOM"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            call_args_list = mock_api.call_args_list
+            first_call = call_args_list[0]
+            creative_data = first_call[0][2]
+
+            assert "asset_feed_spec" in creative_data
+            assert creative_data["asset_feed_spec"]["descriptions"] == [{"text": "My Single Description"}]
+
+    async def test_all_singular_params_promoted_with_optimization_type(self):
+        """All singular params (headline, description, message) promoted when optimization_type is set."""
+        sample_creative_data = {
+            "id": "123456789",
+            "name": "FLEX all singular",
+            "status": "ACTIVE"
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="FLEX all singular",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                message="My message",
+                headline="My headline",
+                description="My description",
+                optimization_type="DEGREES_OF_FREEDOM",
+                call_to_action_type="LEARN_MORE"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            call_args_list = mock_api.call_args_list
+            first_call = call_args_list[0]
+            creative_data = first_call[0][2]
+
+            afs = creative_data["asset_feed_spec"]
+            assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
+            assert afs["titles"] == [{"text": "My headline"}]
+            assert afs["descriptions"] == [{"text": "My description"}]
+            assert afs["bodies"] == [{"text": "My message"}]
+            assert afs["call_to_action_types"] == ["LEARN_MORE"]
+            assert afs["images"] == [{"hash": "abc123"}]
+
+    async def test_update_singular_headline_promoted_with_optimization_type(self):
+        """Singular headline promoted in update_ad_creative when optimization_type is set."""
+        sample_creative_data = {
+            "id": "123456789",
+            "name": "Updated",
+            "status": "ACTIVE"
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                headline="Updated Headline",
+                optimization_type="DEGREES_OF_FREEDOM"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            call_args_list = mock_api.call_args_list
+            first_call = call_args_list[0]
+            creative_data = first_call[0][2]
+
+            assert "asset_feed_spec" in creative_data
+            assert creative_data["asset_feed_spec"]["titles"] == [{"text": "Updated Headline"}]
