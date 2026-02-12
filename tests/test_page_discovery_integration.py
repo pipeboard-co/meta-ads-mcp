@@ -50,18 +50,19 @@ class TestPageDiscoveryIntegration:
                 account_id="act_123456789",
                 name="Test Creative",
                 image_hash="test_hash_123",
+                link_url="https://example.com",
                 message="Test message",
                 access_token="test_token_123"  # Provide explicit token
             )
-            
+
             result_data = json.loads(result)
-            
+
             # Handle MCP wrapper - check if result is wrapped in 'data' field
             if "data" in result_data:
                 actual_result = json.loads(result_data["data"])
             else:
                 actual_result = result_data
-            
+
             # Verify that the function attempted to create a creative (even though it failed due to invalid image)
             assert "error" in actual_result
             assert "Image Not Found" in actual_result["error"]["error_user_title"]
@@ -140,6 +141,7 @@ class TestPageDiscoveryIntegration:
                 name="Test Creative",
                 image_hash="test_hash_123",
                 page_id="123456789",  # Manual page ID
+                link_url="https://example.com",
                 message="Test message",
                 access_token="test_token_123"  # Provide explicit token
             )
@@ -181,18 +183,19 @@ class TestPageDiscoveryIntegration:
                 account_id="act_123456789",
                 name="Test Creative",
                 image_hash="test_hash_123",
+                link_url="https://example.com",
                 message="Test message",
                 access_token="test_token_123"  # Provide explicit token
             )
-            
+
             result_data = json.loads(result)
-            
+
             # Handle MCP wrapper - check if result is wrapped in 'data' field
             if "data" in result_data:
                 actual_result = json.loads(result_data["data"])
             else:
                 actual_result = result_data
-            
+
             # Verify that the function returned an error about no pages found
             assert "error" in actual_result
             assert "No page ID provided and no suitable pages found" in actual_result["error"]
