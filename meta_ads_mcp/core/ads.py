@@ -747,16 +747,19 @@ async def upload_ad_image(
 @meta_api_tool
 async def create_ad_creative(
     account_id: str,
-    image_hash: str,
+    image_hash: Optional[str] = None,
     access_token: Optional[str] = None,
     name: Optional[str] = None,
     page_id: Optional[str] = None,
     link_url: Optional[str] = None,
     message: Optional[str] = None,
+    messages: Optional[List[str]] = None,
     headline: Optional[str] = None,
     headlines: Optional[List[str]] = None,
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
+    image_hashes: Optional[List[str]] = None,
+    optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
     lead_gen_form_id: Optional[str] = None,
@@ -764,34 +767,56 @@ async def create_ad_creative(
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
-        image_hash: Hash of the uploaded image
+        image_hash: Hash of a single uploaded image (cannot be used with image_hashes)
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
         link_url: Destination URL for the ad
-        message: Ad copy/text
+        message: Single ad copy/text (cannot be used with messages)
+        messages: List of primary text variants for FLEX/dynamic creatives (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
         headlines: List of headlines for dynamic creative testing (cannot be used with headline)
         description: Single description for simple ads (cannot be used with descriptions)
         descriptions: List of descriptions for dynamic creative testing (cannot be used with description)
+        image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash)
+        optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that allow
+                          Meta to auto-optimize across all asset combinations without requiring
+                          is_dynamic_creative=true on the ad set
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW')
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements
-    
+
     Returns:
         JSON response with created creative details
     """
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
-    
-    if not image_hash:
-        return json.dumps({"error": "No image hash provided"}, indent=2)
+
+    # Validate image_hash / image_hashes mutual exclusivity
+    if image_hash and image_hashes:
+        return json.dumps({"error": "Cannot specify both 'image_hash' and 'image_hashes'. Use 'image_hash' for a single image or 'image_hashes' for multiple."}, indent=2)
+
+    if not image_hash and not image_hashes:
+        return json.dumps({"error": "No image hash provided. Specify 'image_hash' for a single image or 'image_hashes' for multiple."}, indent=2)
+
+    # Validate image_hashes limits
+    if image_hashes:
+        if len(image_hashes) > 10:
+            return json.dumps({"error": "Maximum 10 image hashes allowed for FLEX creatives"}, indent=2)
+
+    # Validate optimization_type
+    if optimization_type and optimization_type != "DEGREES_OF_FREEDOM":
+        return json.dumps({"error": f"Invalid optimization_type '{optimization_type}'. Only 'DEGREES_OF_FREEDOM' is supported."}, indent=2)
+
+    # Validate message / messages mutual exclusivity
+    if message and messages:
+        return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
     
     if not name:
         name = f"Creative {int(time.time())}"
@@ -844,51 +869,63 @@ async def create_ad_creative(
         for i, h in enumerate(headlines):
             if len(h) > 40:
                 return json.dumps({"error": f"Headline {i+1} exceeds 40 character limit"}, indent=2)
-    
+
     if descriptions:
         if len(descriptions) > 5:
             return json.dumps({"error": "Maximum 5 descriptions allowed for dynamic creatives"}, indent=2)
         for i, d in enumerate(descriptions):
             if len(d) > 125:
                 return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
-    
+
     # Prepare the creative data
     creative_data = {
         "name": name
     }
-    
-    # Choose between asset_feed_spec (dynamic creative) or object_story_spec (traditional)
-    # ONLY use asset_feed_spec when user explicitly provides plural parameters (headlines/descriptions)
-    if headlines or descriptions:
-        # Use asset_feed_spec for dynamic creatives with multiple variants
-        # Structure based on Meta API working example from documentation
-        # ad_formats must be specified with exactly one format
+
+    # Determine whether to use asset_feed_spec path:
+    # - plural parameters (headlines/descriptions/messages/image_hashes), OR
+    # - optimization_type is set (FLEX creatives always use asset_feed_spec)
+    use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type)
+
+    if use_asset_feed:
+        # Build the images array from image_hashes (plural) or image_hash (singular)
+        if image_hashes:
+            images_array = [{"hash": h} for h in image_hashes]
+        else:
+            images_array = [{"hash": image_hash}]
+
+        # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
         asset_feed_spec = {
-            "images": [{"hash": image_hash}],
+            "images": images_array,
             "link_urls": [{"website_url": link_url if link_url else "https://facebook.com"}],
             "ad_formats": ["SINGLE_IMAGE"]
         }
-        
+
+        # Add optimization_type for FLEX (Advantage+) creatives
+        if optimization_type:
+            asset_feed_spec["optimization_type"] = optimization_type
+
         # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
         if headlines:
             asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
-            
-        # Handle descriptions  
+
+        # Handle descriptions
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
-        
-        # Add message as bodies - Meta API uses "bodies" not "primary_texts" in asset_feed_spec
-        if message:
+
+        # Handle bodies: messages (plural) or message (singular)
+        if messages:
+            asset_feed_spec["bodies"] = [{"text": m} for m in messages]
+        elif message:
             asset_feed_spec["bodies"] = [{"text": message}]
-        
+
         # Add call_to_action_types if provided
         if call_to_action_type:
             asset_feed_spec["call_to_action_types"] = [call_to_action_type]
-        
+
         creative_data["asset_feed_spec"] = asset_feed_spec
-        
-        # For dynamic creatives with asset_feed_spec, object_story_spec only needs page_id
-        # Link information is already in asset_feed_spec.link_urls
+
+        # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec only needs page_id
         creative_data["object_story_spec"] = {
             "page_id": page_id
         }
@@ -901,27 +938,27 @@ async def create_ad_creative(
                 "link": link_url if link_url else "https://facebook.com"
             }
         }
-        
+
         # Add optional parameters if provided
         if message:
             creative_data["object_story_spec"]["link_data"]["message"] = message
-        
+
         # Add headline (singular) to link_data
         if headline:
             creative_data["object_story_spec"]["link_data"]["name"] = headline
-        
+
         # Add description (singular) to link_data
         if description:
             creative_data["object_story_spec"]["link_data"]["description"] = description
-        
+
         # Add call_to_action to link_data for simple creatives
         if call_to_action_type:
             cta_data = {"type": call_to_action_type}
-            
+
             # Add lead form ID to value object if provided (required for lead generation campaigns)
             if lead_gen_form_id:
                 cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
-            
+
             creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
     
     # Add dynamic creative spec if provided
@@ -970,45 +1007,57 @@ async def update_ad_creative(
     access_token: Optional[str] = None,
     name: Optional[str] = None,
     message: Optional[str] = None,
+    messages: Optional[List[str]] = None,
     headline: Optional[str] = None,
     headlines: Optional[List[str]] = None,
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
+    optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
     lead_gen_form_id: Optional[str] = None
 ) -> str:
     """
     Update an existing ad creative with new content or settings.
-    
+
     Args:
         creative_id: Meta Ads creative ID to update
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: New creative name
-        message: New ad copy/text
+        message: New ad copy/text (cannot be used with messages)
+        messages: List of primary text variants for FLEX/dynamic creatives (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
         headlines: New list of headlines for dynamic creative testing (cannot be used with headline)
         description: Single description for simple ads (cannot be used with descriptions)
         descriptions: New list of descriptions for dynamic creative testing (cannot be used with description)
+        optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives
         dynamic_creative_spec: New dynamic creative optimization settings
         call_to_action_type: New call to action button type
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
-    
+
     Returns:
         JSON response with updated creative details
     """
     # Check required parameters
     if not creative_id:
         return json.dumps({"error": "No creative ID provided"}, indent=2)
-    
+
     # Validate headline/description parameters - cannot mix simple and complex
     if headline and headlines:
         return json.dumps({"error": "Cannot specify both 'headline' and 'headlines'. Use 'headline' for single headline or 'headlines' for multiple."}, indent=2)
-    
+
     if description and descriptions:
         return json.dumps({"error": "Cannot specify both 'description' and 'descriptions'. Use 'description' for single description or 'descriptions' for multiple."}, indent=2)
-    
+
+    # Validate message / messages mutual exclusivity
+    if message and messages:
+        return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
+
+    # Validate optimization_type
+    if optimization_type and optimization_type != "DEGREES_OF_FREEDOM":
+        return json.dumps({"error": f"Invalid optimization_type '{optimization_type}'. Only 'DEGREES_OF_FREEDOM' is supported."}, indent=2)
+
     # Validate dynamic creative parameters (plural forms only)
     if headlines:
         if len(headlines) > 5:
@@ -1016,45 +1065,52 @@ async def update_ad_creative(
         for i, h in enumerate(headlines):
             if len(h) > 40:
                 return json.dumps({"error": f"Headline {i+1} exceeds 40 character limit"}, indent=2)
-    
+
     if descriptions:
         if len(descriptions) > 5:
             return json.dumps({"error": "Maximum 5 descriptions allowed for dynamic creatives"}, indent=2)
         for i, d in enumerate(descriptions):
             if len(d) > 125:
                 return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
-    
+
     # Prepare the update data
     update_data = {}
-    
+
     if name:
         update_data["name"] = name
-    
-    # Choose between asset_feed_spec (dynamic creative) or object_story_spec (traditional)
-    # ONLY use asset_feed_spec when user explicitly provides plural parameters (headlines/descriptions)
-    if headlines or descriptions or dynamic_creative_spec:
-        # Handle dynamic creative assets via asset_feed_spec
+
+    # Choose between asset_feed_spec (dynamic/FLEX creative) or object_story_spec (traditional)
+    use_asset_feed = bool(headlines or descriptions or messages or optimization_type or dynamic_creative_spec)
+
+    if use_asset_feed:
+        # Handle dynamic/FLEX creative assets via asset_feed_spec
         asset_feed_spec = {}
-        
+
         # Add required ad_formats field for dynamic creatives
         asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
-        
+
+        # Add optimization_type for FLEX (Advantage+) creatives
+        if optimization_type:
+            asset_feed_spec["optimization_type"] = optimization_type
+
         # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
         if headlines:
             asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
-            
-        # Handle descriptions  
+
+        # Handle descriptions
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
-        
-        # Add message as bodies - Meta API uses "bodies" not "primary_texts" in asset_feed_spec
-        if message:
+
+        # Handle bodies: messages (plural) or message (singular)
+        if messages:
+            asset_feed_spec["bodies"] = [{"text": m} for m in messages]
+        elif message:
             asset_feed_spec["bodies"] = [{"text": message}]
-        
+
         # Add call_to_action_types if provided
         if call_to_action_type:
             asset_feed_spec["call_to_action_types"] = [call_to_action_type]
-        
+
         update_data["asset_feed_spec"] = asset_feed_spec
     else:
         # Use traditional object_story_spec with link_data for simple creatives
