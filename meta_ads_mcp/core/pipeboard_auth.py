@@ -448,7 +448,7 @@ class PipeboardAuthManager:
             
         try:
             # Make a simple request to the /me endpoint to test the token
-            META_GRAPH_API_VERSION = "v24.0"
+            META_GRAPH_API_VERSION = "v22.0"
             url = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}/me"
             headers = {"Authorization": f"Bearer {self.token_info.access_token}"}
             

@@ -347,7 +347,6 @@ class TestDynamicCreatives:
             name="Test Creative",
             image_hash="abc123",
             page_id="987654321",
-            link_url="https://example.com",
             headlines=too_many_headlines
         )
         
@@ -373,7 +372,6 @@ class TestDynamicCreatives:
             name="Test Creative",
             image_hash="abc123",
             page_id="987654321",
-            link_url="https://example.com",
             descriptions=too_many_descriptions
         )
         

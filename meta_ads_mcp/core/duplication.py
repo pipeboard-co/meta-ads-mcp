@@ -10,10 +10,11 @@ from . import auth
 from .http_auth_integration import FastMCPAuthIntegration
 
 
+# Duplication functions removed for read-only MCP server
 # Only register the duplication functions if the environment variable is set
 ENABLE_DUPLICATION = bool(os.environ.get("META_ADS_ENABLE_DUPLICATION", ""))
 
-if ENABLE_DUPLICATION:
+if False:  # Disabled for read-only MCP server
     @mcp_server.tool()
     @meta_api_tool
     async def duplicate_campaign(

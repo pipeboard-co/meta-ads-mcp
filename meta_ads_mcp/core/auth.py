@@ -226,7 +226,7 @@ class AuthManager:
     def get_auth_url(self) -> str:
         """Generate the Facebook OAuth URL for desktop app flow"""
         return (
-            f"https://www.facebook.com/v24.0/dialog/oauth?"
+            f"https://www.facebook.com/v22.0/dialog/oauth?"
             f"client_id={self.app_id}&"
             f"redirect_uri={self.redirect_uri}&"
             f"scope={AUTH_SCOPE}&"
@@ -403,7 +403,7 @@ def exchange_token_for_long_lived(short_lived_token):
             return None
             
         # Make the API request to exchange the token
-        url = "https://graph.facebook.com/v24.0/oauth/access_token"
+        url = "https://graph.facebook.com/v22.0/oauth/access_token"
         params = {
             "grant_type": "fb_exchange_token",
             "client_id": app_id,

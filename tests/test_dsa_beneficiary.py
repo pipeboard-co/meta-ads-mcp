@@ -188,8 +188,8 @@ class TestDSABeneficiaryParameter:
                     dsa_beneficiary="Test Organization GmbH"
                 )
                 
-                # Verify the API was called with DSA beneficiary parameter (pre-flight campaign check + actual create)
-                assert mock_api.call_count >= 1
+                # Verify the API was called with DSA beneficiary parameter
+                mock_api.assert_called_once()
                 call_args = mock_api.call_args
                 assert "dsa_beneficiary" in str(call_args)
                 
@@ -279,10 +279,10 @@ class TestDSABeneficiaryParameter:
                     dsa_beneficiary="Test Organization GmbH"
                 )
                 
-                # Verify the API was called (pre-flight campaign check + actual create)
-                assert mock_api.call_count >= 1
+                # Verify the API was called
+                mock_api.assert_called_once()
                 call_args = mock_api.call_args
-
+                
                 # Verify DSA beneficiary is sent as separate parameter, not in targeting
                 call_str = str(call_args)
                 assert "dsa_beneficiary" in call_str
@@ -313,8 +313,8 @@ class TestDSABeneficiaryParameter:
                         dsa_beneficiary=beneficiary_name
                     )
                     
-                    # Verify the API was called with the beneficiary name (pre-flight campaign check + actual create)
-                    assert mock_api.call_count >= 1
+                    # Verify the API was called with the beneficiary name
+                    mock_api.assert_called_once()
                     call_args = mock_api.call_args
                     assert beneficiary_name in str(call_args)
 

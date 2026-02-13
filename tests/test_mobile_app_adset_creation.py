@@ -123,10 +123,10 @@ class TestMobileAppAdsetCreation:
         # Parse the result
         result_data = json.loads(result)
         
-        # Verify the API was called (pre-flight campaign check + actual create)
-        assert mock_api_request.call_count >= 1
+        # Verify the API was called with correct parameters
+        mock_api_request.assert_called_once()
         call_args = mock_api_request.call_args
-
+        
         # Check endpoint (first argument)
         assert call_args[0][0] == f"{valid_mobile_app_params['account_id']}/adsets"
         
@@ -162,11 +162,11 @@ class TestMobileAppAdsetCreation:
         # Parse the result  
         result_data = json.loads(result)
         
-        # Verify the API was called (pre-flight campaign check + actual create)
-        assert mock_api_request.call_count >= 1
+        # Verify the API was called
+        mock_api_request.assert_called_once()
         call_args = mock_api_request.call_args
         params = call_args[0][2]
-
+        
         # Verify Android-specific promoted_object
         promoted_obj_param = json.loads(params['promoted_object']) if isinstance(params['promoted_object'], str) else params['promoted_object']
         assert promoted_obj_param['application_id'] == android_promoted_object['application_id']
@@ -517,8 +517,8 @@ class TestMobileAppAdsetCreation:
         
         result = await create_adset(**non_mobile_params)
         
-        # Should work without mobile app parameters (pre-flight campaign check + actual create)
-        assert mock_api_request.call_count >= 1
+        # Should work without mobile app parameters
+        mock_api_request.assert_called_once()
         call_args = mock_api_request.call_args
         params = call_args[0][2]
         
@@ -542,8 +542,8 @@ class TestMobileAppAdsetCreation:
             destination_type="APP_STORE"
         )
         
-        # Should work and include mobile parameters if provided (pre-flight campaign check + actual create)
-        assert mock_api_request.call_count >= 1
+        # Should work and include mobile parameters if provided
+        mock_api_request.assert_called_once()
         call_args = mock_api_request.call_args
         params = call_args[0][2]
         
