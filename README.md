@@ -90,7 +90,7 @@ Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
 
 **[📖 Get detailed setup instructions for your AI client here](https://pipeboard.co)**
 
-#### Advanced: Direct Token Authentication (Other Clients)
+#### Advanced: Direct Token Authentication (OpenClaw and other clients)
 
 For MCP clients that support token-based authentication, you can append your Pipeboard API token to the URL:
 
