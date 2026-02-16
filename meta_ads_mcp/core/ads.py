@@ -766,7 +766,8 @@ async def create_ad_creative(
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
     lead_gen_form_id: Optional[str] = None,
-    instagram_actor_id: Optional[str] = None
+    instagram_actor_id: Optional[str] = None,
+    ad_formats: Optional[List[str]] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash.
@@ -794,6 +795,10 @@ async def create_ad_creative(
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements
+        ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
+                   Flexible ads, ["SINGLE_IMAGE"] for single image). When optimization_type is
+                   "DEGREES_OF_FREEDOM" with image_hashes, defaults to ["AUTOMATIC_FORMAT"]
+                   (Flexible format). Otherwise defaults to ["SINGLE_IMAGE"].
 
     Returns:
         JSON response with created creative details
@@ -808,6 +813,7 @@ async def create_ad_creative(
         ('messages', messages),
         ('headlines', headlines),
         ('descriptions', descriptions),
+        ('ad_formats', ad_formats),
     ]:
         if isinstance(_param_val, str):
             try:
@@ -821,6 +827,8 @@ async def create_ad_creative(
                         headlines = _parsed
                     elif _param_name == 'descriptions':
                         descriptions = _parsed
+                    elif _param_name == 'ad_formats':
+                        ad_formats = _parsed
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -938,11 +946,21 @@ async def create_ad_creative(
             else:
                 images_array = [{"hash": image_hash}]
 
+            # Determine ad_formats: use explicit value if provided, otherwise smart default.
+            # When using DEGREES_OF_FREEDOM with image_hashes, default to AUTOMATIC_FORMAT
+            # ("Flexible" in Ads Manager) so Meta can optimize across format variants.
+            if ad_formats:
+                resolved_ad_formats = ad_formats
+            elif optimization_type == "DEGREES_OF_FREEDOM" and image_hashes:
+                resolved_ad_formats = ["AUTOMATIC_FORMAT"]
+            else:
+                resolved_ad_formats = ["SINGLE_IMAGE"]
+
             # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
             asset_feed_spec = {
                 "images": images_array,
                 "link_urls": [{"website_url": link_url}],
-                "ad_formats": ["SINGLE_IMAGE"]
+                "ad_formats": resolved_ad_formats
             }
 
             # Add optimization_type for FLEX (Advantage+) creatives
@@ -1065,7 +1083,8 @@ async def update_ad_creative(
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
-    lead_gen_form_id: Optional[str] = None
+    lead_gen_form_id: Optional[str] = None,
+    ad_formats: Optional[List[str]] = None
 ) -> str:
     """
     Update an existing ad creative with new content or settings.
@@ -1085,6 +1104,10 @@ async def update_ad_creative(
         call_to_action_type: New call to action button type
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
+        ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
+                   Flexible ads, ["SINGLE_IMAGE"] for single image). When optimization_type is
+                   "DEGREES_OF_FREEDOM", defaults to ["AUTOMATIC_FORMAT"]. Otherwise defaults
+                   to ["SINGLE_IMAGE"].
 
     Returns:
         JSON response with updated creative details
@@ -1136,8 +1159,14 @@ async def update_ad_creative(
         # Handle dynamic/FLEX creative assets via asset_feed_spec
         asset_feed_spec = {}
 
-        # Add required ad_formats field for dynamic creatives
-        asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
+        # Determine ad_formats: use explicit value if provided, otherwise smart default.
+        # When using DEGREES_OF_FREEDOM, default to AUTOMATIC_FORMAT ("Flexible" in Ads Manager).
+        if ad_formats:
+            asset_feed_spec["ad_formats"] = ad_formats
+        elif optimization_type == "DEGREES_OF_FREEDOM":
+            asset_feed_spec["ad_formats"] = ["AUTOMATIC_FORMAT"]
+        else:
+            asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
 
         # Add optimization_type for FLEX (Advantage+) creatives
         if optimization_type:
