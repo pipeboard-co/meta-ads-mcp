@@ -1178,27 +1178,30 @@ async def update_ad_creative(
     ad_formats: Optional[List[str]] = None
 ) -> str:
     """
-    Update an existing ad creative with new content or settings.
+    Update an existing ad creative's name or optimization settings.
+
+    IMPORTANT — Meta API limitation: The Meta API does NOT allow updating content
+    fields (message, headline, description, CTA, image, video, URL) on existing
+    creatives. Only the creative `name` and optimization settings (asset_feed_spec)
+    can be changed. To change ad content, create a new creative with the desired
+    content and update the ad to reference the new creative via `update_ad`.
 
     Args:
         creative_id: Meta Ads creative ID to update
         access_token: Meta API access token (optional - will use cached token if not provided)
-        name: New creative name
-        message: New ad copy/text (cannot be used with messages)
-        messages: List of primary text variants for FLEX/dynamic creatives (cannot be used with message)
-        headline: Single headline for simple ads (cannot be used with headlines)
-        headlines: New list of headlines for dynamic creative testing (cannot be used with headline)
-        description: Single description for simple ads (cannot be used with descriptions)
-        descriptions: New list of descriptions for dynamic creative testing (cannot be used with description)
+        name: New creative name (this is the most reliable update)
+        message: New ad copy/text — NOTE: Meta API may reject this on existing creatives
+        messages: List of primary text variants — NOTE: Meta API may reject this on existing creatives
+        headline: Single headline — NOTE: Meta API may reject this on existing creatives
+        headlines: New list of headlines — NOTE: Meta API may reject this on existing creatives
+        description: Single description — NOTE: Meta API may reject this on existing creatives
+        descriptions: New list of descriptions — NOTE: Meta API may reject this on existing creatives
         optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives
         dynamic_creative_spec: New dynamic creative optimization settings
-        call_to_action_type: New call to action button type
-        lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
-                         lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
+        call_to_action_type: New call to action button type — NOTE: Meta API may reject this on existing creatives
+        lead_gen_form_id: Lead generation form ID for lead generation campaigns
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
-                   Flexible ads, ["SINGLE_IMAGE"] for single image). When optimization_type is
-                   "DEGREES_OF_FREEDOM", defaults to ["AUTOMATIC_FORMAT"]. Otherwise defaults
-                   to ["SINGLE_IMAGE"].
+                   Flexible ads, ["SINGLE_IMAGE"] for single image)
 
     Returns:
         JSON response with updated creative details
