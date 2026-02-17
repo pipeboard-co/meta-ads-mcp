@@ -244,7 +244,7 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
         clean_options = {k: v for k, v in options.items() if v is not None}
         
         # Make the request to the cloud service
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 endpoint,
                 headers=headers,
@@ -389,7 +389,7 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
             "message": "Request to duplication service timed out",
             "details": {
                 "suggestion": "Please try again later",
-                "timeout": "30 seconds"
+                "timeout": "120 seconds"
             }
         }, indent=2)
     

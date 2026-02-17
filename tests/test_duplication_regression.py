@@ -201,8 +201,8 @@ class TestDuplicationAPIContract:
                     "campaign", "123456789", "test_token", {}
                 )
                 
-                # Verify timeout is set to 30 seconds
-                mock_client.assert_called_once_with(timeout=30.0)
+                # Verify timeout is set to 120 seconds
+                mock_client.assert_called_once_with(timeout=120.0)
 
 
 class TestDuplicationErrorHandling:
