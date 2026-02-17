@@ -188,13 +188,16 @@ async def create_campaign(
         # Convert budget values to strings if they aren't already
         if daily_budget is not None:
             params["daily_budget"] = str(daily_budget)
-        
+
         if lifetime_budget is not None:
             params["lifetime_budget"] = str(lifetime_budget)
-        
+
         if campaign_budget_optimization is not None:
             params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
-    
+    else:
+        # Meta API v24 requires is_adset_budget_sharing_enabled when not using campaign budget
+        params["is_adset_budget_sharing_enabled"] = "false"
+
     # Add new parameters
     if buying_type:
         params["buying_type"] = buying_type
