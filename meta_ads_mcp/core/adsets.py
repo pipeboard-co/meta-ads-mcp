@@ -117,8 +117,8 @@ async def create_adset(
         daily_budget: Daily budget in account currency (in cents) as a string
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
         targeting: Targeting specs (age, location, interests, etc).
-                  targeting_automation.advantage_audience defaults to 1 if not set (Meta API v24+ requirement).
-                  Set to 0 to disable Advantage+ Audience. Use search_interests for interest IDs.
+                  targeting_automation.advantage_audience defaults to 0 if not set (Meta API v24+ requirement).
+                  Set to 1 to enable Advantage+ Audience (requires age_max>=65). Use search_interests for interest IDs.
         bid_amount: Bid amount in account currency (in cents).
                    REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
                    NOT USED by: LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
@@ -221,9 +221,11 @@ async def create_adset(
         }
 
     # Meta API v24+ requires targeting_automation.advantage_audience.
-    # Default to 1 (enabled) to match Meta's own default behavior.
+    # Default to 0 (disabled) when user provides custom targeting, since
+    # advantage_audience=1 enforces constraints (e.g. age_max >= 65) that
+    # conflict with explicit targeting parameters.
     if "targeting_automation" not in targeting:
-        targeting["targeting_automation"] = {"advantage_audience": 1}
+        targeting["targeting_automation"] = {"advantage_audience": 0}
 
     # Bid strategies that require bid_amount (not bid_constraints)
     strategies_requiring_bid_amount = [
