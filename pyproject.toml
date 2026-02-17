@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "meta-ads-mcp"
-version = "1.0.35"
+version = "1.0.36"
 description = "Model Context Protocol (MCP) server for Meta Ads - Use Remote MCP at pipeboard.co for easiest setup"
 readme = "README.md"
 requires-python = ">=3.10"
