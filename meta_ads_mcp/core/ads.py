@@ -1063,8 +1063,9 @@ async def create_ad_creative(
                 if headline:
                     video_data["title"] = headline
 
-                if description:
-                    video_data["description"] = description
+                # NOTE: video_data does NOT support "description" directly.
+                # For video creatives, description can go in
+                # call_to_action.value.link_description if needed.
 
                 # Build call_to_action with the destination URL.
                 # For video creatives, link_url MUST go in call_to_action.value.link
@@ -1072,6 +1073,8 @@ async def create_ad_creative(
                 cta_value = {}
                 if link_url:
                     cta_value["link"] = link_url
+                if description:
+                    cta_value["link_description"] = description
                 if lead_gen_form_id:
                     cta_value["lead_gen_form_id"] = lead_gen_form_id
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
