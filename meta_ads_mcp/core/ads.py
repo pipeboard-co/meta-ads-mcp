@@ -963,6 +963,21 @@ async def create_ad_creative(
         # Track if this is a video creative
         is_video = bool(video_id)
 
+        # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
+        # If the caller didn't provide one, auto-fetch from the video object.
+        if is_video and not thumbnail_url:
+            try:
+                video_info = await make_api_request(
+                    video_id, access_token, {"fields": "picture"}
+                )
+                if isinstance(video_info, dict) and "picture" in video_info:
+                    thumbnail_url = video_info["picture"]
+                    logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
+                else:
+                    logger.warning(f"Could not auto-fetch thumbnail for video {video_id}: {video_info}")
+            except Exception as e:
+                logger.warning(f"Failed to auto-fetch thumbnail for video {video_id}: {e}")
+
         if use_asset_feed:
             # Build the media array from the provided source
             if is_video:
@@ -1032,11 +1047,12 @@ async def create_ad_creative(
             if is_video:
                 # video_data does NOT support "link" directly — URL goes in
                 # call_to_action.value.link or is handled by asset_feed_spec.link_urls.
+                video_anchor = {"video_id": video_id}
+                if thumbnail_url:
+                    video_anchor["image_url"] = thumbnail_url
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
-                    "video_data": {
-                        "video_id": video_id,
-                    }
+                    "video_data": video_anchor
                 }
             else:
                 creative_data["object_story_spec"] = {
@@ -1050,18 +1066,7 @@ async def create_ad_creative(
                 # Use object_story_spec with video_data for simple video creatives.
                 # NOTE: video_data does NOT support a "link" field directly.
                 # The destination URL goes in call_to_action.value.link.
-
-                # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
-                # If the caller didn't provide one, auto-fetch from the video object.
-                if not thumbnail_url:
-                    try:
-                        video_info = await make_api_request(
-                            video_id, access_token, {"fields": "picture"}
-                        )
-                        thumbnail_url = video_info.get("picture")
-                    except Exception:
-                        pass  # Best-effort; Meta API will return a clear error if missing
-
+                # Thumbnail auto-fetch is handled earlier (before use_asset_feed branch).
                 video_data = {
                     "video_id": video_id,
                 }
@@ -1075,9 +1080,8 @@ async def create_ad_creative(
                 if headline:
                     video_data["title"] = headline
 
-                # NOTE: video_data does NOT support "description" directly.
-                # For video creatives, description can go in
-                # call_to_action.value.link_description if needed.
+                if description:
+                    video_data["description"] = description
 
                 # Build call_to_action with the destination URL.
                 # For video creatives, link_url MUST go in call_to_action.value.link
@@ -1085,8 +1089,6 @@ async def create_ad_creative(
                 cta_value = {}
                 if link_url:
                     cta_value["link"] = link_url
-                if description:
-                    cta_value["link_description"] = description
                 if lead_gen_form_id:
                     cta_value["lead_gen_form_id"] = lead_gen_form_id
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)

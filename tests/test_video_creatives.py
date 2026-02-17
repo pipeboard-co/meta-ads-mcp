@@ -72,10 +72,9 @@ async def test_simple_video_creative_uses_video_data():
         assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["message"] == "Check out this video"
         assert video_data["title"] == "Watch Now"
-        assert "description" not in video_data, "description is NOT supported in video_data"
+        assert video_data["description"] == "Amazing content"
         assert video_data["call_to_action"]["type"] == "LEARN_MORE"
         assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
-        assert video_data["call_to_action"]["value"]["link_description"] == "Amazing content"
 
 
 @pytest.mark.asyncio
@@ -219,7 +218,11 @@ async def test_video_creative_with_dof_optimization():
         }
 
         mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
             {"id": "creative_vid_5"},
+            # 3) GET creative details
             {"id": "creative_vid_5", "name": "Video DOF", "status": "ACTIVE"}
         ]
 
@@ -233,14 +236,16 @@ async def test_video_creative_with_dof_optimization():
             access_token="test_token"
         )
 
-        creative_data = mock_api.call_args_list[0][0][2]
+        creative_data = mock_api.call_args_list[1][0][2]
         afs = creative_data["asset_feed_spec"]
 
         assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
         assert "videos" in afs
-        assert afs["videos"] == [{"video_id": "vid_777888"}]
+        # Auto-fetched thumbnail should be included in videos array
+        assert afs["videos"] == [{"video_id": "vid_777888", "thumbnail_url": "https://example.com/auto-thumb.jpg"}]
 
-        # video_data anchor should not contain "link"
+        # video_data anchor should have image_url and not "link"
+        assert creative_data["object_story_spec"]["video_data"]["image_url"] == "https://example.com/auto-thumb.jpg"
         assert "link" not in creative_data["object_story_spec"]["video_data"]
 
 
