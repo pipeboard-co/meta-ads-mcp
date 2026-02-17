@@ -1080,8 +1080,9 @@ async def create_ad_creative(
                 if headline:
                     video_data["title"] = headline
 
-                if description:
-                    video_data["description"] = description
+                # NOTE: Meta API v24 rejects "description" in video_data AND
+                # "link_description" in call_to_action.value (deprecated).
+                # Description is not settable for simple video creatives.
 
                 # Build call_to_action with the destination URL.
                 # For video creatives, link_url MUST go in call_to_action.value.link

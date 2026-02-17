@@ -72,7 +72,9 @@ async def test_simple_video_creative_uses_video_data():
         assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["message"] == "Check out this video"
         assert video_data["title"] == "Watch Now"
-        assert video_data["description"] == "Amazing content"
+        # description is not settable for simple video creatives (Meta API v24
+        # rejects it in both video_data and call_to_action.value)
+        assert "description" not in video_data
         assert video_data["call_to_action"]["type"] == "LEARN_MORE"
         assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
 
