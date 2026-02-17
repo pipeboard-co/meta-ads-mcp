@@ -118,7 +118,7 @@ async def test_video_creative_with_thumbnail():
 
 @pytest.mark.asyncio
 async def test_video_creative_with_instagram_actor_id():
-    """Test that instagram_actor_id goes inside video_data for simple video creatives."""
+    """Test that instagram_actor_id goes at the top level for video creatives (not inside video_data)."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -147,10 +147,10 @@ async def test_video_creative_with_instagram_actor_id():
         creative_data = mock_api.call_args_list[1][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
-        # For simple video creatives, instagram_actor_id should be inside video_data
-        assert video_data["instagram_actor_id"] == "ig_555666"
-        # And NOT at the top level
-        assert "instagram_actor_id" not in creative_data
+        # instagram_actor_id should be at the top level, NOT inside video_data
+        # (Meta API v24 rejects it inside video_data with error_subcode 1443050)
+        assert "instagram_actor_id" not in video_data
+        assert creative_data["instagram_actor_id"] == "ig_555666"
 
 
 @pytest.mark.asyncio

@@ -841,8 +841,7 @@ async def create_ad_creative(
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements.
-                           For video creatives, this is placed inside video_data for proper
-                           Instagram delivery.
+                           Placed at the top level of the creative data for all creative types.
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image, ["SINGLE_VIDEO"] for video).
                    When optimization_type is "DEGREES_OF_FREEDOM" with image_hashes, defaults to
@@ -1133,10 +1132,6 @@ async def create_ad_creative(
                         cta_data["value"] = cta_value
                     video_data["call_to_action"] = cta_data
 
-                # Instagram actor ID goes inside video_data for proper Instagram delivery
-                if instagram_actor_id:
-                    video_data["instagram_actor_id"] = instagram_actor_id
-
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                     "video_data": video_data
@@ -1177,10 +1172,9 @@ async def create_ad_creative(
         if dynamic_creative_spec:
             creative_data["dynamic_creative_spec"] = dynamic_creative_spec
 
-        # For non-video creatives, instagram_actor_id goes at the top level.
-        # For video creatives in the simple path, it's already inside video_data above.
-        # For video creatives in the asset_feed_spec path, it goes at the top level.
-        if instagram_actor_id and (not is_video or use_asset_feed):
+        # instagram_actor_id always goes at the top level of creative_data.
+        # Meta API v24 rejects it inside video_data (error_subcode 1443050).
+        if instagram_actor_id:
             creative_data["instagram_actor_id"] = instagram_actor_id
 
         # Make API request to create the creative
