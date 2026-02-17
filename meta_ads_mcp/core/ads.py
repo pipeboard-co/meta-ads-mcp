@@ -841,7 +841,8 @@ async def create_ad_creative(
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements.
-                           Placed at the top level of the creative data for all creative types.
+                           Sent as instagram_user_id inside object_story_spec (Meta deprecated
+                           instagram_actor_id in Jan 2026).
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image, ["SINGLE_VIDEO"] for video).
                    When optimization_type is "DEGREES_OF_FREEDOM" with image_hashes, defaults to
@@ -1172,13 +1173,40 @@ async def create_ad_creative(
         if dynamic_creative_spec:
             creative_data["dynamic_creative_spec"] = dynamic_creative_spec
 
-        # instagram_actor_id is a top-level creative param (separate form field).
-        # Meta API v24 rejects it inside video_data (error_subcode 1443050).
-        if instagram_actor_id:
-            creative_data["instagram_actor_id"] = instagram_actor_id
+        # instagram_actor_id → instagram_user_id migration (Jan 2026).
+        # Meta deprecated instagram_actor_id; the replacement is instagram_user_id
+        # inside object_story_spec (sibling of page_id and video_data/link_data).
+        if instagram_actor_id and "object_story_spec" in creative_data:
+            creative_data["object_story_spec"]["instagram_user_id"] = instagram_actor_id
 
         # Make API request to create the creative
         data = await make_api_request(endpoint, access_token, creative_data, method="POST")
+
+        # Check for instagram_actor_id / instagram_user_id permission errors.
+        # This happens when the user's Meta access token lacks the instagram_basic
+        # permission. Re-connecting the Facebook account refreshes the token.
+        if instagram_actor_id and "error" in data:
+            err_details = data.get("error", {}).get("details", {})
+            inner_msg = ""
+            if isinstance(err_details, dict):
+                inner_err = err_details.get("error", {})
+                if isinstance(inner_err, dict):
+                    inner_msg = inner_err.get("message", "")
+            if "valid Instagram account id" in inner_msg or "instagram_actor_id" in inner_msg.lower():
+                return json.dumps({
+                    "error": "Instagram account not authorized for advertising",
+                    "explanation": (
+                        "The Meta API rejected the Instagram account ID. This usually means "
+                        "your Facebook access token is missing the 'instagram_basic' permission, "
+                        "which is required to use Instagram placements in ad creatives."
+                    ),
+                    "fix": (
+                        "Reconnect your Facebook account at https://pipeboard.co/connections "
+                        "to refresh your access token with the required permissions."
+                    ),
+                    "instagram_actor_id": instagram_actor_id,
+                    "meta_error": inner_msg
+                }, indent=2)
 
         # If successful, get more details about the created creative
         if "id" in data:

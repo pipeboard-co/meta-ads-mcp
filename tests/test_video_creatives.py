@@ -147,10 +147,12 @@ async def test_video_creative_with_instagram_actor_id():
         creative_data = mock_api.call_args_list[1][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
-        # instagram_actor_id should be a top-level creative param (separate form field),
-        # NOT inside video_data (Meta API v24 rejects it there with error_subcode 1443050).
+        # instagram_actor_id is sent as instagram_user_id inside object_story_spec
+        # (Meta deprecated instagram_actor_id in Jan 2026).
+        # It must NOT be inside video_data (error_subcode 1443050).
         assert "instagram_actor_id" not in video_data
-        assert creative_data["instagram_actor_id"] == "ig_555666"
+        assert "instagram_user_id" not in video_data
+        assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_555666"
 
 
 @pytest.mark.asyncio
