@@ -1050,6 +1050,18 @@ async def create_ad_creative(
                 # Use object_story_spec with video_data for simple video creatives.
                 # NOTE: video_data does NOT support a "link" field directly.
                 # The destination URL goes in call_to_action.value.link.
+
+                # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
+                # If the caller didn't provide one, auto-fetch from the video object.
+                if not thumbnail_url:
+                    try:
+                        video_info = await make_api_request(
+                            video_id, access_token, {"fields": "picture"}
+                        )
+                        thumbnail_url = video_info.get("picture")
+                    except Exception:
+                        pass  # Best-effort; Meta API will return a clear error if missing
+
                 video_data = {
                     "video_id": video_id,
                 }

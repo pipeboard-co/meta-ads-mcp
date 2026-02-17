@@ -33,7 +33,11 @@ async def test_simple_video_creative_uses_video_data():
         }
 
         mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail (no thumbnail_url provided)
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
             {"id": "creative_vid_1"},
+            # 3) GET creative details
             {"id": "creative_vid_1", "name": "Video Creative", "status": "ACTIVE"}
         ]
 
@@ -49,9 +53,12 @@ async def test_simple_video_creative_uses_video_data():
             access_token="test_token"
         )
 
-        assert mock_api.call_count == 2
+        assert mock_api.call_count == 3
 
-        creative_data = mock_api.call_args_list[0][0][2]
+        # First call is the thumbnail auto-fetch
+        assert mock_api.call_args_list[0][0][0] == "vid_987654"
+
+        creative_data = mock_api.call_args_list[1][0][2]
 
         # Should use object_story_spec with video_data, NOT link_data
         assert "object_story_spec" in creative_data
@@ -61,6 +68,7 @@ async def test_simple_video_creative_uses_video_data():
 
         video_data = creative_data["object_story_spec"]["video_data"]
         assert video_data["video_id"] == "vid_987654"
+        assert video_data["image_url"] == "https://example.com/auto-thumb.jpg"
         assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["message"] == "Check out this video"
         assert video_data["title"] == "Watch Now"
@@ -121,6 +129,7 @@ async def test_video_creative_with_instagram_actor_id():
         }
 
         mock_api.side_effect = [
+            {"picture": "https://example.com/auto-thumb.jpg"},
             {"id": "creative_vid_3"},
             {"id": "creative_vid_3", "name": "Video IG", "status": "ACTIVE"}
         ]
@@ -134,7 +143,7 @@ async def test_video_creative_with_instagram_actor_id():
             access_token="test_token"
         )
 
-        creative_data = mock_api.call_args_list[0][0][2]
+        creative_data = mock_api.call_args_list[1][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
         # For simple video creatives, instagram_actor_id should be inside video_data
@@ -319,6 +328,7 @@ async def test_video_creative_with_lead_gen():
         }
 
         mock_api.side_effect = [
+            {"picture": "https://example.com/auto-thumb.jpg"},
             {"id": "creative_vid_lead"},
             {"id": "creative_vid_lead", "name": "Video Lead Gen", "status": "ACTIVE"}
         ]
@@ -333,7 +343,7 @@ async def test_video_creative_with_lead_gen():
             access_token="test_token"
         )
 
-        creative_data = mock_api.call_args_list[0][0][2]
+        creative_data = mock_api.call_args_list[1][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
         assert "link" not in video_data, "link must NOT be in video_data directly"
