@@ -138,10 +138,10 @@ class TestFlexCreatives:
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
             assert "error" in error_data
-            assert "Cannot specify both 'image_hash' and 'image_hashes'" in error_data["error"]
+            assert "Only one media source" in error_data["error"]
         else:
             assert "error" in result_data
-            assert "Cannot specify both 'image_hash' and 'image_hashes'" in result_data["error"]
+            assert "Only one media source" in result_data["error"]
 
     async def test_validation_cannot_mix_message_and_messages(self):
         """Cannot specify both message and messages."""
@@ -355,7 +355,7 @@ class TestFlexCreatives:
             assert "optimization_type" not in creative_data["asset_feed_spec"]
 
     async def test_no_image_hash_or_image_hashes_returns_error(self):
-        """Must provide either image_hash or image_hashes."""
+        """Must provide either image_hash, image_hashes, or video_id."""
         result = await create_ad_creative(
             access_token="test_token",
             account_id="act_123456789",
@@ -367,10 +367,10 @@ class TestFlexCreatives:
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
             assert "error" in error_data
-            assert "image hash" in error_data["error"].lower()
+            assert "no media provided" in error_data["error"].lower()
         else:
             assert "error" in result_data
-            assert "image hash" in result_data["error"].lower()
+            assert "no media provided" in result_data["error"].lower()
 
 
 @pytest.mark.asyncio

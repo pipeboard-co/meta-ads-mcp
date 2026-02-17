@@ -762,6 +762,8 @@ async def create_ad_creative(
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
     image_hashes: Optional[List[str]] = None,
+    video_id: Optional[str] = None,
+    thumbnail_url: Optional[str] = None,
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
@@ -770,11 +772,17 @@ async def create_ad_creative(
     ad_formats: Optional[List[str]] = None
 ) -> str:
     """
-    Create a new ad creative using an uploaded image hash.
+    Create a new ad creative using an uploaded image hash or video ID.
+
+    Supports three creative modes:
+    - **Simple image/video**: Single image_hash or video_id with object_story_spec
+    - **Dynamic Creative**: Multiple variants with dynamic_creative_spec (requires is_dynamic_creative on ad set)
+    - **FLEX/DOF (Advantage+)**: Set optimization_type="DEGREES_OF_FREEDOM" for Meta to auto-optimize
+      across all asset combinations without requiring is_dynamic_creative on the ad set
 
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
-        image_hash: Hash of a single uploaded image (cannot be used with image_hashes)
+        image_hash: Hash of a single uploaded image (cannot be used with image_hashes or video_id)
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
@@ -785,7 +793,11 @@ async def create_ad_creative(
         headlines: List of headlines for dynamic creative testing (cannot be used with headline)
         description: Single description for simple ads (cannot be used with descriptions)
         descriptions: List of descriptions for dynamic creative testing (cannot be used with description)
-        image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash)
+        image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash or video_id)
+        video_id: Meta video ID for video creatives (cannot be used with image_hash or image_hashes).
+                  Upload a video first via the Meta API, then use the returned video ID here.
+        thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
+                      Meta will auto-generate a thumbnail if not provided.
         optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that allow
                           Meta to auto-optimize across all asset combinations. When using
                           DEGREES_OF_FREEDOM, at least one asset field (image_hashes, messages,
@@ -794,11 +806,14 @@ async def create_ad_creative(
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW')
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
-        instagram_actor_id: Optional Instagram account ID for Instagram placements
+        instagram_actor_id: Optional Instagram account ID for Instagram placements.
+                           For video creatives, this is placed inside video_data for proper
+                           Instagram delivery.
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
-                   Flexible ads, ["SINGLE_IMAGE"] for single image). When optimization_type is
-                   "DEGREES_OF_FREEDOM" with image_hashes, defaults to ["AUTOMATIC_FORMAT"]
-                   (Flexible format). Otherwise defaults to ["SINGLE_IMAGE"].
+                   Flexible ads, ["SINGLE_IMAGE"] for single image, ["SINGLE_VIDEO"] for video).
+                   When optimization_type is "DEGREES_OF_FREEDOM" with image_hashes, defaults to
+                   ["AUTOMATIC_FORMAT"] (Flexible format). For video creatives, defaults to
+                   ["SINGLE_VIDEO"]. Otherwise defaults to ["SINGLE_IMAGE"].
 
     Returns:
         JSON response with created creative details
@@ -833,27 +848,33 @@ async def create_ad_creative(
                 pass
 
     logger.debug(
-        "create_ad_creative called: image_hash=%s, image_hashes=%s(%s), "
+        "create_ad_creative called: image_hash=%s, image_hashes=%s(%s), video_id=%s, "
         "messages=%s, headlines=%s, descriptions=%s, optimization_type=%s",
         type(image_hash).__name__,
         type(image_hashes).__name__, image_hashes,
+        video_id,
         type(messages).__name__,
         type(headlines).__name__,
         type(descriptions).__name__,
         optimization_type,
     )
 
-    # Validate image_hash / image_hashes mutual exclusivity
-    if image_hash and image_hashes:
-        return json.dumps({"error": "Cannot specify both 'image_hash' and 'image_hashes'. Use 'image_hash' for a single image or 'image_hashes' for multiple."}, indent=2)
+    # Validate media mutual exclusivity: exactly one of image_hash, image_hashes, or video_id
+    media_params = sum(1 for x in [image_hash, image_hashes, video_id] if x)
+    if media_params > 1:
+        return json.dumps({"error": "Only one media source allowed. Use 'image_hash' for a single image, 'image_hashes' for multiple images, or 'video_id' for video."}, indent=2)
 
-    if not image_hash and not image_hashes:
-        return json.dumps({"error": "No image hash provided. Specify 'image_hash' for a single image or 'image_hashes' for multiple."}, indent=2)
+    if media_params == 0:
+        return json.dumps({"error": "No media provided. Specify 'image_hash' for a single image, 'image_hashes' for multiple images, or 'video_id' for a video."}, indent=2)
 
     # Validate image_hashes limits
     if image_hashes:
         if len(image_hashes) > 10:
             return json.dumps({"error": "Maximum 10 image hashes allowed for FLEX creatives"}, indent=2)
+
+    # Validate thumbnail_url only with video_id
+    if thumbnail_url and not video_id:
+        return json.dumps({"error": "thumbnail_url can only be used with video_id"}, indent=2)
 
     # Validate optimization_type
     if optimization_type and optimization_type != "DEGREES_OF_FREEDOM":
@@ -939,18 +960,26 @@ async def create_ad_creative(
         # - optimization_type is set (FLEX creatives always use asset_feed_spec)
         use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type)
 
+        # Track if this is a video creative
+        is_video = bool(video_id)
+
         if use_asset_feed:
-            # Build the images array from image_hashes (plural) or image_hash (singular)
-            if image_hashes:
+            # Build the media array from the provided source
+            if is_video:
+                # Video in asset_feed_spec uses "videos" key
+                videos_array = [{"video_id": video_id}]
+                if thumbnail_url:
+                    videos_array[0]["thumbnail_url"] = thumbnail_url
+            elif image_hashes:
                 images_array = [{"hash": h} for h in image_hashes]
             else:
                 images_array = [{"hash": image_hash}]
 
             # Determine ad_formats: use explicit value if provided, otherwise smart default.
-            # When using DEGREES_OF_FREEDOM with image_hashes, default to AUTOMATIC_FORMAT
-            # ("Flexible" in Ads Manager) so Meta can optimize across format variants.
             if ad_formats:
                 resolved_ad_formats = ad_formats
+            elif is_video:
+                resolved_ad_formats = ["SINGLE_VIDEO"]
             elif optimization_type == "DEGREES_OF_FREEDOM" and image_hashes:
                 resolved_ad_formats = ["AUTOMATIC_FORMAT"]
             else:
@@ -958,10 +987,15 @@ async def create_ad_creative(
 
             # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
             asset_feed_spec = {
-                "images": images_array,
                 "link_urls": [{"website_url": link_url}],
                 "ad_formats": resolved_ad_formats
             }
+
+            # Add media to asset_feed_spec
+            if is_video:
+                asset_feed_spec["videos"] = videos_array
+            else:
+                asset_feed_spec["images"] = images_array
 
             # Add optimization_type for FLEX (Advantage+) creatives
             if optimization_type:
@@ -994,50 +1028,96 @@ async def create_ad_creative(
             creative_data["asset_feed_spec"] = asset_feed_spec
 
             # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec still
-            # needs page_id and a link_data.link (Meta API requires the link field).
-            creative_data["object_story_spec"] = {
-                "page_id": page_id,
-                "link_data": {
-                    "link": link_url
+            # needs page_id and a media anchor (Meta API requires this).
+            if is_video:
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "video_data": {
+                        "video_id": video_id,
+                        "link": link_url
+                    }
                 }
-            }
+            else:
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "link_data": {
+                        "link": link_url
+                    }
+                }
         else:
-            # Use traditional object_story_spec with link_data for simple creatives
-            creative_data["object_story_spec"] = {
-                "page_id": page_id,
-                "link_data": {
-                    "image_hash": image_hash,
+            if is_video:
+                # Use object_story_spec with video_data for simple video creatives
+                video_data = {
+                    "video_id": video_id,
                     "link": link_url
                 }
-            }
 
-            # Add optional parameters if provided
-            if message:
-                creative_data["object_story_spec"]["link_data"]["message"] = message
+                if thumbnail_url:
+                    video_data["image_url"] = thumbnail_url
 
-            # Add headline (singular) to link_data
-            if headline:
-                creative_data["object_story_spec"]["link_data"]["name"] = headline
+                if message:
+                    video_data["message"] = message
 
-            # Add description (singular) to link_data
-            if description:
-                creative_data["object_story_spec"]["link_data"]["description"] = description
+                if headline:
+                    video_data["title"] = headline
 
-            # Add call_to_action to link_data for simple creatives
-            if call_to_action_type:
-                cta_data = {"type": call_to_action_type}
+                if description:
+                    video_data["description"] = description
 
-                # Add lead form ID to value object if provided (required for lead generation campaigns)
-                if lead_gen_form_id:
-                    cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+                if call_to_action_type:
+                    cta_data = {"type": call_to_action_type}
+                    if lead_gen_form_id:
+                        cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+                    video_data["call_to_action"] = cta_data
 
-                creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
+                # Instagram actor ID goes inside video_data for proper Instagram delivery
+                if instagram_actor_id:
+                    video_data["instagram_actor_id"] = instagram_actor_id
+
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "video_data": video_data
+                }
+            else:
+                # Use traditional object_story_spec with link_data for simple image creatives
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "link_data": {
+                        "image_hash": image_hash,
+                        "link": link_url
+                    }
+                }
+
+                # Add optional parameters if provided
+                if message:
+                    creative_data["object_story_spec"]["link_data"]["message"] = message
+
+                # Add headline (singular) to link_data
+                if headline:
+                    creative_data["object_story_spec"]["link_data"]["name"] = headline
+
+                # Add description (singular) to link_data
+                if description:
+                    creative_data["object_story_spec"]["link_data"]["description"] = description
+
+                # Add call_to_action to link_data for simple creatives
+                if call_to_action_type:
+                    cta_data = {"type": call_to_action_type}
+
+                    # Add lead form ID to value object if provided (required for lead generation campaigns)
+                    if lead_gen_form_id:
+                        cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+
+                    creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
 
         # Add dynamic creative spec if provided
         if dynamic_creative_spec:
             creative_data["dynamic_creative_spec"] = dynamic_creative_spec
 
-        if instagram_actor_id:
+        # For non-video creatives, instagram_actor_id goes at the top level.
+        # For video creatives in the simple path, it's already inside video_data above.
+        # For video creatives in the asset_feed_spec path, it goes at the top level.
+        if instagram_actor_id and (not is_video or use_asset_feed):
             creative_data["instagram_actor_id"] = instagram_actor_id
 
         # Make API request to create the creative
