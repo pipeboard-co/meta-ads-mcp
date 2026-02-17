@@ -227,8 +227,9 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
                 }
             }, indent=2)
 
-        # Construct the API endpoint
-        base_url = "https://mcp.pipeboard.co"
+        # Construct the API endpoint.
+        # PIPEBOARD_API_BASE_URL allows overriding for local e2e testing.
+        base_url = os.environ.get("PIPEBOARD_API_BASE_URL", "https://mcp.pipeboard.co")
         endpoint = f"{base_url}/api/meta/duplicate/{resource_type}/{resource_id}"
         
         # Prepare the dual-header authentication as per API documentation
