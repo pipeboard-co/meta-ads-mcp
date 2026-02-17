@@ -4,7 +4,7 @@ from .server import mcp_server
 from .accounts import get_ad_accounts, get_account_info
 from .campaigns import get_campaigns, get_campaign_details, create_campaign
 from .adsets import get_adsets, get_adset_details, update_adset
-from .ads import get_ads, get_ad_details, get_ad_creatives, get_ad_image, update_ad
+from .ads import get_ads, get_ad_details, get_creative_details, get_ad_creatives, get_ad_image, update_ad
 from .insights import get_insights
 from . import authentication  # Import module to register conditional auth tools
 from .server import login_cli, main
@@ -28,6 +28,7 @@ __all__ = [
     'update_adset',
     'get_ads',
     'get_ad_details',
+    'get_creative_details',
     'get_ad_creatives',
     'get_ad_image',
     'update_ad',

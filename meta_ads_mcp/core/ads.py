@@ -91,6 +91,40 @@ async def get_ad_details(ad_id: str, access_token: Optional[str] = None) -> str:
 
 @mcp_server.tool()
 @meta_api_tool
+async def get_creative_details(creative_id: str, access_token: Optional[str] = None) -> str:
+    """Get detailed information about a specific ad creative by its ID.
+
+    Args:
+        creative_id: Meta Ads creative ID (required)
+        access_token: Meta API access token (optional)
+    """
+    if not creative_id:
+        return json.dumps({"error": "No creative ID provided"}, indent=2)
+    endpoint = f"{creative_id}"
+    # Note: dynamic_creative_spec is only valid on dynamic creatives and causes
+    # "(#100) Tried accessing nonexisting field" on simple creatives in API v24.
+    # We fetch the safe fields first, then try dynamic_creative_spec separately.
+    params = {
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,url_tags,link_url"
+    }
+    data = await make_api_request(endpoint, access_token, params)
+
+    # Try to fetch dynamic_creative_spec separately (only exists on dynamic creatives)
+    if isinstance(data, dict) and "id" in data:
+        try:
+            dcs_data = await make_api_request(
+                endpoint, access_token, {"fields": "dynamic_creative_spec"}
+            )
+            if isinstance(dcs_data, dict) and "dynamic_creative_spec" in dcs_data:
+                data["dynamic_creative_spec"] = dcs_data["dynamic_creative_spec"]
+        except Exception:
+            pass  # Field doesn't exist on this creative type
+
+    return json.dumps(data, indent=2)
+
+
+@mcp_server.tool()
+@meta_api_tool
 async def create_ad(
     account_id: str,
     name: str,
