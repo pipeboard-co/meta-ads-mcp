@@ -1172,7 +1172,7 @@ async def create_ad_creative(
         if dynamic_creative_spec:
             creative_data["dynamic_creative_spec"] = dynamic_creative_spec
 
-        # instagram_actor_id always goes at the top level of creative_data.
+        # instagram_actor_id is a top-level creative param (separate form field).
         # Meta API v24 rejects it inside video_data (error_subcode 1443050).
         if instagram_actor_id:
             creative_data["instagram_actor_id"] = instagram_actor_id

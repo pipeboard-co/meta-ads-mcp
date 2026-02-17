@@ -147,8 +147,8 @@ async def test_video_creative_with_instagram_actor_id():
         creative_data = mock_api.call_args_list[1][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
-        # instagram_actor_id should be at the top level, NOT inside video_data
-        # (Meta API v24 rejects it inside video_data with error_subcode 1443050)
+        # instagram_actor_id should be a top-level creative param (separate form field),
+        # NOT inside video_data (Meta API v24 rejects it there with error_subcode 1443050).
         assert "instagram_actor_id" not in video_data
         assert creative_data["instagram_actor_id"] == "ig_555666"
 
