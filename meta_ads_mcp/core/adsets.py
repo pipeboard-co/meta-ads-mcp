@@ -116,9 +116,9 @@ async def create_adset(
         status: Initial ad set status (default: PAUSED)
         daily_budget: Daily budget in account currency (in cents) as a string
         lifetime_budget: Lifetime budget in account currency (in cents) as a string
-        targeting: Targeting specifications including age, location, interests, etc.
-                  Use targeting_automation.advantage_audience=1 for automatic audience finding
-                  For interest targeting, obtain Interest targeting IDs using the search_interests tool.
+        targeting: Targeting specs (age, location, interests, etc).
+                  targeting_automation.advantage_audience defaults to 1 if not set (Meta API v24+ requirement).
+                  Set to 0 to disable Advantage+ Audience. Use search_interests for interest IDs.
         bid_amount: Bid amount in account currency (in cents).
                    REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
                    NOT USED by: LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
@@ -219,7 +219,12 @@ async def create_adset(
             "geo_locations": {"countries": ["US"]},
             "targeting_automation": {"advantage_audience": 1}
         }
-    
+
+    # Meta API v24+ requires targeting_automation.advantage_audience.
+    # Default to 1 (enabled) to match Meta's own default behavior.
+    if "targeting_automation" not in targeting:
+        targeting["targeting_automation"] = {"advantage_audience": 1}
+
     # Bid strategies that require bid_amount (not bid_constraints)
     strategies_requiring_bid_amount = [
         'LOWEST_COST_WITH_BID_CAP',
