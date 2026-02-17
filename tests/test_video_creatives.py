@@ -61,11 +61,12 @@ async def test_simple_video_creative_uses_video_data():
 
         video_data = creative_data["object_story_spec"]["video_data"]
         assert video_data["video_id"] == "vid_987654"
-        assert video_data["link"] == "https://example.com/"
+        assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["message"] == "Check out this video"
         assert video_data["title"] == "Watch Now"
         assert video_data["description"] == "Amazing content"
         assert video_data["call_to_action"]["type"] == "LEARN_MORE"
+        assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
 
 
 @pytest.mark.asyncio
@@ -100,6 +101,9 @@ async def test_video_creative_with_thumbnail():
 
         assert video_data["image_url"] == "https://example.com/thumb.jpg"
         assert video_data["video_id"] == "vid_111222"
+        # link_url should be in call_to_action.value.link with default CTA type
+        assert video_data["call_to_action"]["type"] == "LEARN_MORE"
+        assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
 
 
 @pytest.mark.asyncio
@@ -185,9 +189,10 @@ async def test_video_creative_asset_feed_spec_path():
         assert len(afs["titles"]) == 2
         assert len(afs["bodies"]) == 2
 
-        # object_story_spec should use video_data anchor
+        # object_story_spec should use video_data anchor without "link"
         assert "video_data" in creative_data["object_story_spec"]
         assert creative_data["object_story_spec"]["video_data"]["video_id"] == "vid_555666"
+        assert "link" not in creative_data["object_story_spec"]["video_data"]
 
 
 @pytest.mark.asyncio
@@ -224,6 +229,9 @@ async def test_video_creative_with_dof_optimization():
         assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
         assert "videos" in afs
         assert afs["videos"] == [{"video_id": "vid_777888"}]
+
+        # video_data anchor should not contain "link"
+        assert "link" not in creative_data["object_story_spec"]["video_data"]
 
 
 @pytest.mark.asyncio
@@ -327,7 +335,9 @@ async def test_video_creative_with_lead_gen():
         creative_data = mock_api.call_args_list[0][0][2]
         video_data = creative_data["object_story_spec"]["video_data"]
 
+        assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["call_to_action"]["type"] == "SIGN_UP"
+        assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
         assert video_data["call_to_action"]["value"]["lead_gen_form_id"] == "form_12345"
 
 

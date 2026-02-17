@@ -1030,11 +1030,12 @@ async def create_ad_creative(
             # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec still
             # needs page_id and a media anchor (Meta API requires this).
             if is_video:
+                # video_data does NOT support "link" directly — URL goes in
+                # call_to_action.value.link or is handled by asset_feed_spec.link_urls.
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                     "video_data": {
                         "video_id": video_id,
-                        "link": link_url
                     }
                 }
             else:
@@ -1046,10 +1047,11 @@ async def create_ad_creative(
                 }
         else:
             if is_video:
-                # Use object_story_spec with video_data for simple video creatives
+                # Use object_story_spec with video_data for simple video creatives.
+                # NOTE: video_data does NOT support a "link" field directly.
+                # The destination URL goes in call_to_action.value.link.
                 video_data = {
                     "video_id": video_id,
-                    "link": link_url
                 }
 
                 if thumbnail_url:
@@ -1064,10 +1066,19 @@ async def create_ad_creative(
                 if description:
                     video_data["description"] = description
 
-                if call_to_action_type:
-                    cta_data = {"type": call_to_action_type}
-                    if lead_gen_form_id:
-                        cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+                # Build call_to_action with the destination URL.
+                # For video creatives, link_url MUST go in call_to_action.value.link
+                # (not as a top-level field in video_data).
+                cta_value = {}
+                if link_url:
+                    cta_value["link"] = link_url
+                if lead_gen_form_id:
+                    cta_value["lead_gen_form_id"] = lead_gen_form_id
+                cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
+                if cta_type:
+                    cta_data = {"type": cta_type}
+                    if cta_value:
+                        cta_data["value"] = cta_value
                     video_data["call_to_action"] = cta_data
 
                 # Instagram actor ID goes inside video_data for proper Instagram delivery
