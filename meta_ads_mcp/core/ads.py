@@ -1378,27 +1378,56 @@ async def update_ad_creative(
     
     # Prepare the API endpoint for updating the creative
     endpoint = f"{creative_id}"
-    
+
     try:
         # Make API request to update the creative
         data = await make_api_request(endpoint, access_token, update_data, method="POST")
-        
+
         # If successful, get more details about the updated creative
         if "id" in data:
             creative_endpoint = f"{creative_id}"
             creative_params = {
                 "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,url_tags,link_url,dynamic_creative_spec"
             }
-            
+
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
             return json.dumps({
                 "success": True,
                 "creative_id": creative_id,
                 "details": creative_details
             }, indent=2)
-        
+
+        # Check for Meta API content update limitation (error_subcode 1815573)
+        error_obj = data.get("error", {})
+        if isinstance(error_obj, dict):
+            error_details = error_obj.get("details", {})
+            if isinstance(error_details, dict):
+                inner_error = error_details.get("error", {})
+                error_subcode = inner_error.get("error_subcode") if isinstance(inner_error, dict) else None
+            else:
+                error_subcode = error_obj.get("error_subcode")
+        else:
+            error_subcode = None
+
+        if error_subcode == 1815573:
+            return json.dumps({
+                "error": "Content updates are not allowed on existing creatives",
+                "explanation": (
+                    "The Meta API does not allow updating content fields (message, headline, "
+                    "description, CTA, image, video, URL) on existing creatives. "
+                    "Only the creative 'name' can be changed."
+                ),
+                "workaround": (
+                    "To change ad content: (1) create a new creative with the desired content "
+                    "using create_ad_creative, then (2) call update_ad with the ad's ID and the "
+                    "new creative_id to swap it on the ad."
+                ),
+                "creative_id": creative_id,
+                "attempted_updates": update_data
+            }, indent=2)
+
         return json.dumps(data, indent=2)
-    
+
     except Exception as e:
         return json.dumps({
             "error": "Failed to update ad creative",
