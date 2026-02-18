@@ -366,22 +366,32 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
                     }, indent=2)
             else:
                 error_detail = response.text
+                error_json = None
                 try:
                     error_json = response.json()
                     error_detail = error_json.get("message", error_detail)
                 except:
                     pass
-                
-                return json.dumps({
-                    "error": "duplication_failed",
-                    "message": f"Failed to duplicate {resource_type}",
+
+                result = {
+                    "error": error_json.get("error", "duplication_failed") if error_json else "duplication_failed",
+                    "message": error_json.get("message", f"Failed to duplicate {resource_type}") if error_json else f"Failed to duplicate {resource_type}",
                     "details": {
                         "status_code": response.status_code,
                         "error_detail": error_detail,
                         "resource_type": resource_type,
                         "resource_id": resource_id
                     }
-                }, indent=2)
+                }
+
+                # Forward structured error fields from the API response
+                if error_json:
+                    for field in ("suggestion", "error_subcode", "error_user_title",
+                                  "error_user_msg", "raw_code", "raw_type", "recoverable"):
+                        if error_json.get(field) is not None:
+                            result[field] = error_json[field]
+
+                return json.dumps(result, indent=2)
     
     except httpx.TimeoutException:
         return json.dumps({
