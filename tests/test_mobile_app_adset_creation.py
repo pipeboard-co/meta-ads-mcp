@@ -253,27 +253,26 @@ class TestMobileAppAdsetCreation:
             assert 'object_store_url' in result_data['error'].lower()
 
     @pytest.mark.asyncio
-    async def test_invalid_destination_type(
+    async def test_invalid_destination_type_passes_through_to_meta(
         self, mock_api_request, mock_auth_manager, valid_mobile_app_params, ios_promoted_object
     ):
-        """Test validation error for invalid destination_type value"""
-        
+        """Test that invalid destination_type is passed through to Meta API (not rejected by middleware).
+
+        Client-side validation was removed because Meta supports 23+ destination_type values
+        and maintaining a hardcoded allowlist caused false rejections (e.g. WHATSAPP).
+        """
+
         result = await create_adset(
             **valid_mobile_app_params,
             promoted_object=ios_promoted_object,
             destination_type="INVALID_TYPE"
         )
-        
-        result_data = json.loads(result)
-        
-        # Should return validation error - check for data wrapper format
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"]) 
-            assert 'error' in error_data
-            assert 'destination_type' in error_data['error'].lower()
-        else:
-            assert 'error' in result_data
-            assert 'destination_type' in result_data['error'].lower()
+
+        # The request should reach the Meta API (mock_api_request should be called)
+        # rather than being rejected by our middleware
+        call_args = mock_api_request.call_args
+        params = call_args[0][2]
+        assert params['destination_type'] == "INVALID_TYPE"
 
     @pytest.mark.asyncio
     async def test_app_installs_requires_promoted_object(

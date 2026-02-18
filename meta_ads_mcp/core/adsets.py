@@ -138,7 +138,9 @@ async def create_adset(
         end_time: End time in ISO 8601 format
         dsa_beneficiary: DSA beneficiary for European compliance
         promoted_object: App config for APP_INSTALLS. Required: application_id, object_store_url.
-        destination_type: Where users go after click (e.g., 'APP_STORE', 'ON_AD').
+        destination_type: Where users go after click. Common values: 'WEBSITE', 'WHATSAPP', 'MESSENGER',
+                         'INSTAGRAM_DIRECT', 'ON_AD', 'APP', 'FACEBOOK', 'SHOP_AUTOMATIC'.
+                         Also supports multi-channel combos like 'MESSAGING_MESSENGER_WHATSAPP'.
         is_dynamic_creative: Enable Dynamic Creative for this ad set.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
@@ -202,15 +204,12 @@ async def create_adset(
                 "provided_url": store_url
             }, indent=2)
     
-    # Validate destination_type if provided
-    if destination_type:
-        valid_destination_types = ["APP_STORE", "DEEPLINK", "APP_INSTALL", "ON_AD"]
-        if destination_type not in valid_destination_types:
-            return json.dumps({
-                "error": f"Invalid destination_type: {destination_type}",
-                "valid_values": valid_destination_types
-            }, indent=2)
-    
+    # destination_type is passed through to Meta's API without client-side validation.
+    # Meta supports 23+ values (WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, ON_AD, WEBSITE,
+    # APP, FACEBOOK, SHOP_AUTOMATIC, multi-channel MESSAGING_* combos, etc.)
+    # and may add more. Let Meta's API reject invalid values.
+    # See: facebook-python-business-sdk AdSet.DestinationType
+
     # Basic targeting is required if not provided
     if not targeting:
         targeting = {
