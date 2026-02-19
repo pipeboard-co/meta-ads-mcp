@@ -31,11 +31,49 @@ class GraphAPIError(Exception):
         logger.error(f"Graph API Error: {self.message}")
         logger.debug(f"Error details: {error_data}")
         
-        # Check if this is an auth error
-        if "code" in error_data and error_data["code"] in [190, 102, 4]:
-            # Common auth error codes
+        # Check if this is an auth error (code 4 is rate limiting, NOT auth)
+        if "code" in error_data and error_data["code"] in [190, 102]:
             logger.warning(f"Auth error detected (code: {error_data['code']}). Invalidating token.")
             auth_manager.invalidate_token()
+        elif "code" in error_data and error_data["code"] == 4:
+            logger.warning(f"Rate limit error detected (code: 4, subcode: {error_data.get('error_subcode', 'N/A')}). Token is still valid — NOT invalidating.")
+
+
+def _log_meta_rate_limit_headers(headers: dict, endpoint: str) -> None:
+    """Log Meta's rate limit headers for observability (X-App-Usage, X-Business-Use-Case-Usage)."""
+    app_usage = headers.get("x-app-usage")
+    biz_usage = headers.get("x-business-use-case-usage")
+    ad_account_usage = headers.get("x-ad-account-usage")
+
+    if app_usage or biz_usage or ad_account_usage:
+        usage_data = {}
+        if app_usage:
+            try:
+                usage_data["app_usage"] = json.loads(app_usage)
+            except (json.JSONDecodeError, TypeError):
+                usage_data["app_usage_raw"] = str(app_usage)
+        if biz_usage:
+            try:
+                usage_data["business_use_case_usage"] = json.loads(biz_usage)
+            except (json.JSONDecodeError, TypeError):
+                usage_data["business_use_case_usage_raw"] = str(biz_usage)
+        if ad_account_usage:
+            try:
+                usage_data["ad_account_usage"] = json.loads(ad_account_usage)
+            except (json.JSONDecodeError, TypeError):
+                usage_data["ad_account_usage_raw"] = str(ad_account_usage)
+
+        # Warn at high usage levels (any field >= 80%)
+        is_high = False
+        for key, val in usage_data.items():
+            if isinstance(val, dict):
+                for metric, pct in val.items():
+                    if isinstance(pct, (int, float)) and pct >= 80:
+                        is_high = True
+                        break
+
+        log_fn = logger.warning if is_high else logger.info
+        log_fn(f"meta_rate_limit_usage endpoint={endpoint} {json.dumps(usage_data)}")
 
 
 async def make_api_request(
@@ -116,7 +154,10 @@ async def make_api_request(
             
             response.raise_for_status()
             logger.debug(f"API Response status: {response.status_code}")
-            
+
+            # Log Meta rate limit headers for observability
+            _log_meta_rate_limit_headers(response.headers, endpoint)
+
             # Ensure the response is JSON and return it as a dictionary
             try:
                 return response.json()
@@ -135,29 +176,42 @@ async def make_api_request(
                 error_info = {"status_code": e.response.status_code, "text": e.response.text}
             
             logger.error(f"HTTP Error: {e.response.status_code} - {error_info}")
-            
-            # Check for authentication errors
-            if e.response.status_code == 401 or e.response.status_code == 403:
-                logger.warning("Detected authentication error (401/403)")
-                auth_manager.invalidate_token()
-            elif "error" in error_info:
+
+            # Log Meta rate limit headers even on errors
+            _log_meta_rate_limit_headers(e.response.headers, endpoint)
+
+            # Check for rate limit errors vs authentication errors.
+            # Code 4 is a rate limit (NOT auth) — do NOT invalidate token.
+            if "error" in error_info:
                 error_obj = error_info.get("error", {})
-                # Check for specific FB API errors related to auth
-                if isinstance(error_obj, dict) and error_obj.get("code") in [190, 102, 4, 200, 10]:
-                    logger.warning(f"Detected Facebook API auth error: {error_obj.get('code')}")
-                    # Log more details about app ID related errors
-                    if error_obj.get("code") == 200 and "Provide valid app ID" in error_obj.get("message", ""):
+                error_code = error_obj.get("code") if isinstance(error_obj, dict) else None
+
+                if error_code == 4:
+                    # Application-level rate limit — token is still valid
+                    logger.warning(
+                        f"Facebook API rate limit (code=4, subcode={error_obj.get('error_subcode', 'N/A')}, "
+                        f"msg={error_obj.get('error_user_msg', error_obj.get('message', 'N/A'))}). "
+                        f"Token is still valid — NOT invalidating."
+                    )
+                elif error_code in [190, 102, 200, 10]:
+                    logger.warning(f"Detected Facebook API auth error: {error_code}")
+                    if error_code == 200 and "Provide valid app ID" in error_obj.get("message", ""):
                         logger.error("Meta API authentication configuration issue")
                         logger.error(f"Current app_id: {app_id}")
-                        # Provide a clearer error message without the confusing "Provide valid app ID" message
                         return {
                             "error": {
                                 "message": "Meta API authentication configuration issue. Please check your app credentials.",
                                 "original_error": error_obj.get("message"),
-                                "code": error_obj.get("code")
+                                "code": error_code
                             }
                         }
                     auth_manager.invalidate_token()
+                elif e.response.status_code in [401, 403]:
+                    logger.warning(f"Detected authentication error ({e.response.status_code})")
+                    auth_manager.invalidate_token()
+            elif e.response.status_code in [401, 403]:
+                logger.warning(f"Detected authentication error ({e.response.status_code})")
+                auth_manager.invalidate_token()
             
             # Include full details for technical users
             full_response = {
