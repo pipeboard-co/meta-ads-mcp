@@ -13,6 +13,11 @@ from .http_auth_integration import FastMCPAuthIntegration
 logger = logging.getLogger(__name__)
 
 
+class RateLimitError(Exception):
+    """Raised on 429 so FastMCP sets isError: true in the MCP response."""
+    pass
+
+
 # Only register the duplication functions if the environment variable is set
 ENABLE_DUPLICATION = bool(os.environ.get("META_ADS_ENABLE_DUPLICATION", ""))
 
@@ -368,14 +373,16 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
                     "suggestion": f"Verify the {resource_type} ID and your Facebook account permissions"
                 }, indent=2)
             elif response.status_code == 429:
-                return json.dumps({
-                    "error": "rate_limit_exceeded", 
+                # Raise so FastMCP sets isError: true in MCP response,
+                # enabling the Next.js proxy to detect and retry.
+                raise RateLimitError(json.dumps({
+                    "error": "rate_limit_exceeded",
                     "message": "Meta API rate limit exceeded",
                     "details": {
                         "suggestion": "Please wait before retrying",
                         "retry_after": response.headers.get("Retry-After", "60")
                     }
-                }, indent=2)
+                }, indent=2))
             elif response.status_code == 502:
                 try:
                     error_data = response.json()
@@ -443,6 +450,9 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
             }
         }, indent=2)
     
+    except RateLimitError:
+        raise  # Let FastMCP handle this to set isError: true
+
     except Exception as e:
         return json.dumps({
             "error": "unexpected_error",

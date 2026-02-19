@@ -307,27 +307,26 @@ class TestDuplicationErrorHandling:
                     mock_response.text = f"Error {status_code}"
                 
                 mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
-                
-                result = await duplication._forward_duplication_request(
-                    "campaign", "123", "token", {}
-                )
-                result_json = json.loads(result)
-                
-                if response_type == "error":
-                    if status_code == 401:
-                        assert result_json["error"] == expected_error_type
-                    elif status_code == 403:
-                        assert result_json["error"] == expected_error_type
-                    elif status_code == 400:
-                        assert result_json["error"] == expected_error_type
-                    elif status_code == 404:
-                        assert result_json["error"] == expected_error_type
-                    elif status_code == 502:
+
+                if status_code == 429:
+                    # 429 raises RateLimitError so FastMCP sets isError: true
+                    from meta_ads_mcp.core.duplication import RateLimitError
+                    with pytest.raises(RateLimitError) as exc_info:
+                        await duplication._forward_duplication_request(
+                            "campaign", "123", "token", {}
+                        )
+                    exc_json = json.loads(str(exc_info.value))
+                    assert exc_json["error"] == expected_error_type
+                else:
+                    result = await duplication._forward_duplication_request(
+                        "campaign", "123", "token", {}
+                    )
+                    result_json = json.loads(result)
+
+                    if response_type == "error":
                         assert result_json["error"] == expected_error_type
                     else:
-                        assert result_json["error"] == expected_error_type
-                else:
-                    assert "success" in result_json or "id" in result_json
+                        assert "success" in result_json or "id" in result_json
     
     @pytest.mark.asyncio
     async def test_network_error_handling(self, enable_feature):
