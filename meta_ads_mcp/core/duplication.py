@@ -1,6 +1,7 @@
 """Duplication functionality for Meta Ads API."""
 
 import json
+import logging
 import os
 import httpx
 from typing import Optional, Dict, Any, List, Union
@@ -8,6 +9,8 @@ from .server import mcp_server
 from .api import meta_api_tool
 from . import auth
 from .http_auth_integration import FastMCPAuthIntegration
+
+logger = logging.getLogger(__name__)
 
 
 # Only register the duplication functions if the environment variable is set
@@ -25,13 +28,14 @@ if ENABLE_DUPLICATION:
         include_creatives: bool = True,
         copy_schedule: bool = False,
         new_daily_budget: Optional[float] = None,
-        new_status: Optional[str] = "PAUSED"
+        new_status: Optional[str] = "PAUSED",
+        pb_token: Optional[str] = None
     ) -> str:
         """
         Duplicate a Meta Ads campaign with all its ad sets and ads.
 
         Recommended: Use this to run robust experiments.
-        
+
         Args:
             campaign_id: Meta Ads campaign ID to duplicate
             name_suffix: Suffix to add to the duplicated campaign name
@@ -53,7 +57,8 @@ if ENABLE_DUPLICATION:
                 "include_creatives": include_creatives,
                 "copy_schedule": copy_schedule,
                 "new_daily_budget": new_daily_budget,
-                "new_status": new_status
+                "new_status": new_status,
+                "pb_token": pb_token
             }
         )
 
@@ -68,13 +73,14 @@ if ENABLE_DUPLICATION:
         include_creatives: bool = True,
         new_daily_budget: Optional[float] = None,
         new_targeting: Optional[Dict[str, Any]] = None,
-        new_status: Optional[str] = "PAUSED"
+        new_status: Optional[str] = "PAUSED",
+        pb_token: Optional[str] = None
     ) -> str:
         """
         Duplicate a Meta Ads ad set with its ads.
 
         Recommended: Use this to run robust experiments.
-        
+
         Args:
             adset_id: Meta Ads ad set ID to duplicate
             target_campaign_id: Campaign ID to move the duplicated ad set to (optional)
@@ -96,7 +102,8 @@ if ENABLE_DUPLICATION:
                 "include_creatives": include_creatives,
                 "new_daily_budget": new_daily_budget,
                 "new_targeting": new_targeting,
-                "new_status": new_status
+                "new_status": new_status,
+                "pb_token": pb_token
             }
         )
 
@@ -109,13 +116,14 @@ if ENABLE_DUPLICATION:
         name_suffix: Optional[str] = " - Copy",
         duplicate_creative: bool = True,
         new_creative_name: Optional[str] = None,
-        new_status: Optional[str] = "PAUSED"
+        new_status: Optional[str] = "PAUSED",
+        pb_token: Optional[str] = None
     ) -> str:
         """
         Duplicate a Meta Ads ad.
 
         Recommended: Use this to run robust experiments.
-        
+
         Args:
             ad_id: Meta Ads ad ID to duplicate
             target_adset_id: Ad set ID to move the duplicated ad to (optional)
@@ -133,7 +141,8 @@ if ENABLE_DUPLICATION:
                 "name_suffix": name_suffix,
                 "duplicate_creative": duplicate_creative,
                 "new_creative_name": new_creative_name,
-                "new_status": new_status
+                "new_status": new_status,
+                "pb_token": pb_token
             }
         )
 
@@ -147,13 +156,14 @@ if ENABLE_DUPLICATION:
         new_headline: Optional[str] = None,
         new_description: Optional[str] = None,
         new_cta_type: Optional[str] = None,
-        new_destination_url: Optional[str] = None
+        new_destination_url: Optional[str] = None,
+        pb_token: Optional[str] = None
     ) -> str:
         """
         Duplicate a Meta Ads creative.
 
         Recommended: Use this to run robust experiments.
-        
+
         Args:
             creative_id: Meta Ads creative ID to duplicate
             name_suffix: Suffix to add to the duplicated creative name
@@ -173,7 +183,8 @@ if ENABLE_DUPLICATION:
                 "new_headline": new_headline,
                 "new_description": new_description,
                 "new_cta_type": new_cta_type,
-                "new_destination_url": new_destination_url
+                "new_destination_url": new_destination_url,
+                "pb_token": pb_token
             }
         )
 
@@ -197,15 +208,34 @@ async def _forward_duplication_request(resource_type: str, resource_id: str, acc
         # In the dual-header authentication pattern:
         # - Pipeboard token comes from X-Pipeboard-Token header (for authentication)
         # - Facebook token comes from Authorization header (for Meta API calls)
-        
+
         # Get tokens from context set by AuthInjectionMiddleware
         pipeboard_token = FastMCPAuthIntegration.get_pipeboard_token()
+        token_source = "contextvar" if pipeboard_token else None
         facebook_token = FastMCPAuthIntegration.get_auth_token()
-        
+
+        # Fallback: proxy injects pb_token into arguments when ContextVar
+        # is unreachable (Starlette BaseHTTPMiddleware -> FastMCP dispatch breaks it)
+        if not pipeboard_token:
+            pipeboard_token = options.pop('pb_token', None)
+            if pipeboard_token:
+                token_source = "injected_argument"
+                logger.info("Using pipeboard_token from injected argument (ContextVar fallback)")
+        else:
+            # Remove pb_token from options so it is not sent to the API
+            options.pop('pb_token', None)
+
         # Use provided access_token parameter if no Facebook token found in context
         if not facebook_token:
             facebook_token = access_token if access_token else await auth.get_current_access_token()
-        
+
+        logger.info(
+            "Duplication auth: pipeboard=%s, facebook=%s, source=%s",
+            "set" if pipeboard_token else "MISSING",
+            "set" if facebook_token else "MISSING",
+            token_source or "none"
+        )
+
         # Validate we have both required tokens
         if not pipeboard_token:
             return json.dumps({

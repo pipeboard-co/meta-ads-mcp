@@ -436,7 +436,8 @@ class TestDuplicationParameterHandling:
                     "include_creatives": False,
                     "copy_schedule": True,
                     "new_daily_budget": 100.50,
-                    "new_status": "ACTIVE"
+                    "new_status": "ACTIVE",
+                    "pb_token": None
                 }
             )
     
@@ -485,7 +486,8 @@ class TestDuplicationParameterHandling:
                             "countries": ["US", "CA"]
                         }
                     },
-                    "new_status": "ACTIVE"
+                    "new_status": "ACTIVE",
+                    "pb_token": None
                 }
             )
     

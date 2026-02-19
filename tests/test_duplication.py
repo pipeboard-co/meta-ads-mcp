@@ -168,7 +168,8 @@ async def test_duplicate_campaign_function_available_when_enabled():
                     "include_creatives": True,
                     "copy_schedule": False,
                     "new_daily_budget": None,
-                    "new_status": "PAUSED"
+                    "new_status": "PAUSED",
+                    "pb_token": None
                 }
             )
 
