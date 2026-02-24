@@ -94,6 +94,14 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
                  (omni_*, onsite_web_*, offsite_conversion.fb_pixel_*, etc.) to reduce
                  payload size by ~60%. The canonical action types (purchase, add_to_cart,
                  view_content, etc.) are always preserved. Default: False.
+
+    Note on response size: This tool always returns a fixed set of fields (impressions, clicks,
+    spend, cpc, cpm, ctr, reach, actions, action_values, etc.) and cannot filter to a subset.
+    For large result sets (50+ rows), the actions/action_values arrays can make responses very
+    large (1–2MB+). If you only need specific metrics like spend or impressions, consider using
+    bulk_get_insights with compact=true and the fields parameter:
+        bulk_get_insights(level="ad", account_ids=[...], compact=true, fields=["spend", "impressions"])
+    bulk_get_insights supports level="ad", "adset", "campaign", and "account".
     """
     if not object_id:
         return json.dumps({"error": "No object ID provided"}, indent=2)
