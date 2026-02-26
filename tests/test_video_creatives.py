@@ -202,10 +202,13 @@ async def test_video_creative_asset_feed_spec_path():
         assert len(afs["titles"]) == 2
         assert len(afs["bodies"]) == 2
 
-        # object_story_spec should use video_data anchor without "link"
+        # Video FLEX: object_story_spec uses video_data with call_to_action
         assert "video_data" in creative_data["object_story_spec"]
-        assert creative_data["object_story_spec"]["video_data"]["video_id"] == "vid_555666"
-        assert "link" not in creative_data["object_story_spec"]["video_data"]
+        vd = creative_data["object_story_spec"]["video_data"]
+        assert vd["video_id"] == "vid_555666"
+        assert "link" not in vd, "link must NOT be in video_data directly"
+        assert vd["call_to_action"]["type"] == "LEARN_MORE"
+        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
 
 
 @pytest.mark.asyncio
@@ -248,9 +251,13 @@ async def test_video_creative_with_dof_optimization():
         # Auto-fetched thumbnail should be included in videos array
         assert afs["videos"] == [{"video_id": "vid_777888", "thumbnail_url": "https://example.com/auto-thumb.jpg"}]
 
-        # video_data anchor should have image_url and not "link"
-        assert creative_data["object_story_spec"]["video_data"]["image_url"] == "https://example.com/auto-thumb.jpg"
-        assert "link" not in creative_data["object_story_spec"]["video_data"]
+        # Video FLEX: video_data anchor with call_to_action
+        assert "video_data" in creative_data["object_story_spec"]
+        vd = creative_data["object_story_spec"]["video_data"]
+        assert vd["image_url"] == "https://example.com/auto-thumb.jpg"
+        assert "link" not in vd
+        assert vd["call_to_action"]["type"] == "LEARN_MORE"
+        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
 
 
 @pytest.mark.asyncio

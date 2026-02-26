@@ -242,7 +242,7 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
     # "(#100) Tried accessing nonexisting field" on simple creatives in API v24.
     # We fetch the safe fields first, then try dynamic_creative_spec separately.
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,url_tags,link_url"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
     }
     data = await make_api_request(endpoint, access_token, params)
 
@@ -1256,22 +1256,36 @@ async def create_ad_creative(
 
             creative_data["asset_feed_spec"] = asset_feed_spec
 
-            # For dynamic/FLEX creatives with asset_feed_spec, object_story_spec needs
-            # page_id. For non-video, the link URL is already in asset_feed_spec.link_urls
-            # so link_data is NOT added here (Meta rejects link_data without image_hash).
+            # For asset_feed_spec creatives, object_story_spec needs page_id
+            # plus a link anchor. Meta rejects bare page_id (error 2061015).
             if is_video:
-                # video_data does NOT support "link" directly — URL goes in
-                # call_to_action.value.link or is handled by asset_feed_spec.link_urls.
+                # Video FLEX: use video_data with call_to_action carrying
+                # the link URL. This is required for Meta to associate the
+                # video and destination URL with the creative.
                 video_anchor = {"video_id": video_id}
                 if thumbnail_url:
                     video_anchor["image_url"] = thumbnail_url
+                cta_type = call_to_action_type or "LEARN_MORE"
+                cta_value = {}
+                if link_url:
+                    cta_value["link"] = link_url
+                if lead_gen_form_id:
+                    cta_value["lead_gen_form_id"] = lead_gen_form_id
+                cta_data = {"type": cta_type}
+                if cta_value:
+                    cta_data["value"] = cta_value
+                video_anchor["call_to_action"] = cta_data
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                     "video_data": video_anchor
                 }
             else:
+                # Image FLEX: use link_data with the destination URL.
                 creative_data["object_story_spec"] = {
-                    "page_id": page_id
+                    "page_id": page_id,
+                    "link_data": {
+                        "link": link_url
+                    }
                 }
         else:
             if is_video:
@@ -1391,7 +1405,7 @@ async def create_ad_creative(
             creative_id = data["id"]
             creative_endpoint = f"{creative_id}"
             creative_params = {
-                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,url_tags,link_url"
+                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)

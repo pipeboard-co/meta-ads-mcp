@@ -238,9 +238,11 @@ class TestFlexCreatives:
             assert "asset_feed_spec" in creative_data
             assert creative_data["asset_feed_spec"]["images"] == [{"hash": "abc123"}]
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
-            # object_story_spec needs only page_id; link URL is already in asset_feed_spec.link_urls
+            # object_story_spec needs page_id + link_data with destination URL
+            # (Meta rejects object_story_spec without link — error 2061015)
             assert creative_data["object_story_spec"] == {
-                "page_id": "987654321"
+                "page_id": "987654321",
+                "link_data": {"link": "https://example.com"}
             }
 
     async def test_no_optimization_type_unchanged_behavior(self):
