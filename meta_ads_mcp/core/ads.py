@@ -943,7 +943,8 @@ async def create_ad_creative(
     lead_gen_form_id: Optional[str] = None,
     instagram_actor_id: Optional[str] = None,
     ad_formats: Optional[List[str]] = None,
-    asset_customization_rules: Optional[List[Dict[str, Any]]] = None
+    asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
+    creative_features_spec: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash or video ID.
@@ -989,6 +990,13 @@ async def create_ad_creative(
                    ["AUTOMATIC_FORMAT"] (Flexible format). For video creatives, defaults to
                    ["SINGLE_VIDEO"]. Otherwise defaults to ["SINGLE_IMAGE"].
         asset_customization_rules: List of placement-specific asset overrides for asset_feed_spec.
+        creative_features_spec: Advantage+ Creative feature opt-ins/opt-outs. Controls individual
+                   creative enhancements like image_touchups, text_optimizations, inline_comment,
+                   add_text_overlay, music, 3d_animation, etc. Each feature is a dict with
+                   "enroll_status" set to "OPT_IN" or "OPT_OUT".
+                   Example: {"image_touchups": {"enroll_status": "OPT_IN"},
+                            "inline_comment": {"enroll_status": "OPT_IN"}}
+                   Sent to Meta as degrees_of_freedom_spec.creative_features_spec.
                    Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
@@ -1021,6 +1029,14 @@ async def create_ad_creative(
             _parsed = json.loads(asset_customization_rules)
             if isinstance(_parsed, list):
                 asset_customization_rules = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(creative_features_spec, str):
+        try:
+            _parsed = json.loads(creative_features_spec)
+            if isinstance(_parsed, dict):
+                creative_features_spec = _parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -1364,6 +1380,13 @@ async def create_ad_creative(
         # Add dynamic creative spec if provided
         if dynamic_creative_spec:
             creative_data["dynamic_creative_spec"] = dynamic_creative_spec
+
+        # Add Advantage+ Creative feature opt-ins if provided.
+        # Only sent when the user explicitly passes creative_features_spec.
+        if creative_features_spec:
+            creative_data["degrees_of_freedom_spec"] = {
+                "creative_features_spec": creative_features_spec
+            }
 
         # instagram_actor_id → instagram_user_id migration (Jan 2026).
         # Meta deprecated instagram_actor_id; the replacement is instagram_user_id
