@@ -320,9 +320,12 @@ class TestFlexCreatives:
             assert afs["descriptions"] == [{"text": "Desc 1"}, {"text": "Desc 2"}]
             assert afs["call_to_action_types"] == ["SHOP_NOW"]
 
-            # Multi-image: object_story_spec must have ONLY page_id (no link_data).
-            # Adding link_data causes Meta to silently ignore asset_feed_spec.
-            assert creative_data["object_story_spec"] == {"page_id": "987654321"}
+            # Multi-image: link_data must include image_hash as primary anchor.
+            # Without it, Meta silently ignores asset_feed_spec.
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+                "link_data": {"link": "https://example.com", "image_hash": "hash1"},
+            }
 
     async def test_image_hashes_without_optimization_type_uses_asset_feed(self):
         """image_hashes (plural) triggers asset_feed_spec even without optimization_type."""
@@ -359,8 +362,11 @@ class TestFlexCreatives:
             # No optimization_type should be set
             assert "optimization_type" not in creative_data["asset_feed_spec"]
 
-            # Multi-image: object_story_spec must have ONLY page_id (no link_data)
-            assert creative_data["object_story_spec"] == {"page_id": "987654321"}
+            # Multi-image: link_data must include image_hash as primary anchor
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+                "link_data": {"link": "https://example.com", "image_hash": "hash1"},
+            }
 
     async def test_no_image_hash_or_image_hashes_returns_error(self):
         """Must provide either image_hash, image_hashes, or video_id."""

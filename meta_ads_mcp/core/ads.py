@@ -1298,28 +1298,23 @@ async def create_ad_creative(
             else:
                 # Image creative with asset_feed_spec (FLEX / Dynamic Creative).
                 #
-                # Per Meta API docs, when using asset_feed_spec the
-                # object_story_spec should contain ONLY page_id — the link URL
-                # goes in asset_feed_spec.link_urls instead.
+                # Meta requires link_data in object_story_spec even when
+                # asset_feed_spec is present (error 2061015 without it).
                 #
-                # For multi-image creatives (image_hashes), including link_data
-                # causes Meta to treat the request as a simple link post and
-                # silently ignore the entire asset_feed_spec.
-                #
-                # For single-image creatives (image_hash), Meta historically
-                # required link_data (error 2061015 without it), so we keep it
-                # as a compatibility measure until we can verify removal is safe.
+                # For multi-image creatives (image_hashes), link_data MUST
+                # include an image_hash as the "primary" image anchor.
+                # Without it, Meta silently ignores the asset_feed_spec and
+                # creates a bare link creative instead. This matches what
+                # Meta's own GET response returns for FLEX creatives — both
+                # link_data.image_hash (primary) and asset_feed_spec.images
+                # (all variants) are present.
+                link_data = {"link": link_url}
                 if image_hashes:
-                    creative_data["object_story_spec"] = {
-                        "page_id": page_id,
-                    }
-                else:
-                    creative_data["object_story_spec"] = {
-                        "page_id": page_id,
-                        "link_data": {
-                            "link": link_url
-                        }
-                    }
+                    link_data["image_hash"] = image_hashes[0]
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "link_data": link_data,
+                }
         else:
             if is_video:
                 # Use object_story_spec with video_data for simple video creatives.

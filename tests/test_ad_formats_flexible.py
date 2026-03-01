@@ -284,10 +284,14 @@ class TestFlexibleCreativeFullFlow:
             assert afs["call_to_action_types"] == ["SHOP_NOW"]
             assert afs["link_urls"] == [{"website_url": "https://example.com"}]
 
-            # Multi-image: object_story_spec has ONLY page_id (no link_data).
-            # link_data would cause Meta to silently ignore asset_feed_spec.
+            # Multi-image: link_data must include image_hash as primary anchor.
+            # Without it, Meta silently ignores asset_feed_spec.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
+                "link_data": {
+                    "link": "https://example.com",
+                    "image_hash": "hash1",
+                },
             }
 
     async def test_full_flexible_creative_single_image_keeps_link_data(self):
