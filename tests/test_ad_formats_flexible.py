@@ -284,7 +284,47 @@ class TestFlexibleCreativeFullFlow:
             assert afs["call_to_action_types"] == ["SHOP_NOW"]
             assert afs["link_urls"] == [{"website_url": "https://example.com"}]
 
-            # object_story_spec needs page_id + link_data with destination URL
+            # Multi-image: object_story_spec has ONLY page_id (no link_data).
+            # link_data would cause Meta to silently ignore asset_feed_spec.
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+            }
+
+    async def test_full_flexible_creative_single_image_keeps_link_data(self):
+        """Single-image DEGREES_OF_FREEDOM creative keeps link_data in object_story_spec.
+
+        Meta historically required link_data for single-image asset_feed_spec
+        creatives (error 2061015). This test preserves the verified behavior.
+        """
+        sample_creative_data = {"id": "123", "name": "Single Flex", "status": "ACTIVE"}
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Single Image Flexible Creative",
+                image_hash="hash1",
+                page_id="987654321",
+                link_url="https://example.com",
+                messages=["Primary text A", "Primary text B"],
+                headlines=["Headline 1", "Headline 2"],
+                optimization_type="DEGREES_OF_FREEDOM",
+                call_to_action_type="SHOP_NOW"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            creative_data = mock_api.call_args_list[0][0][2]
+            afs = creative_data["asset_feed_spec"]
+
+            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
+            assert afs["images"] == [{"hash": "hash1"}]
+
+            # Single-image: object_story_spec keeps link_data (error 2061015 without it)
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
                 "link_data": {"link": "https://example.com"}
