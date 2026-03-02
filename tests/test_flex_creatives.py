@@ -318,13 +318,21 @@ class TestFlexCreatives:
             assert afs["bodies"] == [{"text": "Text A"}, {"text": "Text B"}]
             assert afs["titles"] == [{"text": "Headline 1"}, {"text": "Headline 2"}]
             assert afs["descriptions"] == [{"text": "Desc 1"}, {"text": "Desc 2"}]
-            assert afs["call_to_action_types"] == ["SHOP_NOW"]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
+            # DOF: link_urls omitted, link goes in link_data.link
+            assert "link_urls" not in afs
 
             # Multi-image: link_data must include image_hash as primary anchor.
             # Without it, Meta silently ignores asset_feed_spec.
+            # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
-                "link_data": {"link": "https://example.com", "image_hash": "hash1"},
+                "link_data": {
+                    "link": "https://example.com",
+                    "image_hash": "hash1",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
+                },
             }
 
     async def test_image_hashes_without_optimization_type_uses_asset_feed(self):
@@ -616,8 +624,14 @@ class TestSingularParamPromotion:
             assert afs["titles"] == [{"text": "My headline"}]
             assert afs["descriptions"] == [{"text": "My description"}]
             assert afs["bodies"] == [{"text": "My message"}]
-            assert afs["call_to_action_types"] == ["LEARN_MORE"]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
             assert afs["images"] == [{"hash": "abc123"}]
+
+            # CTA is placed in link_data for DOF creatives
+            assert creative_data["object_story_spec"]["link_data"]["call_to_action"] == {
+                "type": "LEARN_MORE", "value": {"link": "https://example.com"}
+            }
 
     async def test_update_singular_headline_promoted_with_optimization_type(self):
         """Singular headline promoted in update_ad_creative when optimization_type is set."""

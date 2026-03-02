@@ -1216,33 +1216,39 @@ async def create_ad_creative(
                     asset_customization_rules, images_array
                 )
 
-            # Determine ad_formats: use explicit value if provided, otherwise smart default.
-            # NOTE: AUTOMATIC_FORMAT is NOT valid for creation — Meta silently
-            # ignores the entire asset_feed_spec when it encounters it.
-            # Always use SINGLE_IMAGE (or SINGLE_VIDEO); Meta handles format
-            # selection automatically via optimization_type=DEGREES_OF_FREEDOM.
-            if ad_formats:
-                resolved_ad_formats = ad_formats
-            elif is_video:
-                resolved_ad_formats = ["SINGLE_VIDEO"]
+            # ------------------------------------------------------------------
+            # Build asset_feed_spec base: DOF vs non-DOF use different patterns.
+            #
+            # DOF (DEGREES_OF_FREEDOM / FLEX / Advantage+):
+            #   asset_feed_spec has ONLY: media, optimization_type, text variants.
+            #   URL, ad_formats, and CTA go in object_story_spec.link_data.
+            #   This matches the working Next.js duplication pattern — Meta's
+            #   own GET response omits link_urls/ad_formats/call_to_action_types
+            #   from asset_feed_spec, and the duplication passes it through AS-IS.
+            #   Including those fields causes Meta to silently ignore
+            #   asset_feed_spec for multi-image creatives.
+            #
+            # Non-DOF (regular Dynamic Creative):
+            #   asset_feed_spec includes link_urls, ad_formats, call_to_action_types
+            #   as before (this path is verified working).
+            # ------------------------------------------------------------------
+            if optimization_type:
+                asset_feed_spec = {"optimization_type": optimization_type}
+                # Only include ad_formats if explicitly provided by the caller
+                if ad_formats:
+                    asset_feed_spec["ad_formats"] = ad_formats
             else:
-                resolved_ad_formats = ["SINGLE_IMAGE"]
+                resolved_ad_formats = ad_formats or (["SINGLE_VIDEO"] if is_video else ["SINGLE_IMAGE"])
+                asset_feed_spec = {
+                    "link_urls": [{"website_url": link_url}],
+                    "ad_formats": resolved_ad_formats,
+                }
 
-            # Use asset_feed_spec for dynamic/FLEX creatives with multiple variants
-            asset_feed_spec = {
-                "link_urls": [{"website_url": link_url}],
-                "ad_formats": resolved_ad_formats
-            }
-
-            # Add media to asset_feed_spec
+            # Add media to asset_feed_spec (shared by both paths)
             if is_video:
                 asset_feed_spec["videos"] = videos_array
             else:
                 asset_feed_spec["images"] = images_array
-
-            # Add optimization_type for FLEX (Advantage+) creatives
-            if optimization_type:
-                asset_feed_spec["optimization_type"] = optimization_type
 
             # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
             # Auto-promote singular headline to single-element array when in asset_feed_spec path
@@ -1264,8 +1270,8 @@ async def create_ad_creative(
             elif message:
                 asset_feed_spec["bodies"] = [{"text": message}]
 
-            # Add call_to_action_types if provided
-            if call_to_action_type:
+            # CTA in asset_feed_spec only for non-DOF (DOF puts CTA in link_data)
+            if call_to_action_type and not optimization_type:
                 asset_feed_spec["call_to_action_types"] = [call_to_action_type]
 
             # Add placement-specific asset customization rules if provided
@@ -1274,8 +1280,10 @@ async def create_ad_creative(
 
             creative_data["asset_feed_spec"] = asset_feed_spec
 
-            # For asset_feed_spec creatives, object_story_spec needs page_id
-            # plus a link anchor. Meta rejects bare page_id (error 2061015).
+            # ------------------------------------------------------------------
+            # Build object_story_spec for asset_feed_spec creatives.
+            # Meta rejects bare page_id (error 2061015) — needs a link anchor.
+            # ------------------------------------------------------------------
             if is_video:
                 # Video FLEX: use video_data with call_to_action carrying
                 # the link URL. This is required for Meta to associate the
@@ -1298,21 +1306,21 @@ async def create_ad_creative(
                     "video_data": video_anchor
                 }
             else:
-                # Image creative with asset_feed_spec (FLEX / Dynamic Creative).
-                #
-                # Meta requires link_data in object_story_spec even when
-                # asset_feed_spec is present (error 2061015 without it).
-                #
-                # For multi-image creatives (image_hashes), link_data MUST
-                # include an image_hash as the "primary" image anchor.
-                # Without it, Meta silently ignores the asset_feed_spec and
-                # creates a bare link creative instead. This matches what
-                # Meta's own GET response returns for FLEX creatives — both
-                # link_data.image_hash (primary) and asset_feed_spec.images
-                # (all variants) are present.
+                # Image creative: build link_data anchor.
                 link_data = {"link": link_url}
                 if image_hashes:
                     link_data["image_hash"] = image_hashes[0]
+                # DOF: put CTA in link_data (not in asset_feed_spec)
+                if optimization_type and call_to_action_type:
+                    cta = {"type": call_to_action_type}
+                    cta_value = {}
+                    if link_url:
+                        cta_value["link"] = link_url
+                    if lead_gen_form_id:
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if cta_value:
+                        cta["value"] = cta_value
+                    link_data["call_to_action"] = cta
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                     "link_data": link_data,

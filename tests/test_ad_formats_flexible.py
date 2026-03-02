@@ -16,12 +16,11 @@ from meta_ads_mcp.core.ads import create_ad_creative, update_ad_creative
 class TestAdFormatsDefaultCreate:
     """Test ad_formats defaults in create_ad_creative."""
 
-    async def test_dof_with_image_hashes_defaults_to_single_image(self):
-        """DEGREES_OF_FREEDOM + image_hashes should default ad_formats to SINGLE_IMAGE.
+    async def test_dof_with_image_hashes_omits_ad_formats(self):
+        """DEGREES_OF_FREEDOM + image_hashes should omit ad_formats entirely.
 
-        AUTOMATIC_FORMAT is NOT valid for creation — Meta silently ignores the
-        entire asset_feed_spec when it encounters it. Use SINGLE_IMAGE; Meta
-        handles format selection via optimization_type=DEGREES_OF_FREEDOM.
+        For DOF creatives, ad_formats is not needed — Meta handles format
+        selection via optimization_type=DEGREES_OF_FREEDOM.
         """
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
@@ -44,10 +43,10 @@ class TestAdFormatsDefaultCreate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            assert "ad_formats" not in afs
 
-    async def test_dof_without_image_hashes_defaults_to_single_image(self):
-        """DEGREES_OF_FREEDOM with single image_hash (no image_hashes) defaults to SINGLE_IMAGE."""
+    async def test_dof_without_image_hashes_omits_ad_formats(self):
+        """DEGREES_OF_FREEDOM with single image_hash (no image_hashes) omits ad_formats."""
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -69,7 +68,7 @@ class TestAdFormatsDefaultCreate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            assert "ad_formats" not in afs
 
     async def test_no_dof_defaults_to_single_image(self):
         """Without DEGREES_OF_FREEDOM, ad_formats defaults to SINGLE_IMAGE."""
@@ -275,8 +274,8 @@ class TestFlexibleCreativeFullFlow:
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
 
-            # SINGLE_IMAGE — Meta handles Flexible via optimization_type
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            # DOF creatives omit ad_formats — Meta handles format via optimization_type
+            assert "ad_formats" not in afs
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
             assert afs["images"] == [
                 {"hash": "hash1"}, {"hash": "hash2"}, {"hash": "hash3"}
@@ -290,16 +289,20 @@ class TestFlexibleCreativeFullFlow:
             assert afs["descriptions"] == [
                 {"text": "Desc 1"}, {"text": "Desc 2"}
             ]
-            assert afs["call_to_action_types"] == ["SHOP_NOW"]
-            assert afs["link_urls"] == [{"website_url": "https://example.com"}]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
+            # DOF: link_urls omitted, link goes in link_data.link
+            assert "link_urls" not in afs
 
             # Multi-image: link_data must include image_hash as primary anchor.
             # Without it, Meta silently ignores asset_feed_spec.
+            # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
                 "link_data": {
                     "link": "https://example.com",
                     "image_hash": "hash1",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
                 },
             }
 
@@ -333,14 +336,18 @@ class TestFlexibleCreativeFullFlow:
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
 
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            assert "ad_formats" not in afs
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
             assert afs["images"] == [{"hash": "hash1"}]
 
             # Single-image: object_story_spec keeps link_data (error 2061015 without it)
+            # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
-                "link_data": {"link": "https://example.com"}
+                "link_data": {
+                    "link": "https://example.com",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
+                }
             }
 
     async def test_backward_compat_simple_creative_unaffected(self):
