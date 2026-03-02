@@ -174,17 +174,31 @@ class TestAdFormatsDefaultCreate:
 
 @pytest.mark.asyncio
 class TestAdFormatsDefaultUpdate:
-    """Test ad_formats defaults in update_ad_creative."""
+    """Test ad_formats handling in update_ad_creative.
 
-    async def test_update_dof_defaults_to_single_image(self):
-        """update_ad_creative with DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE.
+    With DOF content updates going through the ad endpoint, these tests verify
+    that the existing ad_formats in the creative's asset_feed_spec are preserved
+    or that the legacy path defaults correctly for non-DOF creatives.
+    """
 
-        AUTOMATIC_FORMAT is NOT valid — Meta silently ignores asset_feed_spec.
-        """
-        sample_data = {"id": "123", "name": "Updated", "status": "ACTIVE"}
+    async def test_update_dof_preserves_existing_ad_formats(self):
+        """DOF creative update preserves existing ad_formats from asset_feed_spec."""
+        existing_creative = {
+            "id": "123456789",
+            "asset_feed_spec": {
+                "titles": [{"text": "Old"}],
+                "images": [{"hash": "abc"}],
+                "ad_formats": ["SINGLE_IMAGE"],
+                "optimization_type": "DEGREES_OF_FREEDOM"
+            }
+        }
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = sample_data
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = ["ad_999"]
+            mock_api.return_value = {"success": True}
 
             result = await update_ad_creative(
                 access_token="test_token",
@@ -195,16 +209,20 @@ class TestAdFormatsDefaultUpdate:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
+            merged = result_data["merged_asset_feed_spec"]
+            assert merged["ad_formats"] == ["SINGLE_IMAGE"]
 
-            creative_data = mock_api.call_args_list[0][0][2]
-            afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
-
-    async def test_update_without_dof_defaults_to_single_image(self):
-        """update_ad_creative without DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE."""
+    async def test_update_non_dof_creative_defaults_to_single_image(self):
+        """Non-DOF creative (no asset_feed_spec) falls to legacy path with SINGLE_IMAGE default."""
+        existing_creative = {
+            "id": "123456789",
+            "object_story_spec": {"link_data": {"message": "Old"}}
+        }
         sample_data = {"id": "123", "name": "Updated", "status": "ACTIVE"}
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
             mock_api.return_value = sample_data
 
             result = await update_ad_creative(
@@ -216,31 +234,43 @@ class TestAdFormatsDefaultUpdate:
             result_data = json.loads(result)
             assert result_data["success"] is True
 
+            # Legacy path: make_api_request called with asset_feed_spec on the creative endpoint
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
             assert afs["ad_formats"] == ["SINGLE_IMAGE"]
 
-    async def test_update_explicit_ad_formats_overrides(self):
-        """update_ad_creative with explicit ad_formats overrides default."""
-        sample_data = {"id": "123", "name": "Updated", "status": "ACTIVE"}
+    async def test_update_dof_explicit_ad_formats_not_needed(self):
+        """DOF creative update merges from existing spec, ad_formats param not used in DOF path."""
+        existing_creative = {
+            "id": "123456789",
+            "asset_feed_spec": {
+                "titles": [{"text": "Old"}],
+                "images": [{"hash": "abc"}],
+                "ad_formats": ["SINGLE_IMAGE"],
+                "optimization_type": "DEGREES_OF_FREEDOM"
+            }
+        }
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = sample_data
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = ["ad_999"]
+            mock_api.return_value = {"success": True}
 
             result = await update_ad_creative(
                 access_token="test_token",
                 creative_id="123456789",
                 optimization_type="DEGREES_OF_FREEDOM",
                 headlines=["New Headline"],
-                ad_formats=["SINGLE_IMAGE"]  # explicit override
+                ad_formats=["SINGLE_IMAGE"]
             )
 
             result_data = json.loads(result)
             assert result_data["success"] is True
-
-            creative_data = mock_api.call_args_list[0][0][2]
-            afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            merged = result_data["merged_asset_feed_spec"]
+            # ad_formats comes from existing spec (merged), not from the parameter
+            assert merged["ad_formats"] == ["SINGLE_IMAGE"]
 
 
 @pytest.mark.asyncio

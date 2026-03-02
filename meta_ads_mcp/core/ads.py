@@ -1470,11 +1470,57 @@ async def create_ad_creative(
         }, indent=2)
 
 
+async def _fetch_creative_details(creative_id: str, access_token: str) -> Dict[str, Any]:
+    """Fetch a creative's full details including asset_feed_spec and account_id.
+
+    Returns the API response dict with fields: id, asset_feed_spec, object_story_spec, account_id.
+    """
+    params = {
+        "fields": "id,asset_feed_spec,object_story_spec,account_id"
+    }
+    return await make_api_request(creative_id, access_token, params)
+
+
+async def _find_ads_by_creative_id(creative_id: str, access_token: str) -> List[str]:
+    """Find ad IDs that use a given creative_id.
+
+    1. GET /{creative_id}?fields=id,account_id  to get the ad account
+    2. GET /act_{account_id}/ads?fields=id,creative{id}  to list ads
+    3. Filter for ads whose creative.id matches creative_id
+
+    Returns list of ad_id strings (may be empty).
+    """
+    # Step 1: get account_id from the creative
+    creative_info = await make_api_request(creative_id, access_token, {"fields": "id,account_id"})
+    account_id = creative_info.get("account_id")
+    if not account_id:
+        logger.warning(f"Could not determine account_id for creative {creative_id}")
+        return []
+
+    # Step 2: list ads in the account
+    ads_endpoint = f"act_{account_id}/ads" if not account_id.startswith("act_") else f"{account_id}/ads"
+    ads_response = await make_api_request(
+        ads_endpoint, access_token,
+        {"fields": "id,creative{id}", "limit": "100"}
+    )
+
+    # Step 3: filter for matching creative_id
+    ads_data = ads_response.get("data", [])
+    matching_ad_ids = []
+    for ad in ads_data:
+        ad_creative = ad.get("creative", {})
+        if ad_creative.get("id") == creative_id:
+            matching_ad_ids.append(ad["id"])
+
+    return matching_ad_ids
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def update_ad_creative(
     creative_id: str,
     access_token: Optional[str] = None,
+    ad_id: Optional[str] = None,
     name: Optional[str] = None,
     message: Optional[str] = None,
     messages: Optional[List[str]] = None,
@@ -1489,27 +1535,32 @@ async def update_ad_creative(
     ad_formats: Optional[List[str]] = None
 ) -> str:
     """
-    Update an existing ad creative's name or optimization settings.
+    Update an existing ad creative's name or content.
 
-    IMPORTANT — Meta API limitation: The Meta API does NOT allow updating content
-    fields (message, headline, description, CTA, image, video, URL) on existing
-    creatives. Only the creative `name` and optimization settings (asset_feed_spec)
-    can be changed. To change ad content, create a new creative with the desired
-    content and update the ad to reference the new creative via `update_ad`.
+    For FLEX/DOF creatives (those with asset_feed_spec), content updates (headlines,
+    descriptions, messages) are applied by POSTing to the Ad endpoint with the merged
+    asset_feed_spec. This is the only way Meta allows updating content on DOF creatives.
+
+    For non-DOF creatives, content updates will still be attempted via the Creative
+    endpoint but will likely be rejected by Meta (error_subcode 1815573).
+
+    Name-only updates always go directly to the Creative endpoint.
 
     Args:
         creative_id: Meta Ads creative ID to update
         access_token: Meta API access token (optional - will use cached token if not provided)
+        ad_id: Optional ad ID to target directly. If provided, skips the ad lookup when
+               updating DOF content. Use this for efficiency when you already know the ad ID.
         name: New creative name (this is the most reliable update)
-        message: New ad copy/text — NOTE: Meta API may reject this on existing creatives
-        messages: List of primary text variants — NOTE: Meta API may reject this on existing creatives
-        headline: Single headline — NOTE: Meta API may reject this on existing creatives
-        headlines: New list of headlines — NOTE: Meta API may reject this on existing creatives
-        description: Single description — NOTE: Meta API may reject this on existing creatives
-        descriptions: New list of descriptions — NOTE: Meta API may reject this on existing creatives
+        message: New ad copy/text (primary text)
+        messages: List of primary text variants for DOF creatives
+        headline: Single headline
+        headlines: New list of headlines for DOF creatives
+        description: Single description
+        descriptions: New list of descriptions for DOF creatives
         optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives
         dynamic_creative_spec: New dynamic creative optimization settings
-        call_to_action_type: New call to action button type — NOTE: Meta API may reject this on existing creatives
+        call_to_action_type: New call to action button type
         lead_gen_form_id: Lead generation form ID for lead generation campaigns
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image)
@@ -1551,54 +1602,145 @@ async def update_ad_creative(
             if len(d) > 125:
                 return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
 
-    # Prepare the update data
+    # Determine if this is a content update that needs the asset_feed_spec path
+    has_content_changes = bool(headlines or descriptions or messages or headline or description or message)
+    use_asset_feed = bool(headlines or descriptions or messages or optimization_type or dynamic_creative_spec)
+
+    # --- DOF content update path: update via the Ad endpoint ---
+    # When content changes are requested AND the creative is a DOF creative,
+    # we must POST to /{ad_id} with the merged asset_feed_spec.
+    if use_asset_feed and has_content_changes:
+        try:
+            # Fetch the existing creative to check if it has asset_feed_spec
+            creative_details = await _fetch_creative_details(creative_id, access_token)
+            existing_afs = creative_details.get("asset_feed_spec")
+
+            if existing_afs:
+                # This IS a DOF creative — update via the Ad endpoint
+                # Build the merged asset_feed_spec
+                merged_afs = dict(existing_afs)
+
+                if headlines:
+                    merged_afs["titles"] = [{"text": h} for h in headlines]
+                elif headline:
+                    merged_afs["titles"] = [{"text": headline}]
+
+                if descriptions:
+                    merged_afs["descriptions"] = [{"text": d} for d in descriptions]
+                elif description:
+                    merged_afs["descriptions"] = [{"text": description}]
+
+                if messages:
+                    merged_afs["bodies"] = [{"text": m} for m in messages]
+                elif message:
+                    merged_afs["bodies"] = [{"text": message}]
+
+                if optimization_type:
+                    merged_afs["optimization_type"] = optimization_type
+
+                if call_to_action_type:
+                    merged_afs["call_to_action_types"] = [call_to_action_type]
+
+                # Find the ad(s) using this creative
+                if ad_id:
+                    target_ad_ids = [ad_id]
+                else:
+                    target_ad_ids = await _find_ads_by_creative_id(creative_id, access_token)
+
+                if not target_ad_ids:
+                    return json.dumps({
+                        "error": "No ads found using this creative",
+                        "explanation": (
+                            "To update content on a DOF/FLEX creative, the creative must be "
+                            "attached to an ad. No ads were found referencing this creative."
+                        ),
+                        "suggestion": (
+                            "If you know the ad ID, pass it via the ad_id parameter. "
+                            "Alternatively, use update_ad directly with the ad_id and the "
+                            "desired asset_feed_spec changes."
+                        ),
+                        "creative_id": creative_id
+                    }, indent=2)
+
+                # Also handle name update if requested
+                if name:
+                    try:
+                        await make_api_request(creative_id, access_token, {"name": name}, method="POST")
+                    except Exception as e:
+                        logger.warning(f"Name update failed for creative {creative_id}: {e}")
+
+                # POST to each ad with the merged asset_feed_spec
+                updated_ads = []
+                errors = []
+                for target_ad_id in target_ad_ids:
+                    ad_update_params = {
+                        "creative": json.dumps({
+                            "creative_id": creative_id,
+                            "asset_feed_spec": merged_afs
+                        })
+                    }
+                    try:
+                        ad_result = await make_api_request(
+                            target_ad_id, access_token, ad_update_params, method="POST"
+                        )
+                        if "error" in ad_result:
+                            errors.append({"ad_id": target_ad_id, "error": ad_result["error"]})
+                        else:
+                            updated_ads.append(target_ad_id)
+                    except Exception as e:
+                        errors.append({"ad_id": target_ad_id, "error": str(e)})
+
+                result = {
+                    "success": len(updated_ads) > 0,
+                    "creative_id": creative_id,
+                    "updated_ads": updated_ads,
+                    "merged_asset_feed_spec": merged_afs,
+                    "method": "ad_endpoint_update"
+                }
+                if errors:
+                    result["errors"] = errors
+                return json.dumps(result, indent=2)
+
+        except Exception as e:
+            logger.exception("DOF content update path failed, falling through to direct creative update")
+            # Fall through to the legacy direct-creative-update path below
+
+    # --- Legacy path: direct Creative endpoint update ---
+    # Used for: name-only updates, non-DOF creatives, optimization_type-only changes,
+    # or when the DOF path above failed/fell through.
     update_data = {}
 
     if name:
         update_data["name"] = name
-
-    # Choose between asset_feed_spec (dynamic/FLEX creative) or object_story_spec (traditional)
-    use_asset_feed = bool(headlines or descriptions or messages or optimization_type or dynamic_creative_spec)
 
     if use_asset_feed:
         # Handle dynamic/FLEX creative assets via asset_feed_spec
         asset_feed_spec = {}
 
         # Determine ad_formats: use explicit value if provided, otherwise smart default.
-        # NOTE: AUTOMATIC_FORMAT is NOT valid for creation/update — Meta silently
-        # ignores the entire asset_feed_spec when it encounters it.
-        # Always use SINGLE_IMAGE; Meta handles format selection automatically
-        # via optimization_type=DEGREES_OF_FREEDOM.
         if ad_formats:
             asset_feed_spec["ad_formats"] = ad_formats
         else:
             asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
 
-        # Add optimization_type for FLEX (Advantage+) creatives
         if optimization_type:
             asset_feed_spec["optimization_type"] = optimization_type
 
-        # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
-        # Auto-promote singular headline to single-element array when in asset_feed_spec path
         if headlines:
             asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
         elif headline:
             asset_feed_spec["titles"] = [{"text": headline}]
 
-        # Handle descriptions
-        # Auto-promote singular description to single-element array when in asset_feed_spec path
         if descriptions:
             asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
         elif description:
             asset_feed_spec["descriptions"] = [{"text": description}]
 
-        # Handle bodies: messages (plural) or message (singular)
         if messages:
             asset_feed_spec["bodies"] = [{"text": m} for m in messages]
         elif message:
             asset_feed_spec["bodies"] = [{"text": message}]
 
-        # Add call_to_action_types if provided
         if call_to_action_type:
             asset_feed_spec["call_to_action_types"] = [call_to_action_type]
 
@@ -1607,50 +1749,41 @@ async def update_ad_creative(
         # Use traditional object_story_spec with link_data for simple creatives
         if message or headline or description or call_to_action_type or lead_gen_form_id:
             update_data["object_story_spec"] = {"link_data": {}}
-            
+
             if message:
                 update_data["object_story_spec"]["link_data"]["message"] = message
-            
-            # Add headline (singular) to link_data
+
             if headline:
                 update_data["object_story_spec"]["link_data"]["name"] = headline
-            
-            # Add description (singular) to link_data
+
             if description:
                 update_data["object_story_spec"]["link_data"]["description"] = description
-            
-            # Add call_to_action to link_data for simple creatives
+
             if call_to_action_type or lead_gen_form_id:
                 cta_data = {}
                 if call_to_action_type:
                     cta_data["type"] = call_to_action_type
-                
-                # Add lead form ID to value object if provided (required for lead generation campaigns)
+
                 if lead_gen_form_id:
                     cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
-                
+
                 if cta_data:
                     update_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
-    
-    # Add dynamic creative spec if provided
+
     if dynamic_creative_spec:
         update_data["dynamic_creative_spec"] = dynamic_creative_spec
-    
-    # Prepare the API endpoint for updating the creative
+
     endpoint = f"{creative_id}"
 
     try:
-        # Make API request to update the creative
         data = await make_api_request(endpoint, access_token, update_data, method="POST")
 
-        # If successful, get more details about the updated creative
         if "id" in data:
-            creative_endpoint = f"{creative_id}"
             creative_params = {
                 "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,url_tags,link_url,dynamic_creative_spec"
             }
 
-            creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
+            creative_details = await make_api_request(creative_id, access_token, creative_params)
             return json.dumps({
                 "success": True,
                 "creative_id": creative_id,

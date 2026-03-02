@@ -399,16 +399,25 @@ class TestFlexCreatives:
 class TestFlexCreativesUpdate:
     """Test cases for FLEX creative support in update_ad_creative."""
 
-    async def test_update_with_optimization_type(self):
-        """Update creative with optimization_type includes it in asset_feed_spec."""
-        sample_creative_data = {
+    async def test_update_dof_creative_with_headlines_via_ad_endpoint(self):
+        """DOF creative with headlines update goes through ad endpoint with merged spec."""
+        existing_creative = {
             "id": "123456789",
-            "name": "Updated FLEX",
-            "status": "ACTIVE"
+            "asset_feed_spec": {
+                "titles": [{"text": "Old Headline"}],
+                "bodies": [{"text": "Old body"}],
+                "images": [{"hash": "abc123"}],
+                "optimization_type": "DEGREES_OF_FREEDOM",
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
         }
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = sample_creative_data
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = ["ad_999"]
+            mock_api.return_value = {"success": True}
 
             result = await update_ad_creative(
                 access_token="test_token",
@@ -419,24 +428,34 @@ class TestFlexCreativesUpdate:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
+            assert result_data["method"] == "ad_endpoint_update"
+            assert "ad_999" in result_data["updated_ads"]
 
-            call_args_list = mock_api.call_args_list
-            first_call = call_args_list[0]
-            creative_data = first_call[0][2]
+            merged = result_data["merged_asset_feed_spec"]
+            assert merged["titles"] == [{"text": "New Headline"}]
+            assert merged["optimization_type"] == "DEGREES_OF_FREEDOM"
+            # Existing fields preserved
+            assert merged["bodies"] == [{"text": "Old body"}]
+            assert merged["images"] == [{"hash": "abc123"}]
 
-            assert "asset_feed_spec" in creative_data
-            assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
-
-    async def test_update_with_messages_plural(self):
-        """Update creative with messages (plural) produces correct bodies array."""
-        sample_creative_data = {
+    async def test_update_dof_creative_with_messages_via_ad_endpoint(self):
+        """DOF creative with messages update merges correctly."""
+        existing_creative = {
             "id": "123456789",
-            "name": "Updated",
-            "status": "ACTIVE"
+            "asset_feed_spec": {
+                "titles": [{"text": "Headline"}],
+                "bodies": [{"text": "Old body"}],
+                "images": [{"hash": "abc123"}],
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
         }
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = sample_creative_data
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = ["ad_999"]
+            mock_api.return_value = {"success": True}
 
             result = await update_ad_creative(
                 access_token="test_token",
@@ -447,14 +466,109 @@ class TestFlexCreativesUpdate:
             result_data = json.loads(result)
             assert result_data["success"] is True
 
-            call_args_list = mock_api.call_args_list
-            first_call = call_args_list[0]
-            creative_data = first_call[0][2]
+            merged = result_data["merged_asset_feed_spec"]
+            assert merged["bodies"] == [{"text": "Text A"}, {"text": "Text B"}]
+            # Existing fields preserved
+            assert merged["titles"] == [{"text": "Headline"}]
 
-            assert "asset_feed_spec" in creative_data
-            assert creative_data["asset_feed_spec"]["bodies"] == [
-                {"text": "Text A"}, {"text": "Text B"}
-            ]
+    async def test_update_dof_creative_with_ad_id_skips_lookup(self):
+        """When ad_id is provided, skip the ad lookup for efficiency."""
+        existing_creative = {
+            "id": "123456789",
+            "asset_feed_spec": {
+                "titles": [{"text": "Old"}],
+                "bodies": [{"text": "Old body"}],
+                "images": [{"hash": "abc123"}],
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
+        }
+
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_api.return_value = {"success": True}
+
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                ad_id="ad_direct_456",
+                headlines=["Direct Headline"]
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+            assert "ad_direct_456" in result_data["updated_ads"]
+            # _find_ads_by_creative_id should NOT have been called
+            mock_find.assert_not_called()
+
+    async def test_update_dof_creative_no_ads_found_returns_error(self):
+        """When no ads use this creative, return helpful error."""
+        existing_creative = {
+            "id": "123456789",
+            "asset_feed_spec": {
+                "titles": [{"text": "Old"}],
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
+        }
+
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = []
+
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                headlines=["New Headline"]
+            )
+
+            result_data = json.loads(result)
+            if "data" in result_data:
+                result_data = json.loads(result_data["data"])
+            assert "error" in result_data
+            assert "No ads found" in result_data["error"]
+            assert "ad_id" in result_data.get("suggestion", "")
+
+    async def test_update_non_dof_creative_falls_through_to_legacy(self):
+        """Non-DOF creative (no asset_feed_spec) falls through to legacy path."""
+        # Creative without asset_feed_spec
+        existing_creative = {
+            "id": "123456789",
+            "object_story_spec": {"link_data": {"message": "Old"}}
+        }
+
+        api_error = {
+            "error": {
+                "message": "HTTP Error: 400",
+                "details": {
+                    "error": {
+                        "message": "(#100) The parameter is not supported",
+                        "type": "OAuthException",
+                        "code": 100,
+                        "error_subcode": 1815573,
+                    }
+                },
+                "full_response": {"status_code": 400}
+            }
+        }
+
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_api.return_value = api_error
+
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                headlines=["New Headline"]
+            )
+
+            result_data = json.loads(result)
+            if "data" in result_data:
+                result_data = json.loads(result_data["data"])
+            assert result_data["error"] == "Content updates are not allowed on existing creatives"
+            assert "workaround" in result_data
 
     async def test_update_validation_cannot_mix_message_and_messages(self):
         """Cannot specify both message and messages in update."""
@@ -492,7 +606,7 @@ class TestFlexCreativesUpdate:
             assert "Invalid optimization_type" in result_data["error"]
 
     async def test_update_optimization_type_alone_triggers_asset_feed(self):
-        """Setting only optimization_type triggers asset_feed_spec path."""
+        """Setting only optimization_type (no content changes) uses legacy creative endpoint."""
         sample_creative_data = {
             "id": "123456789",
             "name": "FLEX",
@@ -634,15 +748,23 @@ class TestSingularParamPromotion:
             }
 
     async def test_update_singular_headline_promoted_with_optimization_type(self):
-        """Singular headline promoted in update_ad_creative when optimization_type is set."""
-        sample_creative_data = {
+        """Singular headline promoted in update_ad_creative when optimization_type is set (DOF path)."""
+        existing_creative = {
             "id": "123456789",
-            "name": "Updated",
-            "status": "ACTIVE"
+            "asset_feed_spec": {
+                "titles": [{"text": "Old Headline"}],
+                "bodies": [{"text": "Body"}],
+                "images": [{"hash": "abc123"}],
+                "ad_formats": ["SINGLE_IMAGE"]
+            }
         }
 
-        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = sample_creative_data
+        with patch('meta_ads_mcp.core.ads._fetch_creative_details', new_callable=AsyncMock) as mock_fetch, \
+             patch('meta_ads_mcp.core.ads._find_ads_by_creative_id', new_callable=AsyncMock) as mock_find, \
+             patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_fetch.return_value = existing_creative
+            mock_find.return_value = ["ad_999"]
+            mock_api.return_value = {"success": True}
 
             result = await update_ad_creative(
                 access_token="test_token",
@@ -653,10 +775,6 @@ class TestSingularParamPromotion:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
-
-            call_args_list = mock_api.call_args_list
-            first_call = call_args_list[0]
-            creative_data = first_call[0][2]
-
-            assert "asset_feed_spec" in creative_data
-            assert creative_data["asset_feed_spec"]["titles"] == [{"text": "Updated Headline"}]
+            merged = result_data["merged_asset_feed_spec"]
+            assert merged["titles"] == [{"text": "Updated Headline"}]
+            assert merged["optimization_type"] == "DEGREES_OF_FREEDOM"
