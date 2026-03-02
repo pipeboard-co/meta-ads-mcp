@@ -731,6 +731,40 @@ async def update_ad(
     endpoint = f"{ad_id}"
     try:
         data = await make_api_request(endpoint, access_token, params, method='POST')
+
+        # Check for FLEX creative image mismatch error (3858355)
+        if creative_id is not None and "error" in data:
+            error_obj = data.get("error", {})
+            if isinstance(error_obj, dict):
+                error_details = error_obj.get("details", {})
+                if isinstance(error_details, dict):
+                    inner_error = error_details.get("error", {})
+                    error_subcode = inner_error.get("error_subcode") if isinstance(inner_error, dict) else None
+                else:
+                    error_subcode = error_obj.get("error_subcode")
+            else:
+                error_subcode = None
+
+            if error_subcode == 3858355:
+                return json.dumps({
+                    "error": "Cannot swap creative on this ad due to FLEX image mismatch",
+                    "error_subcode": 3858355,
+                    "explanation": (
+                        "Meta requires the first image in the new creative's asset_feed_spec "
+                        "to match the image in its object_story_spec. When swapping a FLEX "
+                        "creative on an existing ad, this validation can fail if the new "
+                        "creative has different images than the original."
+                    ),
+                    "workaround": (
+                        "Create a new ad with the new creative instead of swapping: "
+                        "(1) call create_ad with the new creative_id and the same adset_id, "
+                        "(2) pause the old ad with update_ad(ad_id, status='PAUSED'). "
+                        "Note: this will lose social proof (likes, comments, shares) from the original ad."
+                    ),
+                    "ad_id": ad_id,
+                    "creative_id": creative_id
+                }, indent=2)
+
         return json.dumps(data, indent=2)
     except Exception as e:
         return json.dumps({"error": f"Failed to update ad: {str(e)}"}, indent=2)
