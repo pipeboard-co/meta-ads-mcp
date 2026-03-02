@@ -1217,12 +1217,14 @@ async def create_ad_creative(
                 )
 
             # Determine ad_formats: use explicit value if provided, otherwise smart default.
+            # NOTE: AUTOMATIC_FORMAT is NOT valid for creation — Meta silently
+            # ignores the entire asset_feed_spec when it encounters it.
+            # Always use SINGLE_IMAGE (or SINGLE_VIDEO); Meta handles format
+            # selection automatically via optimization_type=DEGREES_OF_FREEDOM.
             if ad_formats:
                 resolved_ad_formats = ad_formats
             elif is_video:
                 resolved_ad_formats = ["SINGLE_VIDEO"]
-            elif optimization_type == "DEGREES_OF_FREEDOM" and image_hashes:
-                resolved_ad_formats = ["AUTOMATIC_FORMAT"]
             else:
                 resolved_ad_formats = ["SINGLE_IMAGE"]
 
@@ -1555,11 +1557,12 @@ async def update_ad_creative(
         asset_feed_spec = {}
 
         # Determine ad_formats: use explicit value if provided, otherwise smart default.
-        # When using DEGREES_OF_FREEDOM, default to AUTOMATIC_FORMAT ("Flexible" in Ads Manager).
+        # NOTE: AUTOMATIC_FORMAT is NOT valid for creation/update — Meta silently
+        # ignores the entire asset_feed_spec when it encounters it.
+        # Always use SINGLE_IMAGE; Meta handles format selection automatically
+        # via optimization_type=DEGREES_OF_FREEDOM.
         if ad_formats:
             asset_feed_spec["ad_formats"] = ad_formats
-        elif optimization_type == "DEGREES_OF_FREEDOM":
-            asset_feed_spec["ad_formats"] = ["AUTOMATIC_FORMAT"]
         else:
             asset_feed_spec["ad_formats"] = ["SINGLE_IMAGE"]
 

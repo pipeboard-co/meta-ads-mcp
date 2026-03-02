@@ -1,8 +1,9 @@
-"""Tests for ad_formats parameter and AUTOMATIC_FORMAT (Flexible) default behavior.
+"""Tests for ad_formats parameter defaults and explicit override behavior.
 
-When using optimization_type="DEGREES_OF_FREEDOM" with image_hashes, the ad_formats
-should default to ["AUTOMATIC_FORMAT"] (Flexible format in Ads Manager) instead of
-["SINGLE_IMAGE"]. Users can also explicitly pass ad_formats to override the default.
+ad_formats always defaults to ["SINGLE_IMAGE"] (even with DEGREES_OF_FREEDOM).
+AUTOMATIC_FORMAT is NOT valid for creation/update — Meta silently ignores the
+entire asset_feed_spec when it encounters it. Users can explicitly pass ad_formats
+to override the default (e.g., for future-proofing if Meta adds support).
 """
 
 import pytest
@@ -15,8 +16,13 @@ from meta_ads_mcp.core.ads import create_ad_creative, update_ad_creative
 class TestAdFormatsDefaultCreate:
     """Test ad_formats defaults in create_ad_creative."""
 
-    async def test_dof_with_image_hashes_defaults_to_automatic_format(self):
-        """DEGREES_OF_FREEDOM + image_hashes should default ad_formats to AUTOMATIC_FORMAT."""
+    async def test_dof_with_image_hashes_defaults_to_single_image(self):
+        """DEGREES_OF_FREEDOM + image_hashes should default ad_formats to SINGLE_IMAGE.
+
+        AUTOMATIC_FORMAT is NOT valid for creation — Meta silently ignores the
+        entire asset_feed_spec when it encounters it. Use SINGLE_IMAGE; Meta
+        handles format selection via optimization_type=DEGREES_OF_FREEDOM.
+        """
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -38,7 +44,7 @@ class TestAdFormatsDefaultCreate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
 
     async def test_dof_without_image_hashes_defaults_to_single_image(self):
         """DEGREES_OF_FREEDOM with single image_hash (no image_hashes) defaults to SINGLE_IMAGE."""
@@ -171,8 +177,11 @@ class TestAdFormatsDefaultCreate:
 class TestAdFormatsDefaultUpdate:
     """Test ad_formats defaults in update_ad_creative."""
 
-    async def test_update_dof_defaults_to_automatic_format(self):
-        """update_ad_creative with DEGREES_OF_FREEDOM defaults to AUTOMATIC_FORMAT."""
+    async def test_update_dof_defaults_to_single_image(self):
+        """update_ad_creative with DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE.
+
+        AUTOMATIC_FORMAT is NOT valid — Meta silently ignores asset_feed_spec.
+        """
         sample_data = {"id": "123", "name": "Updated", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -190,7 +199,7 @@ class TestAdFormatsDefaultUpdate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
 
     async def test_update_without_dof_defaults_to_single_image(self):
         """update_ad_creative without DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE."""
@@ -266,8 +275,8 @@ class TestFlexibleCreativeFullFlow:
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
 
-            # Key assertion: AUTOMATIC_FORMAT for Flexible
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            # SINGLE_IMAGE — Meta handles Flexible via optimization_type
+            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
             assert afs["images"] == [
                 {"hash": "hash1"}, {"hash": "hash2"}, {"hash": "hash3"}
