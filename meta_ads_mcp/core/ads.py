@@ -242,7 +242,7 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
     # "(#100) Tried accessing nonexisting field" on simple creatives in API v24.
     # We fetch the safe fields first, then try dynamic_creative_spec separately.
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
     }
     data = await make_api_request(endpoint, access_token, params)
 
@@ -347,13 +347,45 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         
     endpoint = f"{ad_id}/adcreatives"
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec,image_urls_for_viewing"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing"
     }
     
     data = await make_api_request(endpoint, access_token, params)
-    
-    # Add image URLs for direct viewing if available
+
     if 'data' in data:
+        # Resolve asset_feed_spec image hashes to URLs
+        image_hashes = set()
+        for creative in data['data']:
+            if 'asset_feed_spec' in creative and 'images' in creative['asset_feed_spec']:
+                for image in creative['asset_feed_spec']['images']:
+                    if 'hash' in image and 'url' not in image:
+                        image_hashes.add(image['hash'])
+
+        if image_hashes:
+            # Get account_id from the ad to look up image URLs
+            ad_data = await make_api_request(ad_id, access_token, {"fields": "account_id"})
+            account_id = ad_data.get("account_id")
+            if account_id:
+                hashes_str = json.dumps(list(image_hashes))
+                image_data = await make_api_request(
+                    f"act_{account_id}/adimages",
+                    access_token,
+                    {"fields": "hash,url,width,height", "hashes": hashes_str},
+                )
+                hash_to_url = {}
+                if 'data' in image_data:
+                    for img in image_data['data']:
+                        if 'hash' in img and 'url' in img:
+                            hash_to_url[img['hash']] = img['url']
+
+                if hash_to_url:
+                    for creative in data['data']:
+                        if 'asset_feed_spec' in creative and 'images' in creative['asset_feed_spec']:
+                            for image in creative['asset_feed_spec']['images']:
+                                if 'hash' in image and image['hash'] in hash_to_url:
+                                    image['url'] = hash_to_url[image['hash']]
+
+        # Add image URLs for direct viewing if available
         for creative in data['data']:
             creative['image_urls_for_viewing'] = extract_creative_image_urls(creative)
 
@@ -1484,7 +1516,7 @@ async def create_ad_creative(
             creative_id = data["id"]
             creative_endpoint = f"{creative_id}"
             creative_params = {
-                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
+                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
