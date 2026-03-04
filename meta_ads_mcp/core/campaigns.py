@@ -132,7 +132,9 @@ async def create_campaign(
 ) -> str:
     """
     Create a new campaign in a Meta Ads account.
-    
+
+    Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         name: Campaign name
@@ -251,6 +253,8 @@ async def update_campaign(
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
+
+    Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
 
     Args:
         campaign_id: Meta Ads campaign ID

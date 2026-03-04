@@ -134,8 +134,11 @@ async def create_adset(
         bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
-        start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800')
-        end_time: End time in ISO 8601 format
+        start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
+                   To schedule future delivery: set start_time to a future date and status=ACTIVE.
+                   Meta will show effective_status as SCHEDULED and automatically begin delivery at start_time.
+                   NOTE: Only ad set start_time controls delivery scheduling. Campaigns do not support start_time.
+        end_time: End time in ISO 8601 format. Required when lifetime_budget is specified.
         dsa_beneficiary: DSA beneficiary for European compliance
         promoted_object: App config for APP_INSTALLS. Required: application_id, object_store_url.
         destination_type: Where users go after click. Common values: 'WEBSITE', 'WHATSAPP', 'MESSENGER',
@@ -380,6 +383,8 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None,
                         optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None,
                         is_dynamic_creative: Optional[bool] = None,
+                        start_time: Optional[str] = None,
+                        end_time: Optional[str] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -405,6 +410,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         daily_budget: Daily budget in account currency (in cents)
         lifetime_budget: Lifetime budget in account currency (in cents)
         is_dynamic_creative: Enable/disable Dynamic Creative for this ad set.
+        start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
+                   Use with status=ACTIVE to schedule the ad set for future delivery (effective_status will be SCHEDULED until start_time).
+        end_time: End time in ISO 8601 format. Required when lifetime_budget is specified.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -487,7 +495,13 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
     
     if is_dynamic_creative is not None:
         params['is_dynamic_creative'] = "true" if bool(is_dynamic_creative) else "false"
-    
+
+    if start_time is not None:
+        params['start_time'] = start_time
+
+    if end_time is not None:
+        params['end_time'] = end_time
+
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
 
