@@ -255,24 +255,71 @@ class TestInsightsActionsAndValues:
     @pytest.mark.asyncio
     async def test_actions_without_object_id(self, mock_api_request, mock_auth_manager):
         """Test error handling when no object_id is provided"""
-        
+
         result = await get_insights(
             time_range="last_30d",
             level="campaign"
         )
-        
-        # Parse the result. The decorator returns a dict error for missing required args
+
+        # Parse the result - the function returns an error when no ID is provided
         if isinstance(result, dict):
             result_data = result
         else:
             result_data = json.loads(result)
 
-        assert 'error' in result_data
-        assert "missing 1 required positional argument: 'object_id'" in result_data['error']
-        
+        # The error may be nested in a "data" key due to the decorator
+        if "data" in result_data and isinstance(result_data["data"], str):
+            inner = json.loads(result_data["data"])
+            assert "error" in inner
+            assert "No object ID provided" in inner["error"]
+        else:
+            assert 'error' in result_data
+            assert "No object ID provided" in str(result_data['error'])
+
         # Verify API was not called
         mock_api_request.assert_not_called()
     
+    @pytest.mark.asyncio
+    async def test_account_id_alias(self, mock_api_request, mock_auth_manager):
+        """Test that account_id works as an alias for object_id"""
+        result = await get_insights(
+            account_id="act_123456",
+            time_range="last_30d",
+            level="account"
+        )
+
+        # Verify the API was called with the account_id as object_id
+        mock_api_request.assert_called_once()
+        call_args = mock_api_request.call_args
+        assert call_args[0][0] == "act_123456/insights"
+
+    @pytest.mark.asyncio
+    async def test_campaign_id_alias(self, mock_api_request, mock_auth_manager):
+        """Test that campaign_id works as an alias for object_id"""
+        result = await get_insights(
+            campaign_id="camp_789",
+            time_range="last_7d",
+            level="campaign"
+        )
+
+        mock_api_request.assert_called_once()
+        call_args = mock_api_request.call_args
+        assert call_args[0][0] == "camp_789/insights"
+
+    @pytest.mark.asyncio
+    async def test_object_id_takes_precedence_over_alias(self, mock_api_request, mock_auth_manager):
+        """Test that object_id takes precedence when both it and an alias are provided"""
+        result = await get_insights(
+            object_id="obj_real",
+            account_id="act_alias",
+            time_range="last_7d",
+            level="account"
+        )
+
+        mock_api_request.assert_called_once()
+        call_args = mock_api_request.call_args
+        assert call_args[0][0] == "obj_real/insights"
+
     @pytest.mark.asyncio
     async def test_actions_with_invalid_time_range(self, mock_api_request, mock_auth_manager, valid_campaign_id):
         """Test error handling with invalid time range"""

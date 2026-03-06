@@ -46,16 +46,22 @@ def _strip_redundant_actions(row: dict) -> dict:
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_insights(object_id: str, access_token: Optional[str] = None,
+async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                       time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "",
                       level: str = "ad", limit: int = 25, after: str = "",
                       action_attribution_windows: Optional[List[str]] = None,
-                      compact: bool = False) -> str:
+                      compact: bool = False,
+                      account_id: str = "", campaign_id: str = "",
+                      adset_id: str = "", ad_id: str = "") -> str:
     """
     Get performance insights for a campaign, ad set, ad or account.
-    
+
     Args:
-        object_id: ID of the campaign, ad set, ad or account
+        object_id: ID of the campaign, ad set, ad or account. You can also use the alias parameters below.
+        account_id: Alias for object_id when querying account-level insights
+        campaign_id: Alias for object_id when querying campaign-level insights
+        adset_id: Alias for object_id when querying ad-set-level insights
+        ad_id: Alias for object_id when querying ad-level insights
         access_token: Meta API access token (optional - will use cached token if not provided)
         time_range: Either a preset time range string or a dictionary with "since" and "until" dates in YYYY-MM-DD format
                    Preset options: today, yesterday, this_month, last_month, this_quarter, maximum, data_maximum, 
@@ -103,8 +109,12 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         bulk_get_insights(level="ad", account_ids=[...], compact=true, fields=["spend", "impressions"])
     bulk_get_insights supports level="ad", "adset", "campaign", and "account".
     """
+    # Accept common aliases for object_id (LLMs frequently use these instead)
     if not object_id:
-        return json.dumps({"error": "No object ID provided"}, indent=2)
+        object_id = account_id or campaign_id or adset_id or ad_id
+
+    if not object_id:
+        return json.dumps({"error": "No object ID provided. Use object_id, account_id, campaign_id, adset_id, or ad_id."}, indent=2)
         
     endpoint = f"{object_id}/insights"
     params = {
