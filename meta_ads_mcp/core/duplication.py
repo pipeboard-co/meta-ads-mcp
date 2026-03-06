@@ -38,6 +38,8 @@ if ENABLE_DUPLICATION:
         include_creatives: bool = True,
         copy_schedule: bool = False,
         new_daily_budget: Optional[float] = None,
+        new_start_time: Optional[str] = None,
+        new_end_time: Optional[str] = None,
         new_status: Optional[str] = "PAUSED",
         pb_token: Optional[str] = None
     ) -> str:
@@ -54,6 +56,8 @@ if ENABLE_DUPLICATION:
             include_creatives: Whether to duplicate ad creatives
             copy_schedule: Whether to copy the campaign schedule
             new_daily_budget: Override the daily budget for the new campaign
+            new_start_time: Override start time for duplicated ad sets (ISO 8601, e.g. 2026-03-10T00:00:00-0500)
+            new_end_time: Override end time for duplicated ad sets (ISO 8601, e.g. 2026-03-20T23:59:59-0500)
             new_status: Status for the new campaign (ACTIVE or PAUSED)
         """
         return await _forward_duplication_request(
@@ -67,6 +71,8 @@ if ENABLE_DUPLICATION:
                 "include_creatives": include_creatives,
                 "copy_schedule": copy_schedule,
                 "new_daily_budget": new_daily_budget,
+                "new_start_time": new_start_time,
+                "new_end_time": new_end_time,
                 "new_status": new_status,
                 "pb_token": pb_token
             }
@@ -83,6 +89,8 @@ if ENABLE_DUPLICATION:
         include_creatives: bool = True,
         new_daily_budget: Optional[float] = None,
         new_targeting: Optional[Dict[str, Any]] = None,
+        new_start_time: Optional[str] = None,
+        new_end_time: Optional[str] = None,
         new_status: Optional[str] = "PAUSED",
         pb_token: Optional[str] = None
     ) -> str:
@@ -99,6 +107,8 @@ if ENABLE_DUPLICATION:
             include_creatives: Whether to duplicate ad creatives
             new_daily_budget: Override the daily budget for the new ad set
             new_targeting: Override targeting settings for the new ad set
+            new_start_time: Override start time for the duplicated ad set (ISO 8601, e.g. 2026-03-10T00:00:00-0500)
+            new_end_time: Override end time for the duplicated ad set (ISO 8601, e.g. 2026-03-20T23:59:59-0500)
             new_status: Status for the new ad set (ACTIVE or PAUSED)
         """
         return await _forward_duplication_request(
@@ -112,6 +122,8 @@ if ENABLE_DUPLICATION:
                 "include_creatives": include_creatives,
                 "new_daily_budget": new_daily_budget,
                 "new_targeting": new_targeting,
+                "new_start_time": new_start_time,
+                "new_end_time": new_end_time,
                 "new_status": new_status,
                 "pb_token": pb_token
             }

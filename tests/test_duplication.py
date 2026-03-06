@@ -171,6 +171,8 @@ async def test_duplicate_campaign_function_available_when_enabled():
                     "include_creatives": True,
                     "copy_schedule": False,
                     "new_daily_budget": None,
+                    "new_start_time": None,
+                    "new_end_time": None,
                     "new_status": "PAUSED",
                     "pb_token": None
                 }
