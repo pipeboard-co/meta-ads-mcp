@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, Optional, Callable
 import json
+import hmac
+import hashlib
 import httpx
 import asyncio
 import functools
@@ -30,6 +32,7 @@ USER_AGENT = "meta-ads-mcp/1.0"
 logger.info("Core API module initialized")
 logger.info(f"Graph API Version: {META_GRAPH_API_VERSION}")
 logger.info(f"META_APP_ID env var present: {'Yes' if os.environ.get('META_APP_ID') else 'No'}")
+logger.info(f"META_APP_SECRET env var present (appsecret_proof will be {'enabled' if os.environ.get('META_APP_SECRET') else 'disabled'})")
 
 class GraphAPIError(Exception):
     """Exception raised for errors from the Graph API."""
@@ -124,9 +127,21 @@ async def make_api_request(
     
     request_params = params or {}
     request_params["access_token"] = access_token
-    
+
+    # Add appsecret_proof when META_APP_SECRET is configured.
+    # Required for system user tokens and recommended by Meta for all
+    # server-to-server API calls to verify token authenticity.
+    # See: https://developers.facebook.com/docs/graph-api/securing-requests/
+    app_secret = os.environ.get("META_APP_SECRET", "")
+    if app_secret and access_token:
+        request_params["appsecret_proof"] = hmac.new(
+            app_secret.encode("utf-8"),
+            access_token.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+
     # Logging the request (masking token for security)
-    masked_params = {k: "***TOKEN***" if k == "access_token" else v for k, v in request_params.items()}
+    masked_params = {k: "***MASKED***" if k in ("access_token", "appsecret_proof") else v for k, v in request_params.items()}
     logger.debug(f"API Request: {method} {url}")
     logger.debug(f"Request params: {masked_params}")
     
