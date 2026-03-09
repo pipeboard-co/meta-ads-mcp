@@ -594,6 +594,82 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
         return f"Error processing image: {str(e)}"
 
 
+@mcp_server.tool()
+@meta_api_tool
+async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Optional[str] = None) -> str:
+    """
+    Get video details and source URL for a Meta ad video creative. Returns the video source URL
+    (direct download link), thumbnail URL, and metadata (title, description, duration).
+
+    Provide either ad_id (to auto-extract the video from the ad creative) or video_id directly.
+
+    Args:
+        ad_id: Meta Ads ad ID (will extract video_id from the ad creative)
+        video_id: Meta video ID (use this if you already have it from get_ad_creatives)
+        access_token: Meta API access token (optional - will use cached token if not provided)
+    """
+    if not ad_id and not video_id:
+        return json.dumps({"error": "Provide either ad_id or video_id"}, indent=2)
+
+    # If only ad_id provided, extract video_id from the creative
+    if not video_id:
+        creative_json = await get_ad_creatives(access_token=access_token, ad_id=ad_id)
+        creative_data = json.loads(creative_json)
+
+        if "error" in creative_data:
+            return json.dumps({"error": f"Could not get creatives for ad {ad_id}", "details": creative_data}, indent=2)
+
+        # Extract video_id from creative data
+        if "data" in creative_data and creative_data["data"]:
+            creative = creative_data["data"][0]
+
+            # Check object_story_spec.video_data.video_id
+            oss = creative.get("object_story_spec", {})
+            if "video_data" in oss:
+                video_id = str(oss["video_data"].get("video_id", ""))
+
+            # Check asset_feed_spec.videos
+            if not video_id:
+                afs = creative.get("asset_feed_spec", {})
+                videos = afs.get("videos", [])
+                if videos:
+                    video_id = str(videos[0].get("video_id", ""))
+
+        if not video_id:
+            return json.dumps({
+                "error": "No video found in this ad creative",
+                "hint": "This ad may be an image ad. Use get_ad_image instead."
+            }, indent=2)
+
+    # Fetch video details including source URL
+    video_data = await make_api_request(
+        video_id,
+        access_token,
+        {"fields": "source,title,description,length,picture,thumbnails,created_time"}
+    )
+
+    if "error" in video_data:
+        return json.dumps({"error": f"Could not get video {video_id}", "details": video_data}, indent=2)
+
+    result = {
+        "video_id": video_id,
+        "source_url": video_data.get("source"),
+        "thumbnail_url": video_data.get("picture"),
+        "title": video_data.get("title"),
+        "description": video_data.get("description"),
+        "duration_seconds": video_data.get("length"),
+        "created_time": video_data.get("created_time"),
+    }
+
+    if ad_id:
+        result["ad_id"] = ad_id
+
+    if not result["source_url"]:
+        result["warning"] = "No source URL returned. The video may have been deleted or you may lack permissions."
+
+    return json.dumps(result, indent=2)
+
+
 if ENABLE_SAVE_AD_IMAGE_LOCALLY:
     @mcp_server.tool()
     @meta_api_tool
