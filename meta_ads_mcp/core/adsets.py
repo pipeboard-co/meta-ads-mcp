@@ -386,6 +386,7 @@ async def create_adset(
 @meta_api_tool
 async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None,
                         bid_amount: Optional[int] = None, bid_constraints: Optional[Dict[str, Any]] = None,
+                        name: Optional[str] = None,
                         status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None,
                         optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None,
                         is_dynamic_creative: Optional[bool] = None,
@@ -399,6 +400,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     Args:
         adset_id: Meta Ads ad set ID
+        name: New ad set name
         frequency_control_specs: Frequency control specs
                                  (e.g. [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 3}])
         bid_strategy: Bid strategy. Valid values:
@@ -472,6 +474,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
             }, indent=2)
 
     params = {}
+
+    if name is not None:
+        params['name'] = name
 
     if frequency_control_specs is not None:
         params['frequency_control_specs'] = frequency_control_specs
