@@ -246,16 +246,32 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
     }
     data = await make_api_request(endpoint, access_token, params)
 
-    # Try to fetch dynamic_creative_spec separately (only exists on dynamic creatives)
+    # Try to fetch optional fields separately (may not exist on all creative types)
     if isinstance(data, dict) and "id" in data:
-        try:
-            dcs_data = await make_api_request(
-                endpoint, access_token, {"fields": "dynamic_creative_spec"}
-            )
-            if isinstance(dcs_data, dict) and "dynamic_creative_spec" in dcs_data:
-                data["dynamic_creative_spec"] = dcs_data["dynamic_creative_spec"]
-        except Exception:
-            pass  # Field doesn't exist on this creative type
+        for opt_field in ["dynamic_creative_spec", "product_set_id"]:
+            try:
+                opt_data = await make_api_request(
+                    endpoint, access_token, {"fields": opt_field}
+                )
+                if isinstance(opt_data, dict) and opt_field in opt_data:
+                    data[opt_field] = opt_data[opt_field]
+            except Exception:
+                pass  # Field doesn't exist on this creative type
+
+        # Resolve product_set_id -> catalog info for DPA/catalog creatives
+        if "product_set_id" in data:
+            try:
+                catalog_data = await make_api_request(
+                    data["product_set_id"], access_token,
+                    {"fields": "product_catalog{id,name}"}
+                )
+                catalog = catalog_data.get("product_catalog", {})
+                if catalog.get("id"):
+                    data["catalog_id"] = catalog["id"]
+                    if catalog.get("name"):
+                        data["catalog_name"] = catalog["name"]
+            except Exception:
+                pass  # Non-critical
 
     return json.dumps(data, indent=2)
 
@@ -347,7 +363,7 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         
     endpoint = f"{ad_id}/adcreatives"
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing,product_set_id"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -388,6 +404,23 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         # Add image URLs for direct viewing if available
         for creative in data['data']:
             creative['image_urls_for_viewing'] = extract_creative_image_urls(creative)
+
+        # Resolve product_set_id -> catalog info for DPA/catalog creatives
+        for creative in data['data']:
+            ps_id = creative.get('product_set_id')
+            if ps_id:
+                try:
+                    catalog_data = await make_api_request(
+                        ps_id, access_token,
+                        {"fields": "product_catalog{id,name}"}
+                    )
+                    catalog = catalog_data.get("product_catalog", {})
+                    if catalog.get("id"):
+                        creative["catalog_id"] = catalog["id"]
+                        if catalog.get("name"):
+                            creative["catalog_name"] = catalog["name"]
+                except Exception:
+                    pass  # Non-critical
 
     return json.dumps(data, indent=2)
 
