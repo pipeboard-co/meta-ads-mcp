@@ -1086,7 +1086,8 @@ async def create_ad_creative(
     instagram_actor_id: Optional[str] = None,
     ad_formats: Optional[List[str]] = None,
     asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
-    creative_features_spec: Optional[Dict[str, Any]] = None
+    creative_features_spec: Optional[Dict[str, Any]] = None,
+    phone_number: Optional[str] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash or video ID.
@@ -1120,7 +1121,8 @@ async def create_ad_creative(
                           DEGREES_OF_FREEDOM, at least one asset field (image_hashes, messages,
                           headlines, or descriptions) must contain more than one variant.
         dynamic_creative_spec: Dynamic creative optimization settings
-        call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW')
+        call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
+                            'CALL_NOW'). When using CALL_NOW, also provide phone_number.
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Optional Instagram account ID for Instagram placements.
@@ -1132,6 +1134,11 @@ async def create_ad_creative(
                    ["AUTOMATIC_FORMAT"] (Flexible format). For video creatives, defaults to
                    ["SINGLE_VIDEO"]. Otherwise defaults to ["SINGLE_IMAGE"].
         asset_customization_rules: List of placement-specific asset overrides for asset_feed_spec.
+        phone_number: Phone number for CALL_NOW call-to-action ads (click-to-call).
+                     Required when call_to_action_type is CALL_NOW. Use E.164 format
+                     (e.g., "+18005551234"). The number is passed to Meta in
+                     call_to_action.value.phone_number. Common use case: geo-routed
+                     call ads with different phone numbers per ad set.
         creative_features_spec: Advantage+ Creative feature opt-ins/opt-outs. Controls individual
                    creative enhancements like image_touchups, text_optimizations, inline_comment,
                    add_text_overlay, music, 3d_animation, etc. Each feature is a dict with
@@ -1439,6 +1446,8 @@ async def create_ad_creative(
                     cta_value["link"] = link_url
                 if lead_gen_form_id:
                     cta_value["lead_gen_form_id"] = lead_gen_form_id
+                if phone_number:
+                    cta_value["phone_number"] = phone_number
                 cta_data = {"type": cta_type}
                 if cta_value:
                     cta_data["value"] = cta_value
@@ -1460,6 +1469,8 @@ async def create_ad_creative(
                         cta_value["link"] = link_url
                     if lead_gen_form_id:
                         cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        cta_value["phone_number"] = phone_number
                     if cta_value:
                         cta["value"] = cta_value
                     link_data["call_to_action"] = cta
@@ -1498,6 +1509,8 @@ async def create_ad_creative(
                     cta_value["link"] = link_url
                 if lead_gen_form_id:
                     cta_value["lead_gen_form_id"] = lead_gen_form_id
+                if phone_number:
+                    cta_value["phone_number"] = phone_number
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
                 if cta_type:
                     cta_data = {"type": cta_type}
@@ -1534,10 +1547,15 @@ async def create_ad_creative(
                 # Add call_to_action to link_data for simple creatives
                 if call_to_action_type:
                     cta_data = {"type": call_to_action_type}
+                    cta_value = {}
 
                     # Add lead form ID to value object if provided (required for lead generation campaigns)
                     if lead_gen_form_id:
-                        cta_data["value"] = {"lead_gen_form_id": lead_gen_form_id}
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        cta_value["phone_number"] = phone_number
+                    if cta_value:
+                        cta_data["value"] = cta_value
 
                     creative_data["object_story_spec"]["link_data"]["call_to_action"] = cta_data
 
