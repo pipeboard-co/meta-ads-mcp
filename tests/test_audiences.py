@@ -250,23 +250,21 @@ class TestCreateLookalikeAudience:
                 access_token="test_token",
             )
 
-            mock_api.assert_called_once_with(
-                "act_123456789/customaudiences",
-                "test_token",
-                {
-                    "name": "Lookalike 1% - GR",
-                    "subtype": "LOOKALIKE",
-                    "origin_audience_id": "238400000000001",
-                    "lookalike_spec": json.dumps(
-                        {
-                            "country": "GR",
-                            "ratio": 0.01,
-                            "type": "similarity",
-                        }
-                    ),
-                },
-                method="POST",
-            )
+            mock_api.assert_called_once()
+            call_args = mock_api.call_args
+            assert call_args.args[0] == "act_123456789/customaudiences"
+            assert call_args.args[1] == "test_token"
+            assert call_args.kwargs["method"] == "POST"
+
+            params = call_args.args[2]
+            assert params["name"] == "Lookalike 1% - GR"
+            assert params["subtype"] == "LOOKALIKE"
+            assert params["origin_audience_id"] == "238400000000001"
+            assert json.loads(params["lookalike_spec"]) == {
+                "country": "GR",
+                "ratio": 0.01,
+                "type": "similarity",
+            }
 
             result_data = json.loads(result)
             assert result_data == mock_response
@@ -288,23 +286,21 @@ class TestCreateLookalikeAudience:
                 ratio=0.03,
             )
 
-            mock_api.assert_called_once_with(
-                "act_123456789/customaudiences",
-                "test_token",
-                {
-                    "name": "Lookalike 3% - US",
-                    "subtype": "LOOKALIKE",
-                    "origin_audience_id": "238400000000002",
-                    "lookalike_spec": json.dumps(
-                        {
-                            "country": "US",
-                            "ratio": 0.03,
-                            "type": "similarity",
-                        }
-                    ),
-                },
-                method="POST",
-            )
+            mock_api.assert_called_once()
+            call_args = mock_api.call_args
+            assert call_args.args[0] == "act_123456789/customaudiences"
+            assert call_args.args[1] == "test_token"
+            assert call_args.kwargs["method"] == "POST"
+
+            params = call_args.args[2]
+            assert params["name"] == "Lookalike 3% - US"
+            assert params["subtype"] == "LOOKALIKE"
+            assert params["origin_audience_id"] == "238400000000002"
+            assert json.loads(params["lookalike_spec"]) == {
+                "country": "US",
+                "ratio": 0.03,
+                "type": "similarity",
+            }
 
             result_data = json.loads(result)
             assert result_data == mock_response
