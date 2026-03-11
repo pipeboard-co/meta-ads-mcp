@@ -15,6 +15,7 @@ from .targeting import search_interests, get_interest_suggestions, estimate_audi
 from . import reports  # Import module to register conditional tools
 from . import duplication  # Import module to register conditional duplication tools
 from .openai_deep_research import search, fetch  # OpenAI MCP Deep Research tools
+from .audiences import get_custom_audiences, create_custom_audience, create_lookalike_audience
 
 __all__ = [
     'mcp_server',
@@ -46,4 +47,7 @@ __all__ = [
     'search_geo_locations',
     'search',  # OpenAI MCP Deep Research search tool
     'fetch',   # OpenAI MCP Deep Research fetch tool
+    'get_custom_audiences',
+    'create_custom_audience',
+    'create_lookalike_audience',
 ] 
