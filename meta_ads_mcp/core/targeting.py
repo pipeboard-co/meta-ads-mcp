@@ -1,7 +1,7 @@
 """Targeting search functionality for Meta Ads API."""
 
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import os
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
@@ -69,7 +69,7 @@ async def get_interest_suggestions(interest_list: List[str], access_token: Optio
 @meta_api_tool
 async def estimate_audience_size(
     access_token: Optional[str] = None,
-    account_id: Optional[str] = None,
+    account_id: Optional[Union[str, int]] = None,
     targeting: Optional[Dict[str, Any]] = None,
     optimization_goal: str = "REACH",
     # Backwards compatibility for simple interest validation
@@ -105,6 +105,10 @@ async def estimate_audience_size(
         JSON string with audience estimation results including estimated_audience_size,
         reach_estimate, and targeting validation
     """
+    # Coerce numeric IDs to strings
+    if account_id is not None:
+        account_id = str(account_id)
+
     # Handle backwards compatibility - simple interest validation
     # Check if we're in backwards compatibility mode (interest params provided OR no comprehensive params)
     is_backwards_compatible_call = (interest_list or interest_fbid_list) or (not account_id and not targeting)

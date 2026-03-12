@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import io
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image
@@ -837,12 +837,12 @@ async def update_ad(
     status: Optional[str] = None,
     bid_amount: Optional[int] = None,
     tracking_specs: Optional[List[Dict[str, Any]]] = None,
-    creative_id: Optional[str] = None,
+    creative_id: Optional[Union[str, int]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
     Update an ad with new settings.
-    
+
     Args:
         ad_id: Meta Ads ad ID
         status: Update ad status (ACTIVE, PAUSED, etc.)
@@ -853,6 +853,10 @@ async def update_ad(
     """
     if not ad_id:
         return json.dumps({"error": "Ad ID is required"}, indent=2)
+
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if creative_id is not None:
+        creative_id = str(creative_id)
 
     params = {}
     if status:
@@ -1101,7 +1105,7 @@ async def create_ad_creative(
     image_hash: Optional[str] = None,
     access_token: Optional[str] = None,
     name: Optional[str] = None,
-    page_id: Optional[str] = None,
+    page_id: Optional[Union[str, int]] = None,
     link_url: Optional[str] = None,
     message: Optional[str] = None,
     messages: Optional[List[str]] = None,
@@ -1110,13 +1114,13 @@ async def create_ad_creative(
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
     image_hashes: Optional[List[str]] = None,
-    video_id: Optional[str] = None,
+    video_id: Optional[Union[str, int]] = None,
     thumbnail_url: Optional[str] = None,
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
-    lead_gen_form_id: Optional[str] = None,
-    instagram_actor_id: Optional[str] = None,
+    lead_gen_form_id: Optional[Union[str, int]] = None,
+    instagram_actor_id: Optional[Union[str, int]] = None,
     ad_formats: Optional[List[str]] = None,
     asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
     creative_features_spec: Optional[Dict[str, Any]] = None,
@@ -1204,6 +1208,14 @@ async def create_ad_creative(
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
+
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if video_id is not None:
+        video_id = str(video_id)
+    if instagram_actor_id is not None:
+        instagram_actor_id = str(instagram_actor_id)
+    if lead_gen_form_id is not None:
+        lead_gen_form_id = str(lead_gen_form_id)
 
     # Defensive coercion: some MCP transports deliver array/dict params as JSON strings
     if isinstance(asset_customization_rules, str):
@@ -1678,7 +1690,7 @@ async def update_ad_creative(
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
-    lead_gen_form_id: Optional[str] = None,
+    lead_gen_form_id: Optional[Union[str, int]] = None,
     ad_formats: Optional[List[str]] = None
 ) -> str:
     """
@@ -1710,6 +1722,9 @@ async def update_ad_creative(
     Returns:
         JSON response with updated creative details
     """
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if lead_gen_form_id is not None:
+        lead_gen_form_id = str(lead_gen_form_id)
     # Check required parameters
     if not creative_id:
         return json.dumps({"error": "No creative ID provided"}, indent=2)
