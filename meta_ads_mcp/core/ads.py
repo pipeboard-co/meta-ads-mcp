@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import io
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image
@@ -246,16 +246,32 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
     }
     data = await make_api_request(endpoint, access_token, params)
 
-    # Try to fetch dynamic_creative_spec separately (only exists on dynamic creatives)
+    # Try to fetch optional fields separately (may not exist on all creative types)
     if isinstance(data, dict) and "id" in data:
-        try:
-            dcs_data = await make_api_request(
-                endpoint, access_token, {"fields": "dynamic_creative_spec"}
-            )
-            if isinstance(dcs_data, dict) and "dynamic_creative_spec" in dcs_data:
-                data["dynamic_creative_spec"] = dcs_data["dynamic_creative_spec"]
-        except Exception:
-            pass  # Field doesn't exist on this creative type
+        for opt_field in ["dynamic_creative_spec", "product_set_id"]:
+            try:
+                opt_data = await make_api_request(
+                    endpoint, access_token, {"fields": opt_field}
+                )
+                if isinstance(opt_data, dict) and opt_field in opt_data:
+                    data[opt_field] = opt_data[opt_field]
+            except Exception:
+                pass  # Field doesn't exist on this creative type
+
+        # Resolve product_set_id -> catalog info for DPA/catalog creatives
+        if "product_set_id" in data:
+            try:
+                catalog_data = await make_api_request(
+                    data["product_set_id"], access_token,
+                    {"fields": "product_catalog{id,name}"}
+                )
+                catalog = catalog_data.get("product_catalog", {})
+                if catalog.get("id"):
+                    data["catalog_id"] = catalog["id"]
+                    if catalog.get("name"):
+                        data["catalog_name"] = catalog["name"]
+            except Exception:
+                pass  # Non-critical
 
     return json.dumps(data, indent=2)
 
@@ -347,7 +363,7 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         
     endpoint = f"{ad_id}/adcreatives"
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing,product_set_id"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -388,6 +404,23 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         # Add image URLs for direct viewing if available
         for creative in data['data']:
             creative['image_urls_for_viewing'] = extract_creative_image_urls(creative)
+
+        # Resolve product_set_id -> catalog info for DPA/catalog creatives
+        for creative in data['data']:
+            ps_id = creative.get('product_set_id')
+            if ps_id:
+                try:
+                    catalog_data = await make_api_request(
+                        ps_id, access_token,
+                        {"fields": "product_catalog{id,name}"}
+                    )
+                    catalog = catalog_data.get("product_catalog", {})
+                    if catalog.get("id"):
+                        creative["catalog_id"] = catalog["id"]
+                        if catalog.get("name"):
+                            creative["catalog_name"] = catalog["name"]
+                except Exception:
+                    pass  # Non-critical
 
     return json.dumps(data, indent=2)
 
@@ -804,12 +837,12 @@ async def update_ad(
     status: Optional[str] = None,
     bid_amount: Optional[int] = None,
     tracking_specs: Optional[List[Dict[str, Any]]] = None,
-    creative_id: Optional[str] = None,
+    creative_id: Optional[Union[str, int]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
     Update an ad with new settings.
-    
+
     Args:
         ad_id: Meta Ads ad ID
         status: Update ad status (ACTIVE, PAUSED, etc.)
@@ -820,6 +853,10 @@ async def update_ad(
     """
     if not ad_id:
         return json.dumps({"error": "Ad ID is required"}, indent=2)
+
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if creative_id is not None:
+        creative_id = str(creative_id)
 
     params = {}
     if status:
@@ -1068,7 +1105,7 @@ async def create_ad_creative(
     image_hash: Optional[str] = None,
     access_token: Optional[str] = None,
     name: Optional[str] = None,
-    page_id: Optional[str] = None,
+    page_id: Optional[Union[str, int]] = None,
     link_url: Optional[str] = None,
     message: Optional[str] = None,
     messages: Optional[List[str]] = None,
@@ -1077,13 +1114,13 @@ async def create_ad_creative(
     description: Optional[str] = None,
     descriptions: Optional[List[str]] = None,
     image_hashes: Optional[List[str]] = None,
-    video_id: Optional[str] = None,
+    video_id: Optional[Union[str, int]] = None,
     thumbnail_url: Optional[str] = None,
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
-    lead_gen_form_id: Optional[str] = None,
-    instagram_actor_id: Optional[str] = None,
+    lead_gen_form_id: Optional[Union[str, int]] = None,
+    instagram_actor_id: Optional[Union[str, int]] = None,
     ad_formats: Optional[List[str]] = None,
     asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
     creative_features_spec: Optional[Dict[str, Any]] = None,
@@ -1171,6 +1208,14 @@ async def create_ad_creative(
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
+
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if video_id is not None:
+        video_id = str(video_id)
+    if instagram_actor_id is not None:
+        instagram_actor_id = str(instagram_actor_id)
+    if lead_gen_form_id is not None:
+        lead_gen_form_id = str(lead_gen_form_id)
 
     # Defensive coercion: some MCP transports deliver array/dict params as JSON strings
     if isinstance(asset_customization_rules, str):
@@ -1645,7 +1690,7 @@ async def update_ad_creative(
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
-    lead_gen_form_id: Optional[str] = None,
+    lead_gen_form_id: Optional[Union[str, int]] = None,
     ad_formats: Optional[List[str]] = None
 ) -> str:
     """
@@ -1677,6 +1722,9 @@ async def update_ad_creative(
     Returns:
         JSON response with updated creative details
     """
+    # Coerce numeric IDs to strings (LLM clients may send integers for numeric-only IDs)
+    if lead_gen_form_id is not None:
+        lead_gen_form_id = str(lead_gen_form_id)
     # Check required parameters
     if not creative_id:
         return json.dumps({"error": "No creative ID provided"}, indent=2)

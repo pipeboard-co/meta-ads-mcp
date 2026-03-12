@@ -83,7 +83,7 @@ if ENABLE_DUPLICATION:
     async def duplicate_adset(
         adset_id: str,
         access_token: Optional[str] = None,
-        target_campaign_id: Optional[str] = None,
+        target_campaign_id: Optional[Union[str, int]] = None,
         name_suffix: Optional[str] = " - Copy",
         include_ads: bool = True,
         include_creatives: bool = True,
@@ -111,6 +111,9 @@ if ENABLE_DUPLICATION:
             new_end_time: Override end time for the duplicated ad set (ISO 8601, e.g. 2026-03-20T23:59:59-0500)
             new_status: Status for the new ad set (ACTIVE or PAUSED)
         """
+        # Coerce numeric IDs to strings
+        if target_campaign_id is not None:
+            target_campaign_id = str(target_campaign_id)
         return await _forward_duplication_request(
             "adset",
             adset_id,
@@ -134,7 +137,7 @@ if ENABLE_DUPLICATION:
     async def duplicate_ad(
         ad_id: str,
         access_token: Optional[str] = None,
-        target_adset_id: Optional[str] = None,
+        target_adset_id: Optional[Union[str, int]] = None,
         name_suffix: Optional[str] = " - Copy",
         duplicate_creative: bool = True,
         new_creative_name: Optional[str] = None,
@@ -154,6 +157,9 @@ if ENABLE_DUPLICATION:
             new_creative_name: Override name for the duplicated creative
             new_status: Status for the new ad (ACTIVE or PAUSED)
         """
+        # Coerce numeric IDs to strings
+        if target_adset_id is not None:
+            target_adset_id = str(target_adset_id)
         return await _forward_duplication_request(
             "ad",
             ad_id,
