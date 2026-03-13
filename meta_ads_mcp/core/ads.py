@@ -242,7 +242,7 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
     # "(#100) Tried accessing nonexisting field" on simple creatives in API v24.
     # We fetch the safe fields first, then try dynamic_creative_spec separately.
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type,asset_customization_rules},url_tags,link_url"
     }
     data = await make_api_request(endpoint, access_token, params)
 
@@ -1120,11 +1120,12 @@ async def create_ad_creative(
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
     lead_gen_form_id: Optional[Union[str, int]] = None,
-    instagram_actor_id: Optional[Union[str, int]] = None,
+    instagram_actor_id: Optional[str] = None,
     ad_formats: Optional[List[str]] = None,
     asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
     creative_features_spec: Optional[Dict[str, Any]] = None,
-    phone_number: Optional[str] = None
+    phone_number: Optional[str] = None,
+    url_tags: Optional[str] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash or video ID.
@@ -1157,14 +1158,18 @@ async def create_ad_creative(
                           Meta to auto-optimize across all asset combinations. When using
                           DEGREES_OF_FREEDOM, at least one asset field (image_hashes, messages,
                           headlines, or descriptions) must contain more than one variant.
+                          NOTE: Meta silently ignores asset_customization_rules for DOF creatives.
+                          If you need per-placement images, use regular dynamic creative mode
+                          (without optimization_type) with is_dynamic_creative on the ad set.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
                             'CALL_NOW'). When using CALL_NOW, also provide phone_number.
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
-        instagram_actor_id: Optional Instagram account ID for Instagram placements.
-                           Sent as instagram_user_id inside object_story_spec (Meta deprecated
-                           instagram_actor_id in Jan 2026).
+        instagram_actor_id: Instagram account ID for Instagram placements (must be a string
+                           to avoid JavaScript integer precision loss for IDs exceeding
+                           Number.MAX_SAFE_INTEGER). Sent as instagram_user_id inside
+                           object_story_spec (Meta deprecated instagram_actor_id in Jan 2026).
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image, ["SINGLE_VIDEO"] for video).
                    When optimization_type is "DEGREES_OF_FREEDOM" with image_hashes, defaults to
@@ -1183,7 +1188,10 @@ async def create_ad_creative(
                    Example: {"image_touchups": {"enroll_status": "OPT_IN"},
                             "inline_comment": {"enroll_status": "OPT_IN"}}
                    Sent to Meta as degrees_of_freedom_spec.creative_features_spec.
-                   Lets you assign different images or videos to specific placement groups
+        url_tags: URL tracking parameters appended to the destination URL (e.g.,
+                 "utm_source=facebook&utm_medium=cpc&utm_campaign=spring_sale").
+                 Sets the url_tags field on the creative.
+        asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
                    Meta's API format (adlabels + customization_spec positions):
@@ -1213,7 +1221,7 @@ async def create_ad_creative(
     if video_id is not None:
         video_id = str(video_id)
     if instagram_actor_id is not None:
-        instagram_actor_id = str(instagram_actor_id)
+        instagram_actor_id = str(instagram_actor_id).strip('"').strip("'")
     if lead_gen_form_id is not None:
         lead_gen_form_id = str(lead_gen_form_id)
 
@@ -1615,6 +1623,10 @@ async def create_ad_creative(
                 "creative_features_spec": creative_features_spec
             }
 
+        # Add URL tracking parameters if provided.
+        if url_tags:
+            creative_data["url_tags"] = url_tags
+
         # instagram_actor_id → instagram_user_id migration (Jan 2026).
         # Meta deprecated instagram_actor_id; the replacement is instagram_user_id
         # inside object_story_spec (sibling of page_id and video_data/link_data).
@@ -1655,7 +1667,7 @@ async def create_ad_creative(
             creative_id = data["id"]
             creative_endpoint = f"{creative_id}"
             creative_params = {
-                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type},url_tags,link_url"
+                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec{images,videos,bodies,titles,descriptions,link_urls,ad_formats,call_to_action_types,optimization_type,asset_customization_rules},url_tags,link_url"
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
