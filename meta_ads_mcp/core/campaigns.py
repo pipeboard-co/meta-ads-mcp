@@ -21,10 +21,10 @@ async def get_campaigns(
     Get campaigns for a Meta Ads account with optional filtering.
     
     Note: By default, the Meta API returns a subset of available fields. 
-    Other fields like 'effective_status', 'special_ad_categories', 
-    'lifetime_budget', 'spend_cap', 'budget_remaining', 'promoted_object', 
-    'source_campaign_id', etc., might be available but require specifying them
-    in the API call (currently not exposed by this tool's parameters).
+    Other fields like 'effective_status', 'spend_cap', 'budget_remaining',
+    'promoted_object', 'source_campaign_id', etc., might be available but
+    require specifying them in the API call (currently not exposed by this
+    tool's parameters).
     
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
@@ -46,7 +46,7 @@ async def get_campaigns(
     
     endpoint = f"{account_id}/campaigns"
     params = {
-        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy",
+        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy,special_ad_categories",
         "limit": limit
     }
     
@@ -172,6 +172,17 @@ async def create_campaign(
     if special_ad_categories is None:
         special_ad_categories = []
     
+    # Warn about compliance: regulated industries (insurance, housing, employment, credit)
+    # often require special_ad_categories when using lead gen objectives
+    compliance_warning = None
+    if objective == "OUTCOME_LEADS" and not special_ad_categories:
+        compliance_warning = (
+            "Warning: Campaign objective is OUTCOME_LEADS but no special_ad_categories were specified. "
+            "If this campaign is for a regulated industry (insurance, housing, employment, credit), "
+            "you must set special_ad_categories (e.g., FINANCIAL_PRODUCTS_SERVICES, HOUSING, EMPLOYMENT, CREDIT) "
+            "to comply with Meta advertising policies. Ads without the correct category may be rejected."
+        )
+    
     # For this example, we'll add a fixed daily budget if none is provided and we're not using ad set level budgets
     if not daily_budget and not lifetime_budget and not use_adset_level_budgets:
         daily_budget = "1000"  # Default to $10 USD
@@ -223,6 +234,9 @@ async def create_campaign(
         if use_adset_level_budgets:
             data["budget_strategy"] = "ad_set_level"
             data["note"] = "Campaign created with ad set level budgets. Set budgets when creating ad sets within this campaign."
+        
+        if compliance_warning:
+            data["compliance_warning"] = compliance_warning
         
         return json.dumps(data, indent=2)
     except Exception as e:
