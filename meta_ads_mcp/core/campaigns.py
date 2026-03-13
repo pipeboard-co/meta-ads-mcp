@@ -168,14 +168,17 @@ async def create_campaign(
     if not objective:
         return json.dumps({"error": "No campaign objective provided"}, indent=2)
     
+    # Track whether the user explicitly provided special_ad_categories
+    _user_provided_categories = special_ad_categories is not None
+    
     # Special_ad_categories is required by the API, set default if not provided
     if special_ad_categories is None:
         special_ad_categories = []
     
-    # Warn about compliance: regulated industries (insurance, housing, employment, credit)
-    # often require special_ad_categories when using lead gen objectives
+    # Only warn if user omitted special_ad_categories entirely.
+    # If they explicitly passed [] they are saying none are needed.
     compliance_warning = None
-    if objective == "OUTCOME_LEADS" and not special_ad_categories:
+    if objective == "OUTCOME_LEADS" and not special_ad_categories and not _user_provided_categories:
         compliance_warning = (
             "Warning: Campaign objective is OUTCOME_LEADS but no special_ad_categories were specified. "
             "If this campaign is for a regulated industry (insurance, housing, employment, credit), "
