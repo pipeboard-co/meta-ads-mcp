@@ -29,15 +29,16 @@ async def list_media(
 
     Returns:
         JSON string with media list including id, media_type, media_product_type,
-        timestamp, permalink, caption, like_count, comments_count, thumbnail_url,
-        and video_views. Note: like_count may be omitted by the API for some
-        media types or accounts with professional dashboard enabled.
+        timestamp, permalink, caption, like_count, comments_count, thumbnail_url.
+        Note: like_count may be omitted by the API for some media types or accounts
+        with professional dashboard enabled. For Reel view counts use
+        get_media_insights with metrics=["views"].
     """
     if not ig_user_id:
         return json.dumps({"error": "ig_user_id is required"}, indent=2)
 
     params = {
-        "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url,video_views",
+        "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url",
         "limit": limit,
     }
     if since:
@@ -57,12 +58,14 @@ async def get_media_insights(
 ) -> str:
     """Get insights for a specific Instagram media object.
 
-    Supported metrics by media type:
+    Supported metrics by media type (Graph API v25.0+):
         IMAGE:    impressions, reach, saved, total_interactions
-        VIDEO:    impressions, reach, saved, video_views, total_interactions
-        REELS:    reach, impressions, saved, shares, plays, total_interactions,
-                  ig_reels_aggregated_all_plays_count
+        VIDEO:    impressions, reach, saved, total_interactions
+        REELS:    reach, impressions, saved, shares, views, total_interactions
         CAROUSEL: impressions, reach, saved, total_interactions
+
+    Note: plays and ig_reels_aggregated_all_plays_count were removed in v22.0.
+    Use views for Reels play counts.
 
     Note: The IG API uses the 'metric' parameter (singular), not 'metrics'.
 
@@ -79,7 +82,7 @@ async def get_media_insights(
     if not media_id:
         return json.dumps({"error": "media_id is required"}, indent=2)
 
-    default_metrics = ["reach", "impressions", "saved", "shares", "plays", "total_interactions"]
+    default_metrics = ["reach", "impressions", "saved", "shares", "views", "total_interactions"]
     metrics_to_use = metrics if metrics else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}
