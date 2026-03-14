@@ -260,7 +260,7 @@ class TestGetIgAccountInsights:
             "meta_ads_mcp.core.instagram_insights.make_api_request",
             new_callable=AsyncMock,
             return_value=mock_response,
-        ) as mock_api:
+        ):
             result = await get_ig_account_insights(
                 ig_user_id="17841400000",
                 metrics=["follower_count"],

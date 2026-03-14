@@ -1,7 +1,6 @@
 """Tests for campaign field completeness (v25.0)."""
 
 import pytest
-import json
 from unittest.mock import AsyncMock, patch
 
 from meta_ads_mcp.core.campaigns import get_campaigns, get_campaign_details

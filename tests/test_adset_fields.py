@@ -1,7 +1,6 @@
 """Tests for ad set field completeness (v25.0)."""
 
 import pytest
-import json
 from unittest.mock import AsyncMock, patch
 
 from meta_ads_mcp.core.adsets import get_adsets, get_adset_details
