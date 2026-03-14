@@ -12,6 +12,8 @@ async def list_media(
     ig_user_id: str,
     access_token: Optional[str] = None,
     limit: int = 20,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
 ) -> str:
     """List media objects for an Instagram Business Account.
 
@@ -22,18 +24,26 @@ async def list_media(
         ig_user_id: Numeric Instagram Business Account ID.
         access_token: Meta API access token.
         limit: Maximum number of media items to return (default 20).
+        since: Start of date range (YYYY-MM-DD or Unix timestamp). Optional.
+        until: End of date range (YYYY-MM-DD or Unix timestamp). Optional.
 
     Returns:
-        JSON string with media list including id, media_type, timestamp,
-        permalink, caption, like_count, and comments_count.
+        JSON string with media list including id, media_type, media_product_type,
+        timestamp, permalink, caption, like_count, comments_count, thumbnail_url,
+        and video_views. Note: like_count may be omitted by the API for some
+        media types or accounts with professional dashboard enabled.
     """
     if not ig_user_id:
         return json.dumps({"error": "ig_user_id is required"}, indent=2)
 
     params = {
-        "fields": "id,media_type,timestamp,permalink,caption,like_count,comments_count",
+        "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url,video_views",
         "limit": limit,
     }
+    if since:
+        params["since"] = since
+    if until:
+        params["until"] = until
     data = await make_api_request(f"{ig_user_id}/media", access_token, params)
     return json.dumps(data, indent=2)
 
@@ -86,6 +96,7 @@ async def get_ig_account_insights(
     period: str = "day",
     since: Optional[str] = None,
     until: Optional[str] = None,
+    metric_type: Optional[str] = None,
 ) -> str:
     """Get insights for an Instagram Business Account.
 
@@ -94,6 +105,10 @@ async def get_ig_account_insights(
 
     Valid periods: day, week, days_28, month, lifetime.
 
+    As of Graph API v25.0, some metrics require metric_type to be specified
+    (e.g. metric_type='total_value'). Pass metric_type when the API returns
+    a requirement error for the requested metrics.
+
     Args:
         ig_user_id: Numeric Instagram Business Account ID.
         metrics: List of metric names to retrieve (required, must not be empty).
@@ -101,6 +116,8 @@ async def get_ig_account_insights(
         period: Aggregation period — one of day, week, days_28, month, lifetime.
         since: Start of date range (YYYY-MM-DD or Unix timestamp). Optional.
         until: End of date range (YYYY-MM-DD or Unix timestamp). Optional.
+        metric_type: Optional metric type qualifier required by v25.0 for certain
+                     metrics (e.g. 'total_value'). Omitted if not provided.
 
     Returns:
         JSON string with account-level insight data.
@@ -118,6 +135,12 @@ async def get_ig_account_insights(
             indent=2,
         )
 
+    if "follower_count" in metrics and period != "day":
+        return json.dumps(
+            {"error": f"follower_count metric only works with period='day', got '{period}'"},
+            indent=2,
+        )
+
     params = {
         "metric": ",".join(metrics),
         "period": period,
@@ -126,6 +149,8 @@ async def get_ig_account_insights(
         params["since"] = since
     if until is not None:
         params["until"] = until
+    if metric_type is not None:
+        params["metric_type"] = metric_type
 
     data = await make_api_request(f"{ig_user_id}/insights", access_token, params)
     return json.dumps(data, indent=2)

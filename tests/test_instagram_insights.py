@@ -14,6 +14,8 @@ from meta_ads_mcp.core.instagram_insights import (
 
 
 class TestListMedia:
+    EXPECTED_FIELDS = "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url,video_views"
+
     @pytest.mark.asyncio
     async def test_success(self):
         mock_response = {"data": [{"id": "123", "media_type": "REELS", "like_count": 50}]}
@@ -27,14 +29,75 @@ class TestListMedia:
                 "17841400000/media",
                 "test_token",
                 {
-                    "fields": "id,media_type,timestamp,permalink,caption,like_count,comments_count",
+                    "fields": self.EXPECTED_FIELDS,
                     "limit": 20,
                 },
             )
             result_data = json.loads(result)
             assert result_data["data"][0]["id"] == "123"
-            assert result_data["data"][0]["media_type"] == "REELS"
-            assert result_data["data"][0]["like_count"] == 50
+
+    @pytest.mark.asyncio
+    async def test_since_until_params(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await list_media(
+                ig_user_id="17841400000",
+                access_token="test_token",
+                since="2025-11-15",
+                until="2026-03-14",
+            )
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert params["since"] == "2025-11-15"
+            assert params["until"] == "2026-03-14"
+
+    @pytest.mark.asyncio
+    async def test_since_without_until(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await list_media(
+                ig_user_id="17841400000",
+                access_token="test_token",
+                since="2025-11-15",
+            )
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert params["since"] == "2025-11-15"
+            assert "until" not in params
+
+    @pytest.mark.asyncio
+    async def test_fields_include_media_product_type(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await list_media(ig_user_id="17841400000", access_token="test_token")
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert "media_product_type" in params["fields"]
+
+    @pytest.mark.asyncio
+    async def test_fields_include_video_views(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await list_media(ig_user_id="17841400000", access_token="test_token")
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert "video_views" in params["fields"]
 
     @pytest.mark.asyncio
     async def test_no_ig_user_id(self):
@@ -138,6 +201,74 @@ class TestGetIgAccountInsights:
         assert "data" in result_data
         nested = json.loads(result_data["data"])
         assert "error" in nested
+
+    @pytest.mark.asyncio
+    async def test_metric_type_param_passed(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await get_ig_account_insights(
+                ig_user_id="17841400000",
+                metrics=["impressions"],
+                period="day",
+                metric_type="total_value",
+                access_token="test_token",
+            )
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert params["metric_type"] == "total_value"
+
+    @pytest.mark.asyncio
+    async def test_metric_type_not_set_by_default(self):
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await get_ig_account_insights(
+                ig_user_id="17841400000",
+                metrics=["reach"],
+                period="day",
+                access_token="test_token",
+            )
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert "metric_type" not in params
+
+    @pytest.mark.asyncio
+    async def test_follower_count_rejects_non_day_period(self):
+        result = await get_ig_account_insights(
+            ig_user_id="17841400000",
+            metrics=["follower_count"],
+            period="week",
+            access_token="test_token",
+        )
+        result_data = json.loads(result)
+        assert "data" in result_data
+        nested = json.loads(result_data["data"])
+        assert "error" in nested
+        assert "follower_count" in nested["error"]
+
+    @pytest.mark.asyncio
+    async def test_follower_count_with_day_period_succeeds(self):
+        mock_response = {"data": [{"name": "follower_count", "values": [{"value": 4800}]}]}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            result = await get_ig_account_insights(
+                ig_user_id="17841400000",
+                metrics=["follower_count"],
+                period="day",
+                access_token="test_token",
+            )
+            result_data = json.loads(result)
+            assert "data" in result_data
 
 
 class TestGetStoryInsights:
