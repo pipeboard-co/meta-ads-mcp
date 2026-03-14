@@ -48,7 +48,9 @@ async def create_custom_audience(
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         name: Audience name
-        subtype: Audience subtype. Valid values: ENGAGEMENT, CUSTOM, WEBSITE, VIDEO, IG_BUSINESS
+        subtype: Audience subtype. Valid values: ENGAGEMENT, CUSTOM, WEBSITE, VIDEO.
+                 Note: IG_BUSINESS was removed in v25.0. Use ENGAGEMENT with an IG
+                 engagement rule instead (see rule examples below).
         access_token: Meta API access token (optional - will use cached token if not provided)
         description: Optional audience description
         rule: Optional rule dict defining audience membership criteria.
@@ -66,10 +68,10 @@ async def create_custom_audience(
     if not subtype:
         return json.dumps({"error": "subtype is required"}, indent=2)
 
-    valid_subtypes = {"ENGAGEMENT", "CUSTOM", "WEBSITE", "VIDEO", "IG_BUSINESS"}
+    valid_subtypes = {"ENGAGEMENT", "CUSTOM", "WEBSITE", "VIDEO"}
     if subtype not in valid_subtypes:
         return json.dumps(
-            {"error": f"Invalid subtype '{subtype}'. Valid: ENGAGEMENT, CUSTOM, WEBSITE, VIDEO, IG_BUSINESS"},
+            {"error": f"Invalid subtype '{subtype}'. Valid: ENGAGEMENT, CUSTOM, WEBSITE, VIDEO. Note: IG_BUSINESS was removed in v25.0 — use ENGAGEMENT with an IG engagement rule instead."},
             indent=2,
         )
 

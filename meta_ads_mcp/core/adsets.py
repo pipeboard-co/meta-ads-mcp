@@ -27,14 +27,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,effective_status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -67,7 +67,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative"
+        "fields": "id,name,campaign_id,status,effective_status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -246,7 +246,7 @@ async def create_adset(
         if bid_strategy == 'LOWEST_COST':
             return json.dumps({
                 "error": "'LOWEST_COST' is not a valid bid_strategy value",
-                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v24.0",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API",
                 "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
                 "valid_values": [
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
@@ -438,7 +438,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         if bid_strategy == 'LOWEST_COST':
             return json.dumps({
                 "error": "'LOWEST_COST' is not a valid bid_strategy value",
-                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API v24.0",
+                "details": "The 'LOWEST_COST' bid strategy is not valid in Meta Ads API",
                 "workaround": "Use 'LOWEST_COST_WITHOUT_CAP' instead (no bid_amount required)",
                 "valid_values": [
                     "LOWEST_COST_WITHOUT_CAP (recommended - no bid_amount required)",
