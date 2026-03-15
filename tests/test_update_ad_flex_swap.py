@@ -40,9 +40,6 @@ class TestUpdateAdFlexSwap:
                         "error_subcode": 3858355,
                         "fbtrace_id": "abc123"
                     }
-                },
-                "full_response": {
-                    "status_code": 400
                 }
             }
         }
@@ -95,8 +92,7 @@ class TestUpdateAdFlexSwap:
                         "code": 100,
                         "error_subcode": 9999,
                     }
-                },
-                "full_response": {"status_code": 400}
+                }
             }
         }
 

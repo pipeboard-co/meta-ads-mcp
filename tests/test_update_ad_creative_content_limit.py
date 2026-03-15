@@ -37,9 +37,6 @@ class TestUpdateAdCreativeContentLimit:
                         "error_subcode": 1815573,
                         "fbtrace_id": "abc123"
                     }
-                },
-                "full_response": {
-                    "status_code": 400
                 }
             }
         }
@@ -74,8 +71,7 @@ class TestUpdateAdCreativeContentLimit:
                         "code": 100,
                         "error_subcode": 1815573,
                     }
-                },
-                "full_response": {"status_code": 400}
+                }
             }
         }
 
@@ -128,8 +124,7 @@ class TestUpdateAdCreativeContentLimit:
                         "code": 100,
                         "error_subcode": 9999,
                     }
-                },
-                "full_response": {"status_code": 400}
+                }
             }
         }
 

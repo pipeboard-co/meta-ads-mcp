@@ -186,7 +186,7 @@ async def make_api_request(
 
             # Ensure the response is JSON and return it as a dictionary
             try:
-                return response.json()
+                return _strip_insights_metadata(_strip_paging_urls(response.json()))
             except json.JSONDecodeError:
                 # If not JSON, return text content in a structured format
                 return {
@@ -239,28 +239,54 @@ async def make_api_request(
                 logger.warning(f"Detected authentication error ({e.response.status_code})")
                 auth_manager.invalidate_token()
             
-            # Include full details for technical users
-            full_response = {
-                "headers": dict(e.response.headers),
-                "status_code": e.response.status_code,
-                "url": str(e.response.url),
-                "reason": getattr(e.response, "reason_phrase", "Unknown reason"),
-                "request_method": e.request.method,
-                "request_url": str(e.request.url)
-            }
-            
             # Return a properly structured error object
             return {
                 "error": {
                     "message": f"HTTP Error: {e.response.status_code}",
                     "details": error_info,
-                    "full_response": full_response
                 }
             }
         
         except Exception as e:
             logger.error(f"Request Error: {str(e)}")
             return {"error": {"message": str(e)}}
+
+
+def _strip_paging_urls(data: dict) -> dict:
+    """Remove paging.next/previous full URLs; keep paging.cursors.
+
+    paging.next and paging.previous embed the full access token as a query
+    parameter. Stripping them reduces token waste (~180 tokens per paginated
+    call) without losing pagination capability — cursors are preserved.
+
+    Mutates data in-place and returns it.
+    """
+    if isinstance(data, dict) and "paging" in data:
+        paging = data["paging"]
+        data["paging"] = {k: v for k, v in paging.items() if k not in ("next", "previous")}
+    return data
+
+
+def _strip_insights_metadata(data: dict) -> dict:
+    """Remove verbose metadata fields from insights data items.
+
+    Insights responses include per-metric title, description, and id path
+    strings that are never used by the operator. Stripping them reduces
+    token waste (~115 tokens per insights call).
+
+    Only strips from items that have both 'name' and 'values' keys —
+    the shape unique to Graph API insights items — to avoid removing the
+    'id' field from campaign/adset/ad list responses.
+
+    Mutates data in-place and returns it.
+    """
+    if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
+        for item in data["data"]:
+            if isinstance(item, dict) and "values" in item and "name" in item:
+                item.pop("title", None)
+                item.pop("description", None)
+                item.pop("id", None)
+    return data
 
 
 # Generic wrapper for all Meta API tools

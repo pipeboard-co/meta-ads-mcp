@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# Git worktrees
+.worktrees/
+
 # Virtual environments
 .venv
 .cursor/rules/meta-ads-credentials.mdc

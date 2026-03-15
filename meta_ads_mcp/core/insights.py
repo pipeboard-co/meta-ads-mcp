@@ -93,7 +93,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                             comscore_market_code
         level: Level of aggregation (ad, adset, campaign, account)
         limit: Maximum number of results to return per page (default: 25, Meta API allows much higher values)
-        after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
+        after: Pagination cursor to get the next set of results. Use paging.cursors.after from the previous response.
         action_attribution_windows: Optional list of attribution windows (e.g., ["1d_click", "7d_click", "1d_view"]).
                    When specified, actions include additional fields for each window. The 'value' field always shows 7d_click.
         compact: When True, strips redundant action-type duplicates from the response

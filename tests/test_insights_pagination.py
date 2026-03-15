@@ -49,8 +49,8 @@ class TestInsightsPagination:
                 "cursors": {
                     "before": "before_cursor_1",
                     "after": "after_cursor_1"
-                },
-                "next": "https://graph.facebook.com/v20.0/act_123/insights?after=after_cursor_1&limit=2"
+                }
+                # paging.next omitted — _strip_paging_urls removes it from real responses
             }
         }
 
@@ -254,4 +254,4 @@ class TestInsightsPagination:
             assert "paging" in result_data
             assert "cursors" in result_data["paging"]
             assert "after" in result_data["paging"]["cursors"]
-            assert "next" in result_data["paging"]
+            assert "next" not in result_data["paging"]  # stripped by _strip_paging_urls (Fix 3)

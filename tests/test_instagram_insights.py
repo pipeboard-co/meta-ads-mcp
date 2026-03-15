@@ -14,7 +14,7 @@ from meta_ads_mcp.core.instagram_insights import (
 
 
 class TestListMedia:
-    EXPECTED_FIELDS = "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url"
+    EXPECTED_FIELDS = "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count"
 
     @pytest.mark.asyncio
     async def test_success(self):
@@ -107,6 +107,20 @@ class TestListMedia:
         assert "data" in result_data
         nested = json.loads(result_data["data"])
         assert "error" in nested
+
+    @pytest.mark.asyncio
+    async def test_fields_do_not_include_thumbnail_url(self):
+        """thumbnail_url is a CDN URL ~100 chars — wastes tokens, not used by operator."""
+        mock_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=mock_response,
+        ) as mock_api:
+            await list_media(ig_user_id="17841400000", access_token="test_token")
+            call_args = mock_api.call_args
+            params = call_args[0][2]
+            assert "thumbnail_url" not in params["fields"]
 
 
 class TestGetMediaInsights:

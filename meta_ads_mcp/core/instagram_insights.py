@@ -29,7 +29,7 @@ async def list_media(
 
     Returns:
         JSON string with media list including id, media_type, media_product_type,
-        timestamp, permalink, caption, like_count, comments_count, thumbnail_url.
+        timestamp, permalink, caption, like_count, comments_count.
         Note: like_count may be omitted by the API for some media types or accounts
         with professional dashboard enabled. For Reel view counts use
         get_media_insights with metrics=["views"].
@@ -38,7 +38,7 @@ async def list_media(
         return json.dumps({"error": "ig_user_id is required"}, indent=2)
 
     params = {
-        "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count,thumbnail_url",
+        "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count",
         "limit": limit,
     }
     if since:
