@@ -41,9 +41,9 @@ async def list_media(
         "fields": "id,media_type,media_product_type,timestamp,permalink,caption,like_count,comments_count",
         "limit": limit,
     }
-    if since:
+    if since is not None:
         params["since"] = since
-    if until:
+    if until is not None:
         params["until"] = until
     data = await make_api_request(f"{ig_user_id}/media", access_token, params)
     return json.dumps(data, indent=2)
@@ -83,7 +83,7 @@ async def get_media_insights(
         return json.dumps({"error": "media_id is required"}, indent=2)
 
     default_metrics = ["reach", "impressions", "saved", "shares", "views", "total_interactions"]
-    metrics_to_use = metrics if metrics else default_metrics
+    metrics_to_use = metrics if metrics is not None else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}
     data = await make_api_request(f"{media_id}/insights", access_token, params)
@@ -185,7 +185,7 @@ async def get_story_insights(
         return json.dumps({"error": "story_id is required"}, indent=2)
 
     default_metrics = ["impressions", "reach", "replies", "taps_forward", "taps_back", "exits"]
-    metrics_to_use = metrics if metrics else default_metrics
+    metrics_to_use = metrics if metrics is not None else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}
     data = await make_api_request(f"{story_id}/insights", access_token, params)
@@ -234,7 +234,7 @@ async def publish_media(
         )
 
     # Step 1 — Create media container
-    step1_params = {"caption": caption} if caption else {}
+    step1_params = {"caption": caption} if caption is not None else {}
     if media_type == "IMAGE":
         step1_params["image_url"] = media_url
     else:  # VIDEO, REELS, STORIES
