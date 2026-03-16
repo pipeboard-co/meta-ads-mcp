@@ -24,5 +24,22 @@ The Meta Marketing API has some limitations regarding frequency cap visibility:
    - Use insights and metrics to confirm behavioral changes when direct field access is limited
    - Consider the optimization goal when setting up features like frequency caps
 
+## Deprecated and Removed Fields (v22.0 / v25.0)
+
+### Removed in v22.0
+- **`impressions` metric** — removed from the Media Insights API (`/{media_id}/insights`) across all media types: FEED images, FEED videos, REELS, STORIES, and CAROUSEL albums. Confirmed via live API testing on v25.0. Passing `impressions` returns a 400 error: *"Starting from version v22.0 and above, the impressions metric is no longer supported for the queried media."*
+- **`plays`** and **`ig_reels_aggregated_all_plays_count`** — removed for Reels. Use `views` instead for Reel view counts.
+
+### Removed in v25.0
+- **`approximate_count`** field on custom audiences — replaced by `approximate_count_lower_bound` and `approximate_count_upper_bound`.
+- **`IG_BUSINESS` subtype** for custom audiences — use `ENGAGEMENT` subtype with an IG engagement rule instead.
+
+### Safe Media Insights Metrics (v25.0)
+| Media Type | Supported Metrics |
+|---|---|
+| IMAGE / VIDEO / CAROUSEL (FEED) | `reach`, `saved`, `shares`, `views`, `total_interactions` |
+| REELS | `reach`, `saved`, `shares`, `views`, `total_interactions` |
+| STORIES | `reach`, `replies`, `taps_forward`, `taps_back`, `exits` |
+
 ## Updates and Changes
-Meta frequently updates their API behavior. These notes will be updated as we discover new limitations or changes in the API's behavior. 
+Meta frequently updates their API behavior. These notes will be updated as we discover new limitations or changes in the API's behavior.

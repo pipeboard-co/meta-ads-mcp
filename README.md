@@ -442,6 +442,97 @@ For advanced users who need to self-host, the package can be installed from sour
       - `query`: Search query string (e.g., "Injury Payouts pages", "active campaigns")
     - Returns: List of matching record IDs in ChatGPT-compatible format
 
+30. `mcp_meta_ads_list_media`
+    - List media objects for an Instagram Business Account
+    - Inputs:
+      - `ig_user_id`: Numeric Instagram Business Account ID (not an ad account ID)
+      - `limit`: Maximum number of media items to return (default: 20)
+      - `since`: Start of date range (YYYY-MM-DD or Unix timestamp). Optional.
+      - `until`: End of date range (YYYY-MM-DD or Unix timestamp). Optional.
+      - `access_token` (optional): Meta API access token
+    - Returns: List of media with id, media_type, media_product_type, timestamp, permalink, caption, like_count, comments_count
+
+31. `mcp_meta_ads_get_media_insights`
+    - Get insights for a specific Instagram media object
+    - Inputs:
+      - `media_id`: ID of the Instagram media object
+      - `metrics`: List of metric names to retrieve. Defaults to `["reach", "saved", "shares", "views", "total_interactions"]`. Note: `impressions` was removed in v22.0.
+      - `access_token` (optional): Meta API access token
+    - Supported metrics by type: IMAGE/VIDEO/CAROUSEL/REELS all support `reach, saved, shares, views, total_interactions`. Stories use `get_story_insights` instead.
+    - Returns: Lifetime metric values for the media object
+
+32. `mcp_meta_ads_get_ig_account_insights`
+    - Get account-level insights for an Instagram Business Account
+    - Inputs:
+      - `ig_user_id`: Numeric Instagram Business Account ID
+      - `metrics`: List of metric names (required, e.g. `["follower_count", "reach"]`)
+      - `period`: Aggregation period — one of `day, week, days_28, month, lifetime`
+      - `since`: Start of date range. Optional.
+      - `until`: End of date range. Optional.
+      - `metric_type`: Optional — required by v25.0 for certain metrics (e.g. `"total_value"`)
+      - `access_token` (optional): Meta API access token
+    - Note: `follower_count` only works with `period=day`. Max lookback 30 days for most metrics.
+    - Returns: Time-series insight data for the account
+
+33. `mcp_meta_ads_get_story_insights`
+    - Get insights for an Instagram Story (available ~72h after posting)
+    - Inputs:
+      - `story_id`: ID of the Instagram Story media object
+      - `metrics`: List of metric names. Defaults to `["reach", "replies", "taps_forward", "taps_back", "exits"]`. Note: `impressions` was removed in v22.0.
+      - `access_token` (optional): Meta API access token
+    - Returns: Story metric values
+
+34. `mcp_meta_ads_publish_media`
+    - Publish a media object to an Instagram Business Account (two-step: create container → publish)
+    - Inputs:
+      - `ig_user_id`: Numeric Instagram Business Account ID
+      - `media_url`: Publicly accessible URL of the media
+      - `media_type`: One of `IMAGE, VIDEO, REELS, STORIES`
+      - `caption`: Optional caption text
+      - `access_token` (optional): Meta API access token
+    - Note: 50 posts/day rate limit applies. Media URL must be publicly accessible.
+    - Returns: Published media ID on success
+
+35. `mcp_meta_ads_get_custom_audiences`
+    - Get custom audiences for a Meta Ads account
+    - Inputs:
+      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
+      - `access_token` (optional): Meta API access token
+    - Returns: List of audiences with id, name, subtype, approximate_count_lower_bound, approximate_count_upper_bound, data_source, delivery_status
+
+36. `mcp_meta_ads_create_custom_audience`
+    - Create a custom audience for a Meta Ads account
+    - Inputs:
+      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
+      - `name`: Audience name
+      - `subtype`: One of `ENGAGEMENT, CUSTOM, WEBSITE, VIDEO`. Note: `IG_BUSINESS` was removed in v25.0 — use `ENGAGEMENT` with an IG engagement rule instead.
+      - `description`: Optional audience description
+      - `rule`: Optional rule dict defining audience membership criteria
+      - `customer_file_source`: Required for CUSTOM subtype. One of `USER_PROVIDED_ONLY, PARTNER_PROVIDED_ONLY, BOTH_USER_AND_PARTNER_PROVIDED`
+      - `access_token` (optional): Meta API access token
+    - Returns: Confirmation with new audience details
+
+37. `mcp_meta_ads_create_lookalike_audience`
+    - Create a lookalike audience based on an existing custom audience
+    - Inputs:
+      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
+      - `name`: Audience name
+      - `origin_audience_id`: ID of the source custom audience
+      - `country`: Two-letter country code (e.g. `GR`, `US`)
+      - `ratio`: Similarity ratio between 0.01 (most similar) and 0.20 (broadest). Default: 0.01
+      - `access_token` (optional): Meta API access token
+    - Returns: Confirmation with new lookalike audience details
+
+38. `mcp_meta_ads_add_users_to_custom_audience`
+    - Add users to an existing custom audience via a list of email addresses
+    - Inputs:
+      - `audience_id`: ID of the custom audience to populate
+      - `emails`: List of email addresses to add (raw or pre-hashed)
+      - `already_hashed`: Set to `true` if emails are already SHA-256 hashed (default: false)
+      - `access_token` (optional): Meta API access token
+    - Emails are automatically normalised (lowercased, whitespace stripped) and SHA-256 hashed before upload unless `already_hashed=true`.
+    - Returns: `num_received`, `num_invalid_skipped`, and `invalid_entry_samples` from Meta API
+
 ## Licensing
 
 Meta Ads MCP is licensed under the [Business Source License 1.1](LICENSE), which means:
