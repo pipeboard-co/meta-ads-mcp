@@ -1100,8 +1100,8 @@ async def upload_ad_image(
 @meta_api_tool
 async def create_ad_creative(
     account_id: str,
-    image_hash: Optional[str] = None,
     access_token: Optional[str] = None,
+    image_hash: Optional[str] = None,
     name: Optional[str] = None,
     page_id: Optional[Union[str, int]] = None,
     link_url: Optional[str] = None,
@@ -1142,6 +1142,8 @@ async def create_ad_creative(
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         image_hash: Hash of a single uploaded image (cannot be used with image_hashes or video_id)
         access_token: Meta API access token (optional - will use cached token if not provided)
+        image_hash: Hash of the uploaded image (required if no video_id)
+        video_id: ID of an uploaded video (required if no image_hash)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
         link_url: Destination URL for the ad (required unless using lead_gen_form_id)
@@ -1321,9 +1323,10 @@ async def create_ad_creative(
     # Validate message / messages mutual exclusivity
     if message and messages:
         return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
-    
+
     if not link_url and not lead_gen_form_id:
         return json.dumps({"error": "No link_url provided. A destination URL is required for ad creatives (unless using lead_gen_form_id)."}, indent=2)
+
 
     if not name:
         name = f"Creative {int(time.time())}"
@@ -1381,6 +1384,7 @@ async def create_ad_creative(
         for i, d in enumerate(descriptions):
             if len(d) > 125:
                 return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
+
 
     # Prepare the API endpoint for creating a creative
     endpoint = f"{account_id}/adcreatives"
