@@ -175,8 +175,8 @@ async def get_story_insights(
         story_id: ID of the Instagram Story media object.
         access_token: Meta API access token.
         metrics: List of metric names to retrieve. Defaults to
-                 ["impressions", "reach", "replies", "taps_forward",
-                  "taps_back", "exits"] when None or empty.
+                 ["reach", "replies", "taps_forward", "taps_back", "exits"]
+                 when None. Note: impressions was removed in v22.0.
 
     Returns:
         JSON string with story insight data.
@@ -184,7 +184,7 @@ async def get_story_insights(
     if not story_id:
         return json.dumps({"error": "story_id is required"}, indent=2)
 
-    default_metrics = ["impressions", "reach", "replies", "taps_forward", "taps_back", "exits"]
+    default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits"]
     metrics_to_use = metrics if metrics is not None else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}

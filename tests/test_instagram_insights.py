@@ -303,7 +303,7 @@ class TestGetIgAccountInsights:
 class TestGetStoryInsights:
     @pytest.mark.asyncio
     async def test_success_with_defaults(self):
-        mock_response = {"data": [{"name": "impressions", "values": [{"value": 200}]}]}
+        mock_response = {"data": [{"name": "reach", "values": [{"value": 200}]}]}
         with patch(
             "meta_ads_mcp.core.instagram_insights.make_api_request",
             new_callable=AsyncMock,
@@ -312,10 +312,11 @@ class TestGetStoryInsights:
             result = await get_story_insights(story_id="story_123", access_token="test_token")
             call_args = mock_api.call_args
             params = call_args[0][2]
-            default_metrics = ["impressions", "reach", "replies", "taps_forward", "taps_back", "exits"]
+            default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits"]
             assert params["metric"] == ",".join(default_metrics)
+            assert "impressions" not in params["metric"]
             result_data = json.loads(result)
-            assert result_data["data"][0]["name"] == "impressions"
+            assert result_data["data"][0]["name"] == "reach"
             assert result_data["data"][0]["values"][0]["value"] == 200
 
 
