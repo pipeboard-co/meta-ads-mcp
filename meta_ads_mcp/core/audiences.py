@@ -40,7 +40,7 @@ async def get_custom_audiences(account_id: str, access_token: Optional[str] = No
 
     endpoint = f"{account_id}/customaudiences"
     params = {
-        "fields": "id,name,subtype,approximate_count,data_source,delivery_status"
+        "fields": "id,name,subtype,approximate_count_lower_bound,approximate_count_upper_bound,data_source,delivery_status"
     }
 
     data = await make_api_request(endpoint, access_token, params)
