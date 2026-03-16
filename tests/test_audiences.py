@@ -24,7 +24,8 @@ class TestGetCustomAudiences:
                     "id": "123",
                     "name": "Test Audience",
                     "subtype": "ENGAGEMENT",
-                    "approximate_count": 1000,
+                    "approximate_count_lower_bound": 950,
+                    "approximate_count_upper_bound": 1050,
                 }
             ]
         }
@@ -41,7 +42,7 @@ class TestGetCustomAudiences:
             mock_api.assert_called_once_with(
                 "act_123456789/customaudiences",
                 "test_token",
-                {"fields": "id,name,subtype,approximate_count,data_source,delivery_status"},
+                {"fields": "id,name,subtype,approximate_count_lower_bound,approximate_count_upper_bound,data_source,delivery_status"},
             )
 
             result_data = json.loads(result)
@@ -74,7 +75,7 @@ class TestGetCustomAudiences:
             mock_api.assert_called_once_with(
                 "act_123456789/customaudiences",
                 "test_token",
-                {"fields": "id,name,subtype,approximate_count,data_source,delivery_status"},
+                {"fields": "id,name,subtype,approximate_count_lower_bound,approximate_count_upper_bound,data_source,delivery_status"},
             )
 
 
