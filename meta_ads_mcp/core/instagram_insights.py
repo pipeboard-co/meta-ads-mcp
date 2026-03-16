@@ -59,11 +59,11 @@ async def get_media_insights(
     """Get insights for a specific Instagram media object.
 
     Supported metrics by media type (Graph API v25.0+):
-        IMAGE:    impressions, reach, saved, total_interactions
-        VIDEO:    impressions, reach, saved, total_interactions
-        REELS:    reach, impressions, saved, shares, views, total_interactions
-        CAROUSEL: impressions, reach, saved, total_interactions
+        IMAGE/VIDEO/CAROUSEL (FEED): reach, saved, shares, views, total_interactions
+        REELS:                       reach, saved, shares, views, total_interactions
+        STORIES:                     reach, replies, taps_forward, taps_back, exits
 
+    Note: impressions was removed across all media types in v22.0.
     Note: plays and ig_reels_aggregated_all_plays_count were removed in v22.0.
     Use views for Reels play counts.
 
@@ -73,8 +73,8 @@ async def get_media_insights(
         media_id: ID of the Instagram media object.
         access_token: Meta API access token.
         metrics: List of metric names to retrieve. Defaults to
-                 ["reach", "impressions", "saved", "shares", "plays",
-                  "total_interactions"] when None or empty.
+                 ["reach", "saved", "shares", "views", "total_interactions"]
+                 when None. For Stories use explicit metrics instead.
 
     Returns:
         JSON string with metric data for the media object.
@@ -82,7 +82,7 @@ async def get_media_insights(
     if not media_id:
         return json.dumps({"error": "media_id is required"}, indent=2)
 
-    default_metrics = ["reach", "impressions", "saved", "shares", "views", "total_interactions"]
+    default_metrics = ["reach", "saved", "shares", "views", "total_interactions"]
     metrics_to_use = metrics if metrics is not None else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}

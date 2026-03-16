@@ -136,7 +136,7 @@ class TestGetMediaInsights:
             # Confirm metric param is the default comma-joined string
             call_args = mock_api.call_args
             params = call_args[0][2]
-            default_metrics = ["reach", "impressions", "saved", "shares", "views", "total_interactions"]
+            default_metrics = ["reach", "saved", "shares", "views", "total_interactions"]
             assert params["metric"] == ",".join(default_metrics)
             result_data = json.loads(result)
             assert result_data["data"][0]["name"] == "reach"
