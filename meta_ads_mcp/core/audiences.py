@@ -1,9 +1,25 @@
 """Custom audience tools for Meta Ads API."""
 
+import hashlib
 import json
-from typing import Optional, Dict, Any
+import re
+from typing import List, Optional, Dict, Any
+
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
+
+
+def _normalize_and_hash_email(email: str) -> str:
+    """Normalize an email address and return its SHA-256 hex digest.
+
+    Args:
+        email: Raw email string (may have surrounding whitespace or spaces around @).
+
+    Returns:
+        Lowercase, whitespace-stripped SHA-256 hex digest of the email.
+    """
+    normalized = re.sub(r"\s+", "", email.strip().lower())
+    return hashlib.sha256(normalized.encode()).hexdigest()
 
 
 @mcp_server.tool()
@@ -41,6 +57,7 @@ async def create_custom_audience(
     access_token: Optional[str] = None,
     description: Optional[str] = None,
     rule: Optional[Dict[str, Any]] = None,
+    customer_file_source: Optional[str] = None,
 ) -> str:
     """
     Create a custom audience for a Meta Ads account.
@@ -54,6 +71,8 @@ async def create_custom_audience(
         access_token: Meta API access token (optional - will use cached token if not provided)
         description: Optional audience description
         rule: Optional rule dict defining audience membership criteria.
+        customer_file_source: Required for CUSTOM subtype. Valid values:
+                              USER_PROVIDED_ONLY, PARTNER_PROVIDED_ONLY, BOTH_USER_AND_PARTNER_PROVIDED
 
     rule examples:
       IG engagers (30 days): {"inclusions": {"operator": "or", "rules": [{"event_sources": [{"id": "<ig_user_id>", "type": "ig_business"}], "retention_seconds": 2592000, "filter": {"operator": "and", "filters": [{"field": "event", "operator": "eq", "value": "ig_business_profile_all"}]}}]}}
@@ -89,6 +108,9 @@ async def create_custom_audience(
 
     if rule is not None:
         params["rule"] = rule
+
+    if customer_file_source is not None:
+        params["customer_file_source"] = customer_file_source
 
     data = await make_api_request(endpoint, access_token, params, method="POST")
 
@@ -145,6 +167,63 @@ async def create_lookalike_audience(
         "subtype": "LOOKALIKE",
         "origin_audience_id": origin_audience_id,
         "lookalike_spec": lookalike_spec,
+    }
+
+    data = await make_api_request(endpoint, access_token, params, method="POST")
+
+    return json.dumps(data, indent=2)
+
+
+@mcp_server.tool()
+@meta_api_tool
+async def add_users_to_custom_audience(
+    audience_id: str,
+    emails: List[str],
+    access_token: Optional[str] = None,
+    already_hashed: bool = False,
+) -> str:
+    """
+    Add users to an existing custom audience via a list of email addresses.
+
+    Emails are normalized (lowercased, whitespace stripped) and SHA-256 hashed
+    before upload unless already_hashed=True.
+
+    Args:
+        audience_id: ID of the custom audience to populate (e.g. "6933647088203")
+        emails: List of email addresses to add. Accepts raw or pre-hashed emails.
+        access_token: Meta API access token (optional - will use cached token if not provided)
+        already_hashed: Set to True if emails are already SHA-256 hashed. Default: False.
+
+    Returns:
+        JSON response from Meta API with num_received, num_invalid_skipped, and
+        invalid_entry_samples fields.
+    """
+    if not audience_id:
+        return json.dumps({"error": "audience_id is required"}, indent=2)
+
+    if not emails:
+        return json.dumps({"error": "emails list must not be empty"}, indent=2)
+
+    if not all(isinstance(e, str) for e in emails):
+        return json.dumps({"error": "all entries in emails must be strings"}, indent=2)
+
+    if already_hashed:
+        invalid = [e for e in emails if len(e) != 64 or not all(c in "0123456789abcdef" for c in e)]
+        if invalid:
+            return json.dumps(
+                {"error": f"already_hashed=True requires 64-char lowercase hex SHA-256 strings; invalid: {invalid[:3]}"},
+                indent=2,
+            )
+        hashed = [[e] for e in emails]
+    else:
+        hashed = [[_normalize_and_hash_email(e)] for e in emails]
+
+    endpoint = f"{audience_id}/users"
+    params: Dict[str, Any] = {
+        "payload": {
+            "schema": ["EMAIL_SHA256"],
+            "data": hashed,
+        }
     }
 
     data = await make_api_request(endpoint, access_token, params, method="POST")

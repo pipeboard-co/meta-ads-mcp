@@ -1,3 +1,4 @@
+import hashlib
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
@@ -6,6 +7,8 @@ from meta_ads_mcp.core.audiences import (
     get_custom_audiences,
     create_custom_audience,
     create_lookalike_audience,
+    add_users_to_custom_audience,
+    _normalize_and_hash_email,
 )
 
 
@@ -244,3 +247,179 @@ class TestCreateLookalikeAudience:
         assert "data" in result_data
         nested = json.loads(result_data["data"])
         assert "error" in nested
+
+
+class TestNormalizeAndHashEmail:
+    """Unit tests for the _normalize_and_hash_email helper."""
+
+    def test_lowercase(self):
+        """Uppercase email is lowercased before hashing."""
+        assert _normalize_and_hash_email("User@Example.COM") == _normalize_and_hash_email("user@example.com")
+
+    def test_strips_surrounding_whitespace(self):
+        """Leading/trailing whitespace is stripped."""
+        assert _normalize_and_hash_email("  user@example.com  ") == _normalize_and_hash_email("user@example.com")
+
+    def test_strips_internal_spaces(self):
+        """Spaces around @ are removed (e.g. 'info @ yiart.gr' → 'info@yiart.gr')."""
+        assert _normalize_and_hash_email("info @ yiart.gr") == _normalize_and_hash_email("info@yiart.gr")
+
+    def test_strips_tabs(self):
+        """Trailing tabs are stripped."""
+        assert _normalize_and_hash_email("user@example.com\t\t") == _normalize_and_hash_email("user@example.com")
+
+    def test_returns_sha256_hex(self):
+        """Returns a 64-character hex string."""
+        result = _normalize_and_hash_email("user@example.com")
+        assert len(result) == 64
+        assert all(c in "0123456789abcdef" for c in result)
+
+
+class TestAddUsersToCustomAudience:
+    """Test cases for add_users_to_custom_audience function."""
+
+    @pytest.mark.asyncio
+    async def test_success(self):
+        """Test successful upload of email list."""
+        mock_response = {"num_received": 2, "num_invalid_skipped": 0, "invalid_entry_samples": []}
+
+        with patch(
+            "meta_ads_mcp.core.audiences.make_api_request", new_callable=AsyncMock
+        ) as mock_api:
+            mock_api.return_value = mock_response
+
+            result = await add_users_to_custom_audience(
+                audience_id="6933647088203",
+                emails=["user@example.com", "other@example.com"],
+                access_token="test_token",
+            )
+
+            call_args = mock_api.call_args
+            assert call_args[0][0] == "6933647088203/users"
+            assert call_args[1].get("method") == "POST" or (
+                len(call_args[0]) > 3 and call_args[0][3] == "POST"
+            )
+
+            params = call_args[0][2]
+            assert params["payload"]["schema"] == ["EMAIL_SHA256"]
+            assert len(params["payload"]["data"]) == 2
+
+            result_data = json.loads(result)
+            assert result_data["num_received"] == 2
+
+    @pytest.mark.asyncio
+    async def test_emails_are_hashed(self):
+        """Emails are normalized and SHA-256 hashed before upload."""
+        expected_hash = hashlib.sha256("user@example.com".encode()).hexdigest()
+
+        with patch(
+            "meta_ads_mcp.core.audiences.make_api_request", new_callable=AsyncMock
+        ) as mock_api:
+            mock_api.return_value = {"num_received": 1}
+
+            await add_users_to_custom_audience(
+                audience_id="123",
+                emails=["User@Example.COM"],
+                access_token="test_token",
+            )
+
+            params = mock_api.call_args[0][2]
+            assert params["payload"]["data"][0][0] == expected_hash
+
+    @pytest.mark.asyncio
+    async def test_already_hashed_skips_hashing(self):
+        """Pre-hashed emails are passed through unchanged."""
+        pre_hashed = "a" * 64
+
+        with patch(
+            "meta_ads_mcp.core.audiences.make_api_request", new_callable=AsyncMock
+        ) as mock_api:
+            mock_api.return_value = {"num_received": 1}
+
+            await add_users_to_custom_audience(
+                audience_id="123",
+                emails=[pre_hashed],
+                access_token="test_token",
+                already_hashed=True,
+            )
+
+            params = mock_api.call_args[0][2]
+            assert params["payload"]["data"][0][0] == pre_hashed
+
+    @pytest.mark.asyncio
+    async def test_missing_audience_id(self):
+        """Empty audience_id returns an error without calling the API."""
+        result = await add_users_to_custom_audience(
+            audience_id="",
+            emails=["user@example.com"],
+            access_token="test_token",
+        )
+
+        result_data = json.loads(result)
+        assert "data" in result_data
+        nested = json.loads(result_data["data"])
+        assert "error" in nested
+
+    @pytest.mark.asyncio
+    async def test_empty_emails_list(self):
+        """Empty emails list returns an error without calling the API."""
+        result = await add_users_to_custom_audience(
+            audience_id="123",
+            emails=[],
+            access_token="test_token",
+        )
+
+        result_data = json.loads(result)
+        assert "data" in result_data
+        nested = json.loads(result_data["data"])
+        assert "error" in nested
+
+    @pytest.mark.asyncio
+    async def test_non_string_emails_rejected(self):
+        """Non-string entries in the emails list return an error."""
+        result = await add_users_to_custom_audience(
+            audience_id="123",
+            emails=["valid@example.com", None, 42],
+            access_token="test_token",
+        )
+
+        result_data = json.loads(result)
+        assert "data" in result_data
+        nested = json.loads(result_data["data"])
+        assert "error" in nested
+        assert "strings" in nested["error"]
+
+    @pytest.mark.asyncio
+    async def test_already_hashed_invalid_format_rejected(self):
+        """already_hashed=True rejects hashes that are not 64-char lowercase hex."""
+        result = await add_users_to_custom_audience(
+            audience_id="123",
+            emails=["a" * 40],  # SHA-1 length, not SHA-256
+            access_token="test_token",
+            already_hashed=True,
+        )
+
+        result_data = json.loads(result)
+        assert "data" in result_data
+        nested = json.loads(result_data["data"])
+        assert "error" in nested
+        assert "64" in nested["error"]
+
+    @pytest.mark.asyncio
+    async def test_dirty_emails_normalized(self):
+        """Emails with spaces/tabs/mixed case are normalized before hashing."""
+        expected = hashlib.sha256("info@yiart.gr".encode()).hexdigest()
+
+        with patch(
+            "meta_ads_mcp.core.audiences.make_api_request", new_callable=AsyncMock
+        ) as mock_api:
+            mock_api.return_value = {"num_received": 1}
+
+            await add_users_to_custom_audience(
+                audience_id="123",
+                emails=["info @ yiart.gr"],
+                access_token="test_token",
+            )
+
+            params = mock_api.call_args[0][2]
+            assert params["payload"]["data"][0][0] == expected
