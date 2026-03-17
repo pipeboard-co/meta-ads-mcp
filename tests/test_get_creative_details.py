@@ -38,11 +38,15 @@ async def test_get_creative_details_returns_fields():
     mock_dcs_response = {
         "dynamic_creative_spec": {"some_field": "some_value"},
     }
+    # degrees_of_freedom_spec fetch returns CFS data
+    mock_dof_response = {
+        "degrees_of_freedom_spec": {"creative_features_spec": {"profile_card": {"enroll_status": "OPT_IN"}}},
+    }
     # product_set_id fetch returns empty (not a DPA creative)
     mock_product_set_response = {}
 
     with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
-        mock_api.side_effect = [mock_main_response, mock_dcs_response, mock_product_set_response]
+        mock_api.side_effect = [mock_main_response, mock_dcs_response, mock_dof_response, mock_product_set_response]
 
         result = await get_creative_details(
             creative_id="creative_123", access_token="test_token"
@@ -55,9 +59,10 @@ async def test_get_creative_details_returns_fields():
         assert data["object_story_spec"]["video_data"]["video_id"] == "vid_789"
         assert data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
         assert data["dynamic_creative_spec"] == {"some_field": "some_value"}
+        assert data["degrees_of_freedom_spec"]["creative_features_spec"]["profile_card"]["enroll_status"] == "OPT_IN"
 
-        # Verify the API was called 3 times: main fields + dynamic_creative_spec + product_set_id
-        assert mock_api.call_count == 3
+        # Verify the API was called 4 times: main fields + dynamic_creative_spec + degrees_of_freedom_spec + product_set_id
+        assert mock_api.call_count == 4
         # First call: main fields (should NOT include dynamic_creative_spec)
         first_call = mock_api.call_args_list[0]
         assert first_call[0][0] == "creative_123"
@@ -67,9 +72,12 @@ async def test_get_creative_details_returns_fields():
         # Second call: dynamic_creative_spec only
         second_call = mock_api.call_args_list[1]
         assert second_call[0][2]["fields"] == "dynamic_creative_spec"
-        # Third call: product_set_id
+        # Third call: degrees_of_freedom_spec
         third_call = mock_api.call_args_list[2]
-        assert third_call[0][2]["fields"] == "product_set_id"
+        assert third_call[0][2]["fields"] == "degrees_of_freedom_spec"
+        # Fourth call: product_set_id
+        fourth_call = mock_api.call_args_list[3]
+        assert fourth_call[0][2]["fields"] == "product_set_id"
 
 
 @pytest.mark.asyncio
@@ -88,12 +96,15 @@ async def test_get_creative_details_without_dynamic_creative_spec():
     mock_dcs_error = {
         "error": {"message": "Tried accessing nonexisting field", "code": 100}
     }
+    mock_dof_error = {
+        "error": {"message": "Tried accessing nonexisting field", "code": 100}
+    }
     mock_ps_error = {
         "error": {"message": "Tried accessing nonexisting field", "code": 100}
     }
 
     with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
-        mock_api.side_effect = [mock_main_response, mock_dcs_error, mock_ps_error]
+        mock_api.side_effect = [mock_main_response, mock_dcs_error, mock_dof_error, mock_ps_error]
 
         result = await get_creative_details(
             creative_id="creative_456", access_token="test_token"
@@ -118,6 +129,7 @@ async def test_get_creative_details_dpa_with_product_set():
         },
     }
     mock_dcs_response = {}  # No dynamic_creative_spec on DPA
+    mock_dof_response = {}  # No degrees_of_freedom_spec on DPA
     mock_ps_response = {"product_set_id": "ps_999"}
     mock_catalog_response = {
         "product_catalog": {"id": "catalog_555", "name": "My Catalog"},
@@ -127,6 +139,7 @@ async def test_get_creative_details_dpa_with_product_set():
         mock_api.side_effect = [
             mock_main_response,
             mock_dcs_response,
+            mock_dof_response,
             mock_ps_response,
             mock_catalog_response,
         ]
@@ -140,8 +153,8 @@ async def test_get_creative_details_dpa_with_product_set():
         assert data["catalog_id"] == "catalog_555"
         assert data["catalog_name"] == "My Catalog"
 
-        # 4 calls: core + dynamic_creative_spec + product_set_id + catalog resolution
-        assert mock_api.call_count == 4
+        # 5 calls: core + dynamic_creative_spec + degrees_of_freedom_spec + product_set_id + catalog resolution
+        assert mock_api.call_count == 5
 
 
 @pytest.mark.asyncio

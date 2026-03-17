@@ -248,7 +248,7 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
 
     # Try to fetch optional fields separately (may not exist on all creative types)
     if isinstance(data, dict) and "id" in data:
-        for opt_field in ["dynamic_creative_spec", "product_set_id"]:
+        for opt_field in ["dynamic_creative_spec", "degrees_of_freedom_spec", "product_set_id"]:
             try:
                 opt_data = await make_api_request(
                     endpoint, access_token, {"fields": opt_field}
@@ -363,7 +363,7 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
         
     endpoint = f"{ad_id}/adcreatives"
     params = {
-        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing,product_set_id"
+        "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,object_type,body,title,effective_object_story_id,asset_feed_spec,url_tags,image_urls_for_viewing,product_set_id,degrees_of_freedom_spec"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -1711,7 +1711,8 @@ async def update_ad_creative(
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
     lead_gen_form_id: Optional[Union[str, int]] = None,
-    ad_formats: Optional[List[str]] = None
+    ad_formats: Optional[List[str]] = None,
+    creative_features_spec: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Update an existing ad creative's name or optimization settings.
@@ -1738,6 +1739,9 @@ async def update_ad_creative(
         lead_gen_form_id: Lead generation form ID for lead generation campaigns
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image)
+        creative_features_spec: Dict of Advantage+ Creative feature opt-ins/opt-outs.
+                   Each key is a feature name, value is {"enroll_status": "OPT_IN"|"OPT_OUT"}.
+                   Sent as a top-level field (not inside degrees_of_freedom_spec).
 
     Returns:
         JSON response with updated creative details
@@ -1863,19 +1867,27 @@ async def update_ad_creative(
     # Add dynamic creative spec if provided
     if dynamic_creative_spec:
         update_data["dynamic_creative_spec"] = dynamic_creative_spec
-    
+
+    # Add Advantage+ Creative feature opt-ins/opt-outs if provided.
+    # Meta API docs: PUT /{ad_creative_id} accepts creative_features_spec
+    # as a top-level field (NOT inside degrees_of_freedom_spec, which is immutable).
+    if creative_features_spec:
+        update_data["creative_features_spec"] = creative_features_spec
+
     # Prepare the API endpoint for updating the creative
     endpoint = f"{creative_id}"
 
     try:
-        # Make API request to update the creative
+        # Meta Graph API uses POST for all mutations (PUT returns "Object Not Found").
+        # creative_features_spec is sent as a top-level POST field, NOT inside
+        # degrees_of_freedom_spec (which is immutable after creation).
         data = await make_api_request(endpoint, access_token, update_data, method="POST")
 
         # If successful, get more details about the updated creative
         if "id" in data:
             creative_endpoint = f"{creative_id}"
             creative_params = {
-                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,url_tags,link_url,dynamic_creative_spec"
+                "fields": "id,name,status,thumbnail_url,image_url,image_hash,object_story_spec,url_tags,link_url,dynamic_creative_spec,degrees_of_freedom_spec"
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
