@@ -1510,27 +1510,35 @@ async def create_ad_creative(
                     "video_data": video_anchor
                 }
             else:
-                # Image creative: build link_data anchor.
-                link_data = {"link": link_url}
-                if image_hashes:
-                    link_data["image_hash"] = image_hashes[0]
-                # DOF: put CTA in link_data (not in asset_feed_spec)
-                if optimization_type and call_to_action_type:
-                    cta = {"type": call_to_action_type}
-                    cta_value = {}
-                    if link_url:
-                        cta_value["link"] = link_url
-                    if lead_gen_form_id:
-                        cta_value["lead_gen_form_id"] = lead_gen_form_id
-                    if phone_number:
-                        cta_value["phone_number"] = phone_number
-                    if cta_value:
-                        cta["value"] = cta_value
-                    link_data["call_to_action"] = cta
-                creative_data["object_story_spec"] = {
-                    "page_id": page_id,
-                    "link_data": link_data,
-                }
+                if not optimization_type:
+                    # Non-DOF asset_feed_spec: Meta requires bare
+                    # object_story_spec (no link_data).  URLs, images, CTA
+                    # live exclusively in asset_feed_spec.
+                    # Ref: developers.facebook.com/docs/marketing-api/asset-customization-rules
+                    creative_data["object_story_spec"] = {
+                        "page_id": page_id,
+                    }
+                else:
+                    # DOF: link_data serves as the "anchor" creative template.
+                    link_data = {"link": link_url}
+                    if image_hashes:
+                        link_data["image_hash"] = image_hashes[0]
+                    if call_to_action_type:
+                        cta = {"type": call_to_action_type}
+                        cta_value = {}
+                        if link_url:
+                            cta_value["link"] = link_url
+                        if lead_gen_form_id:
+                            cta_value["lead_gen_form_id"] = lead_gen_form_id
+                        if phone_number:
+                            cta_value["phone_number"] = phone_number
+                        if cta_value:
+                            cta["value"] = cta_value
+                        link_data["call_to_action"] = cta
+                    creative_data["object_story_spec"] = {
+                        "page_id": page_id,
+                        "link_data": link_data,
+                    }
         else:
             if is_video:
                 # Use object_story_spec with video_data for simple video creatives.

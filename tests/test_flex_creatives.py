@@ -370,11 +370,10 @@ class TestFlexCreatives:
             # No optimization_type should be set
             assert "optimization_type" not in creative_data["asset_feed_spec"]
 
-            # Multi-image: link_data must include image_hash as primary anchor
-            assert creative_data["object_story_spec"] == {
-                "page_id": "987654321",
-                "link_data": {"link": "https://example.com", "image_hash": "hash1"},
-            }
+            # Non-DOF: object_story_spec must NOT contain link_data;
+            # URLs, images, CTA live exclusively in asset_feed_spec.
+            assert creative_data["object_story_spec"]["page_id"] == "987654321"
+            assert "link_data" not in creative_data["object_story_spec"]
 
     async def test_no_image_hash_or_image_hashes_returns_error(self):
         """Must provide either image_hash, image_hashes, or video_id."""
