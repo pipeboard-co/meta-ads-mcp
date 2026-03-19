@@ -1125,7 +1125,8 @@ async def create_ad_creative(
     asset_customization_rules: Optional[List[Dict[str, Any]]] = None,
     creative_features_spec: Optional[Dict[str, Any]] = None,
     phone_number: Optional[str] = None,
-    url_tags: Optional[str] = None
+    url_tags: Optional[str] = None,
+    caption: Optional[str] = None
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash or video ID.
@@ -1191,6 +1192,9 @@ async def create_ad_creative(
         url_tags: URL tracking parameters appended to the destination URL (e.g.,
                  "utm_source=facebook&utm_medium=cpc&utm_campaign=spring_sale").
                  Sets the url_tags field on the creative.
+        caption: Display URL shown in the ad (e.g., "example.com/shoes"). Sets the
+                caption field in link_data. If not provided, Meta auto-generates it
+                from the destination URL. Only applies to image (link_data) creatives.
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
@@ -1523,6 +1527,8 @@ async def create_ad_creative(
                     link_data = {"link": link_url}
                     if image_hashes:
                         link_data["image_hash"] = image_hashes[0]
+                    if caption:
+                        link_data["caption"] = caption
                     if call_to_action_type:
                         cta = {"type": call_to_action_type}
                         cta_value = {}
@@ -1604,6 +1610,10 @@ async def create_ad_creative(
                 # Add description (singular) to link_data
                 if description:
                     creative_data["object_story_spec"]["link_data"]["description"] = description
+
+                # Add caption (display URL) to link_data
+                if caption:
+                    creative_data["object_story_spec"]["link_data"]["caption"] = caption
 
                 # Add call_to_action to link_data for simple creatives
                 if call_to_action_type:
