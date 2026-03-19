@@ -10,6 +10,9 @@ from meta_ads_mcp.core.instagram_insights import (
     get_ig_account_insights,
     get_story_insights,
     publish_media,
+    FEED_DEFAULT_METRICS,
+    REELS_DEFAULT_METRICS,
+    STORY_DEFAULT_METRICS,
 )
 
 
@@ -125,52 +128,80 @@ class TestListMedia:
 
 class TestGetMediaInsights:
     @pytest.mark.asyncio
-    async def test_success_with_defaults(self):
-        mock_response = {"data": [{"name": "reach", "values": [{"value": 500}]}]}
+    async def test_success_with_defaults_reels(self):
+        """Default metrics for REELS media include Reels-specific metrics."""
+        type_response = {"media_product_type": "REELS"}
+        insights_response = {"data": [{"name": "reach", "values": [{"value": 500}]}]}
         with patch(
             "meta_ads_mcp.core.instagram_insights.make_api_request",
             new_callable=AsyncMock,
-            return_value=mock_response,
+            side_effect=[type_response, insights_response],
         ) as mock_api:
             result = await get_media_insights(media_id="123", access_token="test_token")
-            # Confirm metric param is the default comma-joined string
-            call_args = mock_api.call_args
-            params = call_args[0][2]
-            default_metrics = ["reach", "saved", "shares", "views", "total_interactions"]
-            assert params["metric"] == ",".join(default_metrics)
+            # First call: type detection
+            assert mock_api.call_args_list[0] == call(
+                "123", "test_token", {"fields": "media_product_type"}
+            )
+            # Second call: insights with Reels defaults
+            params = mock_api.call_args_list[1][0][2]
+            assert params["metric"] == ",".join(REELS_DEFAULT_METRICS)
             result_data = json.loads(result)
             assert result_data["data"][0]["name"] == "reach"
 
     @pytest.mark.asyncio
-    async def test_default_metrics_do_not_include_plays(self):
-        """plays was removed in v22.0 — passing it causes a hard 400 on v25.0."""
-        mock_response = {"data": []}
+    async def test_defaults_for_feed_media(self):
+        """FEED media gets feed-only defaults (no Reels-specific metrics)."""
+        type_response = {"media_product_type": "FEED"}
+        insights_response = {"data": []}
         with patch(
             "meta_ads_mcp.core.instagram_insights.make_api_request",
             new_callable=AsyncMock,
-            return_value=mock_response,
+            side_effect=[type_response, insights_response],
         ) as mock_api:
-            await get_media_insights(media_id="123", access_token="test_token")
-            call_args = mock_api.call_args
-            params = call_args[0][2]
-            assert "plays" not in params["metric"].split(",")
+            await get_media_insights(media_id="456", access_token="test_token")
+            params = mock_api.call_args_list[1][0][2]
+            assert params["metric"] == ",".join(FEED_DEFAULT_METRICS)
+            assert "reels_skip_rate" not in params["metric"]
 
     @pytest.mark.asyncio
-    async def test_custom_metrics(self):
-        mock_response = {"data": []}
+    async def test_defaults_for_story_media(self):
+        """STORY media gets story-specific defaults."""
+        type_response = {"media_product_type": "STORY"}
+        insights_response = {"data": []}
         with patch(
             "meta_ads_mcp.core.instagram_insights.make_api_request",
             new_callable=AsyncMock,
-            return_value=mock_response,
+            side_effect=[type_response, insights_response],
+        ) as mock_api:
+            await get_media_insights(media_id="789", access_token="test_token")
+            params = mock_api.call_args_list[1][0][2]
+            assert params["metric"] == ",".join(STORY_DEFAULT_METRICS)
+
+    @pytest.mark.asyncio
+    async def test_custom_metrics_skip_detection(self):
+        """When explicit metrics are passed, no media-type lookup is made."""
+        insights_response = {"data": []}
+        with patch(
+            "meta_ads_mcp.core.instagram_insights.make_api_request",
+            new_callable=AsyncMock,
+            return_value=insights_response,
         ) as mock_api:
             await get_media_insights(
                 media_id="123",
                 access_token="test_token",
                 metrics=["reach", "impressions"],
             )
-            call_args = mock_api.call_args
-            params = call_args[0][2]
+            # Only one call (insights), no type-detection call
+            mock_api.assert_called_once()
+            params = mock_api.call_args[0][2]
             assert params["metric"] == "reach,impressions"
+
+    @pytest.mark.asyncio
+    async def test_default_metrics_do_not_include_plays(self):
+        """plays was removed in v22.0 — none of the default lists should contain it."""
+        for metric_list in [FEED_DEFAULT_METRICS, REELS_DEFAULT_METRICS, STORY_DEFAULT_METRICS]:
+            assert "plays" not in metric_list
+            assert "ig_reels_aggregated_all_plays_count" not in metric_list
 
     @pytest.mark.asyncio
     async def test_no_media_id(self):
@@ -312,7 +343,8 @@ class TestGetStoryInsights:
             result = await get_story_insights(story_id="story_123", access_token="test_token")
             call_args = mock_api.call_args
             params = call_args[0][2]
-            default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits"]
+            default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits",
+                               "follows", "profile_visits"]
             assert params["metric"] == ",".join(default_metrics)
             assert "impressions" not in params["metric"]
             result_data = json.loads(result)

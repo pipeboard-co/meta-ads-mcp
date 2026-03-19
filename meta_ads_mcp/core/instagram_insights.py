@@ -49,6 +49,21 @@ async def list_media(
     return json.dumps(data, indent=2)
 
 
+FEED_DEFAULT_METRICS = [
+    "reach", "saved", "shares", "views", "total_interactions",
+    "likes", "comments", "follows", "profile_visits", "reposts",
+]
+
+REELS_DEFAULT_METRICS = FEED_DEFAULT_METRICS + [
+    "reels_skip_rate", "ig_reels_avg_watch_time", "ig_reels_video_view_total_time",
+]
+
+STORY_DEFAULT_METRICS = [
+    "reach", "replies", "taps_forward", "taps_back", "exits",
+    "follows", "profile_visits",
+]
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def get_media_insights(
@@ -59,22 +74,29 @@ async def get_media_insights(
     """Get insights for a specific Instagram media object.
 
     Supported metrics by media type (Graph API v25.0+):
-        IMAGE/VIDEO/CAROUSEL (FEED): reach, saved, shares, views, total_interactions
-        REELS:                       reach, saved, shares, views, total_interactions
-        STORIES:                     reach, replies, taps_forward, taps_back, exits
+        IMAGE/VIDEO/CAROUSEL (FEED): reach, saved, shares, views, total_interactions,
+                                      likes, comments, follows, profile_visits, reposts
+        REELS:                       (all FEED metrics) + reels_skip_rate,
+                                      ig_reels_avg_watch_time, ig_reels_video_view_total_time
+        STORIES:                     reach, replies, taps_forward, taps_back, exits,
+                                      follows, profile_visits
 
     Note: impressions was removed across all media types in v22.0.
     Note: plays and ig_reels_aggregated_all_plays_count were removed in v22.0.
     Use views for Reels play counts.
+    Note: reels_skip_rate, reposts, ig_reels_avg_watch_time, ig_reels_video_view_total_time
+    were added Dec 2025 (not yet in official docs but live on v25.0).
+
+    When metrics is None, the media's type is auto-detected via a lightweight API call
+    and the appropriate default list is used. Pass explicit metrics to skip detection.
 
     Note: The IG API uses the 'metric' parameter (singular), not 'metrics'.
 
     Args:
         media_id: ID of the Instagram media object.
         access_token: Meta API access token.
-        metrics: List of metric names to retrieve. Defaults to
-                 ["reach", "saved", "shares", "views", "total_interactions"]
-                 when None. For Stories use explicit metrics instead.
+        metrics: List of metric names to retrieve. When None, defaults are chosen
+                 based on the media's type (FEED, REELS, or STORY).
 
     Returns:
         JSON string with metric data for the media object.
@@ -82,8 +104,20 @@ async def get_media_insights(
     if not media_id:
         return json.dumps({"error": "media_id is required"}, indent=2)
 
-    default_metrics = ["reach", "saved", "shares", "views", "total_interactions"]
-    metrics_to_use = metrics if metrics is not None else default_metrics
+    if metrics is not None:
+        metrics_to_use = metrics
+    else:
+        # Auto-detect media type to pick the right defaults
+        type_resp = await make_api_request(
+            media_id, access_token, {"fields": "media_product_type"}
+        )
+        media_type = type_resp.get("media_product_type", "FEED")
+        if media_type == "REELS":
+            metrics_to_use = REELS_DEFAULT_METRICS
+        elif media_type == "STORY":
+            metrics_to_use = STORY_DEFAULT_METRICS
+        else:
+            metrics_to_use = FEED_DEFAULT_METRICS
 
     params = {"metric": ",".join(metrics_to_use)}
     data = await make_api_request(f"{media_id}/insights", access_token, params)
@@ -175,7 +209,8 @@ async def get_story_insights(
         story_id: ID of the Instagram Story media object.
         access_token: Meta API access token.
         metrics: List of metric names to retrieve. Defaults to
-                 ["reach", "replies", "taps_forward", "taps_back", "exits"]
+                 ["reach", "replies", "taps_forward", "taps_back", "exits",
+                  "follows", "profile_visits"]
                  when None. Note: impressions was removed in v22.0.
 
     Returns:
@@ -184,7 +219,8 @@ async def get_story_insights(
     if not story_id:
         return json.dumps({"error": "story_id is required"}, indent=2)
 
-    default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits"]
+    default_metrics = ["reach", "replies", "taps_forward", "taps_back", "exits",
+                       "follows", "profile_visits"]
     metrics_to_use = metrics if metrics is not None else default_metrics
 
     params = {"metric": ",".join(metrics_to_use)}
