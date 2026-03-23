@@ -1131,8 +1131,10 @@ async def create_ad_creative(
     """
     Create a new ad creative using an uploaded image hash or video ID.
 
-    Supports three creative modes:
+    Supports four creative modes:
     - **Simple image/video**: Single image_hash or video_id with object_story_spec
+    - **Multi-variant copy**: Use plural text params (messages[], headlines[], descriptions[]) to test
+      multiple text variants with a single image/video. No optimization_type or is_dynamic_creative needed.
     - **Dynamic Creative**: Multiple variants with dynamic_creative_spec (requires is_dynamic_creative on ad set)
     - **FLEX/DOF (Advantage+)**: Set optimization_type="DEGREES_OF_FREEDOM" for Meta to auto-optimize
       across all asset combinations without requiring is_dynamic_creative on the ad set
@@ -1145,20 +1147,22 @@ async def create_ad_creative(
         page_id: Facebook Page ID (string or int; coerced to string)
         link_url: Destination URL for the ad (required unless using lead_gen_form_id)
         message: Single ad copy/text (cannot be used with messages)
-        messages: List of primary text variants for FLEX/dynamic creatives (cannot be used with message)
+        messages: List of primary text variants for multi-variant copy testing (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
-        headlines: List of headlines for dynamic creative testing (cannot be used with headline)
+        headlines: List of headline variants for multi-variant copy testing (cannot be used with headline)
         description: Single description for simple ads (cannot be used with descriptions)
-        descriptions: List of descriptions for dynamic creative testing (cannot be used with description)
+        descriptions: List of description variants for multi-variant copy testing (cannot be used with description)
         image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash or video_id)
         video_id: Meta video ID for video creatives (cannot be used with image_hash or image_hashes).
                   Upload a video first via the Meta API, then use the returned video ID here.
         thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
                       Meta will auto-generate a thumbnail if not provided.
-        optimization_type: Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that allow
-                          Meta to auto-optimize across all asset combinations. When using
-                          DEGREES_OF_FREEDOM, at least one asset field (image_hashes, messages,
-                          headlines, or descriptions) must contain more than one variant.
+        optimization_type: Optional. Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that
+                          allow Meta to auto-optimize across all asset combinations. Not required for
+                          text-only multi-variant creatives (messages[], headlines[], descriptions[]
+                          work without it). When using DEGREES_OF_FREEDOM, at least one asset field
+                          (image_hashes, messages, headlines, or descriptions) must contain more than
+                          one variant.
                           NOTE: Meta silently ignores asset_customization_rules for DOF creatives.
                           If you need per-placement images, use regular dynamic creative mode
                           (without optimization_type) with is_dynamic_creative on the ad set.
