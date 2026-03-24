@@ -104,6 +104,7 @@ async def create_adset(
     destination_type: Optional[str] = None,
     is_dynamic_creative: Optional[bool] = None,
     frequency_control_specs: Optional[List[Dict[str, Any]]] = None,
+    multi_advertiser_ads: Optional[int] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -154,6 +155,8 @@ async def create_adset(
                                  immutable after the ad set is created (error 1815198).
                                  Only works with OUTCOME_AWARENESS campaigns + optimization_goal REACH or THRUPLAY.
                                  Example: [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 1}]
+        multi_advertiser_ads: Set to 0 to opt out of Multi-Advertiser Ads, 1 to opt in.
+                             This is a TOP-LEVEL ad set parameter — do NOT put it inside the targeting object.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -354,6 +357,9 @@ async def create_adset(
     if frequency_control_specs is not None:
         params["frequency_control_specs"] = json.dumps(frequency_control_specs)
 
+    if multi_advertiser_ads is not None:
+        params["multi_advertiser_ads"] = str(multi_advertiser_ads)
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
@@ -402,6 +408,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         end_time: Optional[str] = None,
                         dsa_beneficiary: Optional[str] = None,
                         dsa_payor: Optional[str] = None,
+                        multi_advertiser_ads: Optional[int] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -435,6 +442,8 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         Required for EU-targeted ad sets along with dsa_payor.
         dsa_payor: DSA payor for European compliance (person/org paying for the ads).
                    Required for EU-targeted ad sets along with dsa_beneficiary.
+        multi_advertiser_ads: Set to 0 to opt out of Multi-Advertiser Ads, 1 to opt in.
+                             This is a TOP-LEVEL ad set parameter — do NOT put it inside the targeting object.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -532,6 +541,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if dsa_payor is not None:
         params['dsa_payor'] = dsa_payor
+
+    if multi_advertiser_ads is not None:
+        params['multi_advertiser_ads'] = str(multi_advertiser_ads)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
