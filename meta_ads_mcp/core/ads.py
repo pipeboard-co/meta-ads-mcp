@@ -1126,7 +1126,8 @@ async def create_ad_creative(
     creative_features_spec: Optional[Dict[str, Any]] = None,
     phone_number: Optional[str] = None,
     url_tags: Optional[str] = None,
-    caption: Optional[str] = None
+    caption: Optional[str] = None,
+    image_crops: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash or video ID.
@@ -1199,6 +1200,10 @@ async def create_ad_creative(
         caption: Display URL shown in the ad (e.g., "example.com/shoes"). Sets the
                 caption field in link_data. If not provided, Meta auto-generates it
                 from the destination URL. Only applies to image (link_data) creatives.
+        image_crops: Crop coordinates for different aspect ratios. Applied in link_data for
+                    image creatives. Format: {"100x100": [[x1,y1],[x2,y2]], "191x100": [[x1,y1],[x2,y2]]}.
+                    Coordinates specify top-left and bottom-right corners of the crop rectangle
+                    in the original image's pixel space. Omit to let Meta auto-crop.
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
@@ -1247,6 +1252,14 @@ async def create_ad_creative(
             _parsed = json.loads(creative_features_spec)
             if isinstance(_parsed, dict):
                 creative_features_spec = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(image_crops, str):
+        try:
+            _parsed = json.loads(image_crops)
+            if isinstance(_parsed, dict):
+                image_crops = _parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -1533,6 +1546,8 @@ async def create_ad_creative(
                         link_data["image_hash"] = image_hashes[0]
                     if caption:
                         link_data["caption"] = caption
+                    if image_crops:
+                        link_data["image_crops"] = image_crops
                     if call_to_action_type:
                         cta = {"type": call_to_action_type}
                         cta_value = {}
@@ -1618,6 +1633,10 @@ async def create_ad_creative(
                 # Add caption (display URL) to link_data
                 if caption:
                     creative_data["object_story_spec"]["link_data"]["caption"] = caption
+
+                # Add image crops to link_data for placement-specific cropping
+                if image_crops:
+                    creative_data["object_story_spec"]["link_data"]["image_crops"] = image_crops
 
                 # Add call_to_action to link_data for simple creatives
                 if call_to_action_type:
