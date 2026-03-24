@@ -2,7 +2,7 @@
 
 import json
 from typing import List, Optional, Dict, Any, Union
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .accounts import get_ad_accounts
 from .server import mcp_server
 
@@ -43,7 +43,8 @@ async def get_campaigns(
     # Require explicit account_id
     if not account_id:
         return json.dumps({"error": "No account ID specified"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
     endpoint = f"{account_id}/campaigns"
     params = {
         "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy,special_ad_categories",
@@ -167,7 +168,9 @@ async def create_campaign(
         
     if not objective:
         return json.dumps({"error": "No campaign objective provided"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
+
     # Track whether the user explicitly provided special_ad_categories
     _user_provided_categories = special_ad_categories is not None
     

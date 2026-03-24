@@ -2,7 +2,7 @@
 
 import json
 from typing import Optional, Dict, Any
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .server import mcp_server
 
 # Currencies that have no sub-units (i.e., are not denominated in cents).
@@ -86,9 +86,7 @@ async def get_account_info(account_id: str, access_token: Optional[str] = None) 
             }
         }
     
-    # Ensure account_id has the 'act_' prefix for API compatibility
-    if not account_id.startswith("act_"):
-        account_id = f"act_{account_id}"
+    account_id = ensure_act_prefix(account_id)
     
     # Try to get the account info directly first
     endpoint = f"{account_id}"

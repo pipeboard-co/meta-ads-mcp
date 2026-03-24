@@ -2,7 +2,7 @@
 
 import json
 from typing import Optional, Dict, Any, List
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .accounts import get_ad_accounts
 from .server import mcp_server
 
@@ -22,7 +22,9 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     # Require explicit account_id
     if not account_id:
         return json.dumps({"error": "No account ID specified"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
+
     # Change endpoint based on whether campaign_id is provided
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
@@ -162,7 +164,9 @@ async def create_adset(
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
+
     if not campaign_id:
         return json.dumps({"error": "No campaign ID provided"}, indent=2)
     
