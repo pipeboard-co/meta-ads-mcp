@@ -23,6 +23,13 @@ class McpToolError(Exception):
     pass
 
 
+def ensure_act_prefix(account_id: str) -> str:
+    """Ensure account_id has the 'act_' prefix required by Meta's Graph API."""
+    if account_id and not account_id.startswith("act_"):
+        return f"act_{account_id}"
+    return account_id
+
+
 # Constants
 META_GRAPH_API_VERSION = "v24.0"
 META_GRAPH_API_BASE = f"https://graph.facebook.com/{META_GRAPH_API_VERSION}"

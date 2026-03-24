@@ -11,7 +11,7 @@ and fetchable records for ChatGPT Deep Research analysis.
 import json
 import re
 from typing import List, Dict, Any, Optional
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .server import mcp_server
 from .utils import logger
 
@@ -83,9 +83,7 @@ class MetaAdsDataManager:
             # Import the page discovery function from ads module
             from .ads import _discover_pages_for_account
             
-            # Ensure account_id has the 'act_' prefix
-            if not account_id.startswith("act_"):
-                account_id = f"act_{account_id}"
+            account_id = ensure_act_prefix(account_id)
             
             page_discovery_result = await _discover_pages_for_account(account_id, access_token)
             

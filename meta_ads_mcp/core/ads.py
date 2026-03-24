@@ -11,7 +11,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .accounts import get_ad_accounts
 
 # ---------------------------------------------------------------------------
@@ -945,10 +945,8 @@ async def upload_ad_image(
     if not file and not image_url:
         return json.dumps({"error": "Provide either 'file' (data URL or base64) or 'image_url'"}, indent=2)
     
-    # Ensure account_id has the 'act_' prefix for API compatibility
-    if not account_id.startswith("act_"):
-        account_id = f"act_{account_id}"
-    
+    account_id = ensure_act_prefix(account_id)
+
     try:
         # Determine encoded_image (base64 string without data URL prefix) and a sensible name
         encoded_image: str = ""
@@ -1330,10 +1328,8 @@ async def create_ad_creative(
     if not name:
         name = f"Creative {int(time.time())}"
 
-    # Ensure account_id has the 'act_' prefix
-    if not account_id.startswith("act_"):
-        account_id = f"act_{account_id}"
-    
+    account_id = ensure_act_prefix(account_id)
+
     # Enhanced page discovery: If no page ID is provided, use robust discovery methods
     if not page_id:
         try:
@@ -2076,10 +2072,8 @@ async def _search_pages_by_name_core(access_token: str, account_id: str, search_
     Returns:
         JSON string with search results
     """
-    # Ensure account_id has the 'act_' prefix
-    if not account_id.startswith("act_"):
-        account_id = f"act_{account_id}"
-    
+    account_id = ensure_act_prefix(account_id)
+
     try:
         # Use the internal discovery function directly
         page_discovery_result = await _discover_pages_for_account(account_id, access_token)
@@ -2187,9 +2181,7 @@ async def get_account_pages(account_id: str, access_token: Optional[str] = None)
                 "details": str(e)
             }, indent=2)
     
-    # Ensure account_id has the 'act_' prefix for regular accounts
-    if not account_id.startswith("act_"):
-        account_id = f"act_{account_id}"
+    account_id = ensure_act_prefix(account_id)
     
     try:
         # Collect all page IDs from multiple approaches

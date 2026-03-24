@@ -3,7 +3,7 @@
 import json
 import os
 from typing import Optional, Dict, Any, List, Union
-from .api import meta_api_tool
+from .api import meta_api_tool, ensure_act_prefix
 from .server import mcp_server
 
 
@@ -52,7 +52,9 @@ if ENABLE_REPORT_GENERATION:
                     "format": "act_XXXXXXXXX"
                 }
             }, indent=2)
-        
+
+        account_id = ensure_act_prefix(account_id)
+
         # For campaign and comparison reports, campaign_ids are required
         if report_type in ["campaign", "comparison"] and not campaign_ids:
             return json.dumps({
