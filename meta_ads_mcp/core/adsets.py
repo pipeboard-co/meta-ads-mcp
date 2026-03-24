@@ -439,6 +439,8 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         daily_budget: Daily budget in account currency (in cents)
         lifetime_budget: Lifetime budget in account currency (in cents)
         is_dynamic_creative: Enable/disable Dynamic Creative for this ad set.
+                            WARNING: This field is immutable after ad set creation. Meta's API will
+                            return success but silently ignore the change. To change this, create a new ad set.
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
                    Use with status=ACTIVE to schedule the ad set for future delivery (effective_status will be SCHEDULED until start_time).
         end_time: End time in ISO 8601 format. Required when lifetime_budget is specified.

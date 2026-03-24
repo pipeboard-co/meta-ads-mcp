@@ -124,7 +124,7 @@ async def create_campaign(
     daily_budget: Optional[int] = None,
     lifetime_budget: Optional[int] = None,
     buying_type: Optional[str] = None,
-    bid_strategy: Optional[str] = None,
+    bid_strategy: str = "LOWEST_COST_WITHOUT_CAP",
     bid_cap: Optional[int] = None,
     spend_cap: Optional[int] = None,
     campaign_budget_optimization: Optional[bool] = None,
@@ -152,7 +152,7 @@ async def create_campaign(
         daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         lifetime_budget: Lifetime budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         buying_type: Buying type (e.g., 'AUCTION')
-        bid_strategy: Bid strategy. Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'.
+        bid_strategy: Bid strategy (default: LOWEST_COST_WITHOUT_CAP). Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'. WARNING: If you use LOWEST_COST_WITH_BID_CAP or COST_CAP, all child ad sets will require bid_amount to be set.
         bid_cap: Bid cap in account currency (in cents) as a string
         spend_cap: Spending limit for the campaign in account currency (in cents) as a string
         campaign_budget_optimization: Whether to enable campaign budget optimization (only used if use_adset_level_budgets=False)
