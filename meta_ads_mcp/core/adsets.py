@@ -103,6 +103,7 @@ async def create_adset(
     promoted_object: Optional[Dict[str, Any]] = None,
     destination_type: Optional[str] = None,
     is_dynamic_creative: Optional[bool] = None,
+    frequency_control_specs: Optional[List[Dict[str, Any]]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -149,6 +150,10 @@ async def create_adset(
                          'INSTAGRAM_DIRECT', 'ON_AD', 'APP', 'FACEBOOK', 'SHOP_AUTOMATIC'.
                          Also supports multi-channel combos like 'MESSAGING_MESSENGER_WHATSAPP'.
         is_dynamic_creative: Enable Dynamic Creative for this ad set.
+        frequency_control_specs: Frequency cap specs. MUST be set at creation time — Meta makes this field
+                                 immutable after the ad set is created (error 1815198).
+                                 Only works with OUTCOME_AWARENESS campaigns + optimization_goal REACH or THRUPLAY.
+                                 Example: [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 1}]
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -345,7 +350,10 @@ async def create_adset(
     # Enable Dynamic Creative if requested
     if is_dynamic_creative is not None:
         params["is_dynamic_creative"] = "true" if bool(is_dynamic_creative) else "false"
-    
+
+    if frequency_control_specs is not None:
+        params["frequency_control_specs"] = json.dumps(frequency_control_specs)
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
