@@ -1540,6 +1540,8 @@ async def create_ad_creative(
                     link_data = {"link": link_url}
                     if image_hashes:
                         link_data["image_hash"] = image_hashes[0]
+                    elif image_hash:
+                        link_data["image_hash"] = image_hash
                     if caption:
                         link_data["caption"] = caption
                     if image_crops:

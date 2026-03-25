@@ -342,10 +342,12 @@ class TestFlexibleCreativeFullFlow:
 
             # Single-image: object_story_spec keeps link_data (error 2061015 without it)
             # CTA is placed in link_data for DOF creatives.
+            # image_hash in link_data fixes subcode 2446388 "Could not get image"
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
                 "link_data": {
                     "link": "https://example.com",
+                    "image_hash": "hash1",
                     "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
                 }
             }
