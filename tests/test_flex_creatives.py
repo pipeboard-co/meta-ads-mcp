@@ -240,9 +240,11 @@ class TestFlexCreatives:
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
             # object_story_spec needs page_id + link_data with destination URL
             # (Meta rejects object_story_spec without link — error 2061015)
+            # DOF link_data must include image_hash for Meta to find the image
+            # (fix for subcode 2446388 "Could not get image for creative")
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
-                "link_data": {"link": "https://example.com"}
+                "link_data": {"link": "https://example.com", "image_hash": "abc123"}
             }
 
     async def test_no_optimization_type_unchanged_behavior(self):
