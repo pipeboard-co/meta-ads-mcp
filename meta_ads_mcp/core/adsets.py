@@ -107,6 +107,8 @@ async def create_adset(
     is_dynamic_creative: Optional[bool] = None,
     frequency_control_specs: Optional[List[Dict[str, Any]]] = None,
     multi_advertiser_ads: Optional[int] = None,
+    regional_regulated_categories: Optional[List[str]] = None,
+    regional_regulation_identities: Optional[Dict[str, Any]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -159,6 +161,20 @@ async def create_adset(
                                  Example: [{"event": "IMPRESSIONS", "interval_days": 7, "max_frequency": 1}]
         multi_advertiser_ads: Set to 0 to opt out of Multi-Advertiser Ads, 1 to opt in.
                              This is a TOP-LEVEL ad set parameter — do NOT put it inside the targeting object.
+        regional_regulated_categories: List of regional regulated categories for the ad set.
+                                       Required for ads targeting regulated regions (Taiwan, Australia, etc.).
+                                       Valid values: TAIWAN_FINSERV, TAIWAN_UNIVERSAL, AUSTRALIA_FINSERV,
+                                       INDIA_FINSERV, SINGAPORE_UNIVERSAL, THAILAND_UNIVERSAL.
+                                       Example: ["TAIWAN_UNIVERSAL"] or ["TAIWAN_FINSERV", "TAIWAN_UNIVERSAL"]
+        regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
+                                        Required when regional_regulated_categories is set.
+                                        The identity IDs come from completing advertiser verification in Meta Business Settings.
+                                        Keys depend on the categories declared:
+                                        - TAIWAN_UNIVERSAL: taiwan_universal_beneficiary, taiwan_universal_payer
+                                        - TAIWAN_FINSERV: taiwan_finserv_beneficiary, taiwan_finserv_payer
+                                        - AUSTRALIA_FINSERV: australia_finserv_beneficiary, australia_finserv_payer
+                                        - SINGAPORE_UNIVERSAL: singapore_universal_beneficiary, singapore_universal_payer
+                                        Example: {"taiwan_universal_beneficiary": "<id>", "taiwan_universal_payer": "<id>"}
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -364,12 +380,18 @@ async def create_adset(
     if multi_advertiser_ads is not None:
         params["multi_advertiser_ads"] = str(multi_advertiser_ads)
 
+    if regional_regulated_categories is not None:
+        params["regional_regulated_categories"] = json.dumps(regional_regulated_categories)
+
+    if regional_regulation_identities is not None:
+        params["regional_regulation_identities"] = json.dumps(regional_regulation_identities)
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
     except Exception as e:
         error_msg = str(e)
-        
+
         # Enhanced error handling for DSA beneficiary issues
         if "permission" in error_msg.lower() or "insufficient" in error_msg.lower():
             return json.dumps({
@@ -413,6 +435,8 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         dsa_beneficiary: Optional[str] = None,
                         dsa_payor: Optional[str] = None,
                         multi_advertiser_ads: Optional[int] = None,
+                        regional_regulated_categories: Optional[List[str]] = None,
+                        regional_regulation_identities: Optional[Dict[str, Any]] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -450,6 +474,14 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                    Required for EU-targeted ad sets along with dsa_beneficiary.
         multi_advertiser_ads: Set to 0 to opt out of Multi-Advertiser Ads, 1 to opt in.
                              This is a TOP-LEVEL ad set parameter — do NOT put it inside the targeting object.
+        regional_regulated_categories: List of regional regulated categories for the ad set.
+                                       Required for ads targeting regulated regions (Taiwan, Australia, etc.).
+                                       Valid values: TAIWAN_FINSERV, TAIWAN_UNIVERSAL, AUSTRALIA_FINSERV,
+                                       INDIA_FINSERV, SINGAPORE_UNIVERSAL, THAILAND_UNIVERSAL.
+                                       Set to null/empty to remove existing categories.
+        regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
+                                        Required when regional_regulated_categories is set.
+                                        Set individual keys to null to remove them.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -550,6 +582,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if multi_advertiser_ads is not None:
         params['multi_advertiser_ads'] = str(multi_advertiser_ads)
+
+    if regional_regulated_categories is not None:
+        params['regional_regulated_categories'] = json.dumps(regional_regulated_categories)
+
+    if regional_regulation_identities is not None:
+        params['regional_regulation_identities'] = json.dumps(regional_regulation_identities)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
