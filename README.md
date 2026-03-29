@@ -18,6 +18,7 @@ mcp-name: co.pipeboard/meta-ads-mcp
 ## Table of Contents
 
 - [🚀 Getting started with Remote MCP (Recommended for Marketers)](#getting-started-with-remote-mcp-recommended)
+- [Pipeboard CLI (Alternative to MCP)](#pipeboard-cli-alternative-to-mcp)
 - [Local Installation (Technical Users Only)](#local-installation-technical-users-only)
 - [Features](#features)
 - [Configuration](#configuration)
@@ -99,6 +100,44 @@ https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
 ```
 
 This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
+
+### Also Available: Google Ads and TikTok Ads
+
+Pipeboard also offers remote MCP servers for **Google Ads** and **TikTok Ads**, set up the same way:
+
+| Platform | Remote MCP URL |
+|---|---|
+| Meta Ads | `https://mcp.pipeboard.co/meta-ads-mcp` |
+| Google Ads | `https://mcp.pipeboard.co/google-ads-mcp` |
+| TikTok Ads | `https://mcp.pipeboard.co/tiktok-ads-mcp` |
+
+Connect your ad accounts at [pipeboard.co](https://pipeboard.co) and use any of them with Claude, Cursor, or any MCP client.
+
+## Pipeboard CLI (Alternative to MCP)
+
+[**Pipeboard CLI**](https://github.com/pipeboard-co/pipeboard-cli) is a command-line tool that gives you access to all Pipeboard ad platforms — Meta Ads, Google Ads, and TikTok Ads — from a single binary. It is built for AI coding agents (Claude Code, Cline, OpenClaw) and automation scripts that prefer shell commands over MCP.
+
+**Why use the CLI instead of MCP:**
+
+- **All platforms in one tool** — Meta, Google, and TikTok Ads without configuring separate MCP servers
+- **More commands** — includes Pipeboard's full set of tools, which is larger than the open-source local MCP
+- **Faster for agents** — sub-50ms startup, no JSON-RPC overhead. Agents just shell out to `pipeboard`
+- **Single binary, zero dependencies** — `brew install pipeboard-co/tap/pipeboard` and you are done
+
+```bash
+# Install
+brew install pipeboard-co/tap/pipeboard
+
+# Authenticate
+export PIPEBOARD_API_TOKEN=<your-token>  # get one at pipeboard.co/settings
+
+# Use it
+pipeboard meta-ads get-campaigns --account-id act_123
+pipeboard google-ads get-campaigns --customer-id 1234567890
+pipeboard meta-ads get-insights --object-id act_123 --date-preset last_30d
+```
+
+No servers to run — the CLI talks to Pipeboard's cloud, same as the remote MCP. See the [pipeboard-cli repo](https://github.com/pipeboard-co/pipeboard-cli) for full documentation.
 
 ## Local Installation (Advanced Technical Users Only)
 
