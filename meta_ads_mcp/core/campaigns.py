@@ -221,7 +221,7 @@ async def create_campaign(
     if buying_type:
         params["buying_type"] = buying_type
     
-    if bid_strategy:
+    if bid_strategy and not use_adset_level_budgets:
         params["bid_strategy"] = bid_strategy
     
     if bid_cap is not None:
