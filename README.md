@@ -28,6 +28,10 @@ mcp-name: co.pipeboard/meta-ads-mcp
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/pipeboard-co-meta-ads-mcp).
+
 ## Getting started with Remote MCP (Recommended)
 
 The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. Our cloud service uses streamable HTTP transport for reliable, scalable access to Meta Ads data. No technical setup required - just connect and start analyzing your ad campaigns with AI!
