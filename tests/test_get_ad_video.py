@@ -167,6 +167,32 @@ class TestGetAdVideo:
             assert "error" in data
             assert "Could not get video" in data["error"]
 
+    async def test_get_ad_video_with_account_id_param(self):
+        """When account_id is provided, skip ad lookup and use advideos edge directly."""
+        mock_advideos_response = {
+            "data": [{
+                "id": "6666",
+                "source": "https://video-xx.fbcdn.net/v/bm-token.mp4",
+                "picture": "https://example.com/thumb.jpg",
+                "title": "BM Video",
+                "length": 45.0,
+            }]
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            # Only one call: advideos edge (no ad lookup needed)
+            mock_api.return_value = mock_advideos_response
+
+            result = await get_ad_video(access_token="test_token", video_id="6666", account_id="act_999888")
+            data = json.loads(result)
+
+            assert data["video_id"] == "6666"
+            assert data["source_url"] == "https://video-xx.fbcdn.net/v/bm-token.mp4"
+            # Should call advideos edge with normalized account_id (act_ stripped and re-added)
+            mock_api.assert_called_once()
+            call_args = mock_api.call_args
+            assert "act_999888/advideos" in call_args[0][0]
+
     async def test_get_ad_video_account_id_lookup_fails(self):
         """When account_id lookup fails, skip advideos edge and go direct."""
         mock_creatives = {

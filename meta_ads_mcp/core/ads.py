@@ -629,16 +629,19 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Optional[str] = None) -> str:
+async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = "", access_token: Optional[str] = None) -> str:
     """
     Get video details and source URL for a Meta ad video creative. Returns the video source URL
     (direct download link), thumbnail URL, and metadata (title, description, duration).
 
     Provide either ad_id (to auto-extract the video from the ad creative) or video_id directly.
+    Providing account_id is strongly recommended — it enables the advideos edge which works
+    with Business Manager tokens (avoids error 100/33 and error #10 on account-uploaded videos).
 
     Args:
         ad_id: Meta Ads ad ID (will extract video_id from the ad creative)
         video_id: Meta video ID (use this if you already have it from get_ad_creatives)
+        account_id: Ad account ID (e.g. "act_123" or "123"). Enables advideos edge lookup.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id and not video_id:
@@ -680,8 +683,11 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Option
     # Direct GET /{video_id} fails for BM-shared tokens (error 100/33) and
     # page-owned videos (error #10). The ad account edge works for any video
     # that belongs to the account's video library.
-    account_id = ""
-    if ad_id:
+    # Normalize: strip act_ prefix if present (we add it back below)
+    if account_id and account_id.startswith("act_"):
+        account_id = account_id[4:]
+
+    if not account_id and ad_id:
         ad_data = await make_api_request(ad_id, access_token, {"fields": "account_id"})
         account_id = ad_data.get("account_id", "")
 
