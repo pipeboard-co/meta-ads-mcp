@@ -674,12 +674,38 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Option
                 "hint": "This ad may be an image ad. Use get_ad_image instead."
             }, indent=2)
 
-    # Fetch video details including source URL
-    video_data = await make_api_request(
-        video_id,
-        access_token,
-        {"fields": "source,title,description,length,picture,thumbnails,created_time"}
-    )
+    video_fields = "source,title,description,length,picture,thumbnails,created_time"
+
+    # Strategy 1: Try fetching via the ad account's advideos edge.
+    # Direct GET /{video_id} fails for BM-shared tokens (error 100/33) and
+    # page-owned videos (error #10). The ad account edge works for any video
+    # that belongs to the account's video library.
+    account_id = ""
+    if ad_id:
+        ad_data = await make_api_request(ad_id, access_token, {"fields": "account_id"})
+        account_id = ad_data.get("account_id", "")
+
+    video_data = None
+    if account_id:
+        advideos_data = await make_api_request(
+            f"act_{account_id}/advideos",
+            access_token,
+            {
+                "fields": video_fields,
+                "filtering": json.dumps([{"field": "id", "operator": "IN", "value": [video_id]}]),
+            },
+        )
+        if "data" in advideos_data and advideos_data["data"]:
+            video_data = advideos_data["data"][0]
+            logger.debug(f"Video {video_id} resolved via ad account advideos edge")
+
+    # Strategy 2: Fall back to direct video node access.
+    if not video_data:
+        video_data = await make_api_request(
+            video_id,
+            access_token,
+            {"fields": video_fields}
+        )
 
     if "error" in video_data:
         return json.dumps({"error": f"Could not get video {video_id}", "details": video_data}, indent=2)
