@@ -866,6 +866,7 @@ if ENABLE_SAVE_AD_IMAGE_LOCALLY:
 @meta_api_tool
 async def update_ad(
     ad_id: str,
+    name: Optional[str] = None,
     status: Optional[str] = None,
     bid_amount: Optional[int] = None,
     tracking_specs: Optional[List[Dict[str, Any]]] = None,
@@ -877,6 +878,7 @@ async def update_ad(
 
     Args:
         ad_id: Meta Ads ad ID
+        name: New ad name
         status: Update ad status (ACTIVE, PAUSED, etc.)
         bid_amount: Bid amount in account currency (in cents for USD)
         tracking_specs: Optional tracking specifications (e.g., for pixel events).
@@ -891,6 +893,8 @@ async def update_ad(
         creative_id = str(creative_id)
 
     params = {}
+    if name is not None:
+        params["name"] = name
     if status:
         params["status"] = status
     if bid_amount is not None:
@@ -903,7 +907,7 @@ async def update_ad(
         params["creative"] = json.dumps({"creative_id": creative_id})
 
     if not params:
-        return json.dumps({"error": "No update parameters provided (status, bid_amount, tracking_specs, or creative_id)"}, indent=2)
+        return json.dumps({"error": "No update parameters provided (name, status, bid_amount, tracking_specs, or creative_id)"}, indent=2)
 
     endpoint = f"{ad_id}"
     try:
