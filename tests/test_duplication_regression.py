@@ -108,11 +108,20 @@ class TestDuplicationDecorators:
 
 class TestDuplicationAPIContract:
     """Test API contract to prevent regression in external API calls."""
-    
+
     @pytest.fixture(autouse=True)
     def enable_feature(self):
-        """Enable the duplication feature for these tests."""
-        with patch.dict(os.environ, {"META_ADS_ENABLE_DUPLICATION": "1"}):
+        """Enable the duplication feature for these tests.
+
+        Also explicitly set PIPEBOARD_API_BASE_URL to the production default so
+        that a dev-environment override (e.g. http://localhost:4000) does not
+        cause URL-assertion tests to fail.
+        """
+        env = {
+            "META_ADS_ENABLE_DUPLICATION": "1",
+            "PIPEBOARD_API_BASE_URL": "https://mcp.pipeboard.co",
+        }
+        with patch.dict(os.environ, env):
             import importlib
             from meta_ads_mcp.core import duplication
             importlib.reload(duplication)
