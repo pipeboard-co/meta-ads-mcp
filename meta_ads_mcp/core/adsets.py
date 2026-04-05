@@ -493,10 +493,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
                                         Required when regional_regulated_categories is set.
                                         Set individual keys to null to remove them.
-        attribution_spec: Attribution window specification for the ad set. Controls how conversions are
-                         attributed to ads. Overrides the default 7-day click attribution.
-                         Example for 1-day click: [{"event_type": "CLICK_THROUGH", "window_days": 1}]
-                         Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
+        attribution_spec: Attribution window specification for the ad set.
+                         WARNING: Meta no longer supports updating attribution_spec after ad set creation
+                         (error 1504040). To change attribution windows, create a new ad set instead.
+                         This parameter is kept for compatibility but will be rejected by Meta's API.
                          Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
                          Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
