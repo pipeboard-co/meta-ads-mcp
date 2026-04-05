@@ -109,6 +109,7 @@ async def create_adset(
     multi_advertiser_ads: Optional[int] = None,
     regional_regulated_categories: Optional[List[str]] = None,
     regional_regulation_identities: Optional[Dict[str, Any]] = None,
+    attribution_spec: Optional[List[Dict[str, Any]]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -175,6 +176,12 @@ async def create_adset(
                                         - AUSTRALIA_FINSERV: australia_finserv_beneficiary, australia_finserv_payer
                                         - SINGAPORE_UNIVERSAL: singapore_universal_beneficiary, singapore_universal_payer
                                         Example: {"taiwan_universal_beneficiary": "<id>", "taiwan_universal_payer": "<id>"}
+        attribution_spec: Attribution window specification for the ad set. Controls how conversions are
+                         attributed to ads. Default is 7-day click if not specified.
+                         Example for 1-day click: [{"event_type": "CLICK_THROUGH", "window_days": 1}]
+                         Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -386,6 +393,9 @@ async def create_adset(
     if regional_regulation_identities is not None:
         params["regional_regulation_identities"] = json.dumps(regional_regulation_identities)
 
+    if attribution_spec is not None:
+        params["attribution_spec"] = json.dumps(attribution_spec)
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
@@ -437,6 +447,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         multi_advertiser_ads: Optional[int] = None,
                         regional_regulated_categories: Optional[List[str]] = None,
                         regional_regulation_identities: Optional[Dict[str, Any]] = None,
+                        attribution_spec: Optional[List[Dict[str, Any]]] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -482,6 +493,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
                                         Required when regional_regulated_categories is set.
                                         Set individual keys to null to remove them.
+        attribution_spec: Attribution window specification for the ad set. Controls how conversions are
+                         attributed to ads. Overrides the default 7-day click attribution.
+                         Example for 1-day click: [{"event_type": "CLICK_THROUGH", "window_days": 1}]
+                         Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -588,6 +605,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if regional_regulation_identities is not None:
         params['regional_regulation_identities'] = json.dumps(regional_regulation_identities)
+
+    if attribution_spec is not None:
+        params['attribution_spec'] = json.dumps(attribution_spec)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
