@@ -1430,7 +1430,12 @@ async def create_ad_creative(
         # Determine whether to use asset_feed_spec path:
         # - plural parameters (headlines/descriptions/messages/image_hashes), OR
         # - optimization_type is set (FLEX creatives always use asset_feed_spec)
-        use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type)
+        # - video_id + description: Meta's video_data rejects "description" directly,
+        #   so route through asset_feed_spec which supports descriptions for video ads
+        use_asset_feed = bool(
+            headlines or descriptions or messages or image_hashes or optimization_type
+            or (video_id and description)
+        )
 
         # Track if this is a video creative
         is_video = bool(video_id)

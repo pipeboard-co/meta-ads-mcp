@@ -48,7 +48,8 @@ async def test_simple_video_creative_uses_video_data():
             link_url="https://example.com/",
             message="Check out this video",
             headline="Watch Now",
-            description="Amazing content",
+            # NOTE: no description here — providing description routes to asset_feed_spec;
+            # see test_video_creative_with_description for that path
             call_to_action_type="LEARN_MORE",
             access_token="test_token"
         )
@@ -72,8 +73,6 @@ async def test_simple_video_creative_uses_video_data():
         assert "link" not in video_data, "link must NOT be in video_data directly"
         assert video_data["message"] == "Check out this video"
         assert video_data["title"] == "Watch Now"
-        # description is not settable for simple video creatives (Meta API v24
-        # rejects it in both video_data and call_to_action.value)
         assert "description" not in video_data
         assert video_data["call_to_action"]["type"] == "LEARN_MORE"
         assert video_data["call_to_action"]["value"]["link"] == "https://example.com/"
@@ -410,3 +409,113 @@ async def test_image_creative_still_works():
 
         # instagram_actor_id at top level for image creatives
         assert "instagram_actor_id" not in creative_data
+
+
+@pytest.mark.asyncio
+async def test_video_creative_with_description():
+    """Test that video_id + description routes through asset_feed_spec (not video_data).
+
+    Meta API v24 rejects 'description' inside video_data. To support descriptions
+    for video ads, we route to asset_feed_spec when video_id + description is given.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_vid_desc"},
+            # 3) GET creative details
+            {"id": "creative_vid_desc", "name": "Video With Desc", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_desc_test",
+            name="Video With Description",
+            link_url="https://example.com/",
+            message="Primary text for the ad",
+            headline="Watch Now",
+            description="The text below the headline in feed placements",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token"
+        )
+
+        assert mock_api.call_count == 3
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # Should use asset_feed_spec (not simple video_data path), because
+        # video_data does not support description
+        assert "asset_feed_spec" in creative_data, (
+            "video + description should use asset_feed_spec so description is sent to Meta"
+        )
+
+        afs = creative_data["asset_feed_spec"]
+
+        # Description should be in asset_feed_spec.descriptions
+        assert "descriptions" in afs, "description should appear in asset_feed_spec.descriptions"
+        assert afs["descriptions"] == [{"text": "The text below the headline in feed placements"}]
+
+        # Other fields should also be present
+        assert afs["bodies"] == [{"text": "Primary text for the ad"}]
+        assert afs["titles"] == [{"text": "Watch Now"}]
+        assert "videos" in afs
+        assert afs["videos"][0]["video_id"] == "vid_desc_test"
+
+        # object_story_spec should use video_data as the anchor (not link_data)
+        assert "video_data" in creative_data["object_story_spec"]
+        assert "link_data" not in creative_data["object_story_spec"]
+
+        # description must NOT be in video_data (Meta API v24 rejects it there)
+        video_data = creative_data["object_story_spec"]["video_data"]
+        assert "description" not in video_data
+
+
+@pytest.mark.asyncio
+async def test_video_creative_description_only():
+    """Test that video_id + description alone (no other plural params) still works."""
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_vid_desc2"},
+            # 3) GET creative details
+            {"id": "creative_vid_desc2", "name": "Video Desc Only", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_desc_only",
+            name="Video Description Only",
+            link_url="https://example.com/",
+            description="Only description, no other plural params",
+            access_token="test_token"
+        )
+
+        assert mock_api.call_count == 3
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        assert "asset_feed_spec" in creative_data
+        afs = creative_data["asset_feed_spec"]
+        assert afs["descriptions"] == [{"text": "Only description, no other plural params"}]
+        assert "videos" in afs

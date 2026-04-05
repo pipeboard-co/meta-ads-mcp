@@ -75,18 +75,21 @@ async def test_forward_duplication_request_with_both_tokens():
     mock_response.status_code = 403
     mock_response.json.return_value = {"error": "premium_feature"}
     
-    # Mock the auth integration to return both tokens
-    with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth:
-        mock_auth.get_pipeboard_token.return_value = "pipeboard_token"
-        mock_auth.get_auth_token.return_value = "facebook_token"
-        
-        with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
-            
-            with pytest.raises(DuplicationError) as exc_info:
-                await _forward_duplication_request("campaign", "123456789", None, {
-                    "name_suffix": " - Test"
-                })
+    # Mock the auth integration to return both tokens.
+    # Explicitly unset PIPEBOARD_API_BASE_URL so the default production URL is used;
+    # otherwise a dev-env value like http://localhost:4000 would override it.
+    with patch.dict("os.environ", {"PIPEBOARD_API_BASE_URL": "https://mcp.pipeboard.co"}):
+        with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth:
+            mock_auth.get_pipeboard_token.return_value = "pipeboard_token"
+            mock_auth.get_auth_token.return_value = "facebook_token"
+
+            with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+                mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+
+                with pytest.raises(DuplicationError) as exc_info:
+                    await _forward_duplication_request("campaign", "123456789", None, {
+                        "name_suffix": " - Test"
+                    })
             result_json = json.loads(str(exc_info.value))
 
             # Should raise with premium feature message for 403 response
