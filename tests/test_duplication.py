@@ -90,28 +90,28 @@ async def test_forward_duplication_request_with_both_tokens():
                     await _forward_duplication_request("campaign", "123456789", None, {
                         "name_suffix": " - Test"
                     })
-            result_json = json.loads(str(exc_info.value))
+                result_json = json.loads(str(exc_info.value))
 
-            # Should raise with premium feature message for 403 response
-            assert result_json["error"] == "premium_feature_required"
-            assert "premium feature" in result_json["message"]
+                # Should raise with premium feature message for 403 response
+                assert result_json["error"] == "premium_feature_required"
+                assert "premium feature" in result_json["message"]
 
-            # Verify the HTTP request was made with correct parameters
-            mock_client.return_value.__aenter__.return_value.post.assert_called_once()
-            call_args = mock_client.return_value.__aenter__.return_value.post.call_args
-            
-            # Check URL
-            assert call_args[0][0] == "https://mcp.pipeboard.co/api/meta/duplicate/campaign/123456789"
-            
-            # Check dual headers (the key change!)
-            headers = call_args[1]["headers"]
-            assert headers["Authorization"] == "Bearer facebook_token"  # Facebook token for Meta API
-            assert headers["X-Pipeboard-Token"] == "pipeboard_token"   # Pipeboard token for auth
-            assert headers["Content-Type"] == "application/json"
-            
-            # Check JSON payload
-            json_payload = call_args[1]["json"]
-            assert json_payload == {"name_suffix": " - Test"}
+                # Verify the HTTP request was made with correct parameters
+                mock_client.return_value.__aenter__.return_value.post.assert_called_once()
+                call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+
+                # Check URL
+                assert call_args[0][0] == "https://mcp.pipeboard.co/api/meta/duplicate/campaign/123456789"
+
+                # Check dual headers (the key change!)
+                headers = call_args[1]["headers"]
+                assert headers["Authorization"] == "Bearer facebook_token"  # Facebook token for Meta API
+                assert headers["X-Pipeboard-Token"] == "pipeboard_token"   # Pipeboard token for auth
+                assert headers["Content-Type"] == "application/json"
+
+                # Check JSON payload
+                json_payload = call_args[1]["json"]
+                assert json_payload == {"name_suffix": " - Test"}
 
 
 @pytest.mark.asyncio

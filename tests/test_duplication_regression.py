@@ -141,24 +141,25 @@ class TestDuplicationAPIContract:
         
         for resource_type, resource_id, expected_url in test_cases:
             # Mock dual-header authentication
-            with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth:
-                mock_auth.get_pipeboard_token.return_value = "pipeboard_token"
-                mock_auth.get_auth_token.return_value = "facebook_token"
-                
-                with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
-                    mock_response = MagicMock()
-                    mock_response.status_code = 200
-                    mock_response.json.return_value = {"success": True}
-                    mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
-                    
-                    await duplication._forward_duplication_request(
-                        resource_type, resource_id, "test_token", {}
-                    )
-                    
-                    # Verify the correct URL was called
-                    call_args = mock_client.return_value.__aenter__.return_value.post.call_args
-                    actual_url = call_args[0][0]
-                    assert actual_url == expected_url, f"Expected {expected_url}, got {actual_url}"
+            with patch.dict(os.environ, {"PIPEBOARD_API_BASE_URL": "https://mcp.pipeboard.co"}):
+                with patch("meta_ads_mcp.core.duplication.FastMCPAuthIntegration") as mock_auth:
+                    mock_auth.get_pipeboard_token.return_value = "pipeboard_token"
+                    mock_auth.get_auth_token.return_value = "facebook_token"
+
+                    with patch("meta_ads_mcp.core.duplication.httpx.AsyncClient") as mock_client:
+                        mock_response = MagicMock()
+                        mock_response.status_code = 200
+                        mock_response.json.return_value = {"success": True}
+                        mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+
+                        await duplication._forward_duplication_request(
+                            resource_type, resource_id, "test_token", {}
+                        )
+
+                        # Verify the correct URL was called
+                        call_args = mock_client.return_value.__aenter__.return_value.post.call_args
+                        actual_url = call_args[0][0]
+                        assert actual_url == expected_url, f"Expected {expected_url}, got {actual_url}"
 
     @pytest.mark.asyncio
     async def test_request_headers_format(self, enable_feature):

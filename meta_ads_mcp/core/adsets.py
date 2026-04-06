@@ -119,7 +119,18 @@ async def create_adset(
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         campaign_id: Meta Ads campaign ID this ad set belongs to
         name: Ad set name
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS', 'VALUE')
+        optimization_goal: Conversion optimization goal. Valid values depend on the campaign objective and destination_type.
+                          OUTCOME_ENGAGEMENT + destination_type=WEBSITE: OFFSITE_CONVERSIONS, LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Post: POST_ENGAGEMENT, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Video: THRUPLAY, TWO_SECOND_CONTINUOUS_VIDEO_VIEWS.
+                          OUTCOME_ENGAGEMENT + On Event: EVENT_RESPONSES, IMPRESSIONS, POST_ENGAGEMENT, REACH.
+                          OUTCOME_ENGAGEMENT + On Page: PAGE_LIKES.
+                          OUTCOME_ENGAGEMENT + Messaging (MESSENGER/WHATSAPP/INSTAGRAM_DIRECT): CONVERSATIONS, LINK_CLICKS.
+                          OUTCOME_TRAFFIC + WEBSITE: LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_AWARENESS: REACH, IMPRESSIONS, AD_RECALL_LIFT, THRUPLAY.
+                          OUTCOME_LEADS: LEAD_GENERATION, QUALITY_LEAD (forms), QUALITY_CALL (calls), OFFSITE_CONVERSIONS, LINK_CLICKS (website).
+                          OUTCOME_SALES: OFFSITE_CONVERSIONS, VALUE, CONVERSATIONS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_APP_PROMOTION: APP_INSTALLS, APP_INSTALLS_AND_OFFSITE_CONVERSIONS, VALUE.
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
         daily_budget: Daily budget in account currency (in cents) as a string
