@@ -1132,6 +1132,114 @@ async def upload_ad_image(
         }, indent=2)
 
 
+# Valid image_crops keys accepted by Meta's API and their aspect ratios (width/height).
+_VALID_CROP_KEYS: list[tuple[str, int, int]] = [
+    ("100x100", 100, 100),   # 1:1 square — Feed, Marketplace, Search
+    ("100x72",  100,  72),   # ~1.39:1 horizontal — Marketplace, some placements
+    ("400x500", 400, 500),   # 4:5 portrait — Feed on mobile, Stories fallback
+    ("400x150", 400, 150),   # ~2.67:1 wide banner — Audience Network
+    ("600x360", 600, 360),   # ~1.67:1 horizontal — Right column, some placements
+    ("90x160",   90, 160),   # 9:16 tall portrait — Stories
+]
+_VALID_CROP_KEY_NAMES = [k for k, _, _ in _VALID_CROP_KEYS]
+
+
+def _compute_crop_box(
+    src_w: int, src_h: int, kw: int, kh: int
+) -> list[list[int]]:
+    """
+    Compute the largest centered crop box that fits within src_w×src_h
+    while matching the aspect ratio kw:kh.
+
+    Returns [[x1, y1], [x2, y2]] in pixel coordinates.
+    """
+    # Scale to fill the full height; check if it fits within width.
+    crop_w_from_h = src_h * kw / kh
+    if crop_w_from_h <= src_w:
+        # Use full height; crop width centered.
+        crop_w = round(crop_w_from_h)
+        crop_h = src_h
+    else:
+        # Use full width; crop height centered.
+        crop_w = src_w
+        crop_h = round(src_w * kh / kw)
+
+    x1 = (src_w - crop_w) // 2
+    y1 = (src_h - crop_h) // 2
+    return [[x1, y1], [x1 + crop_w, y1 + crop_h]]
+
+
+@mcp_server.tool()
+async def compute_image_crops(
+    image_width: int,
+    image_height: int,
+    crop_keys: Optional[List[str]] = None,
+) -> str:
+    """
+    Compute image_crops coordinates for a source image of the given dimensions.
+
+    Returns the image_crops dict ready to pass directly to create_ad_creative
+    or bulk_create_ad_creatives. For each crop key the result is the largest
+    centered region that fits within the source image while matching the key's
+    aspect ratio — equivalent to "Original" crop (no content is cut off beyond
+    what the ratio requires).
+
+    Args:
+        image_width: Width of the source image in pixels (e.g. 1080).
+        image_height: Height of the source image in pixels (e.g. 1080).
+        crop_keys: Optional list of specific crop keys to compute. Defaults to
+            all 6 keys accepted by Meta's API:
+              "100x100"  — 1:1 square (Feed, Marketplace, Search)
+              "100x72"   — ~1.39:1 horizontal (Marketplace, some placements)
+              "400x500"  — 4:5 portrait (Feed on mobile, Stories fallback)
+              "400x150"  — ~2.67:1 wide banner (Audience Network)
+              "600x360"  — ~1.67:1 horizontal (Right column, some placements)
+              "90x160"   — 9:16 tall portrait (Stories)
+
+    Returns:
+        JSON with the image_crops dict (ready for copy-paste into create_ad_creative),
+        plus validation notes for any invalid keys requested.
+    """
+    if image_width <= 0 or image_height <= 0:
+        return json.dumps({
+            "error": "image_width and image_height must be positive integers."
+        }, indent=2)
+
+    # Resolve which keys to compute.
+    if crop_keys:
+        requested = crop_keys
+    else:
+        requested = _VALID_CROP_KEY_NAMES
+
+    crops: dict[str, list[list[int]]] = {}
+    warnings: list[str] = []
+
+    key_map = {k: (kw, kh) for k, kw, kh in _VALID_CROP_KEYS}
+
+    for key in requested:
+        if key not in key_map:
+            warnings.append(
+                f"'{key}' is not a valid Meta API crop key and was skipped. "
+                f"Valid keys: {', '.join(_VALID_CROP_KEY_NAMES)}."
+            )
+            continue
+        kw, kh = key_map[key]
+        crops[key] = _compute_crop_box(image_width, image_height, kw, kh)
+
+    result: dict = {
+        "image_crops": crops,
+        "usage": (
+            "Pass image_crops directly to create_ad_creative or as the image_crops "
+            "field inside each element of bulk_create_ad_creatives."
+        ),
+        "source_dimensions": {"width": image_width, "height": image_height},
+    }
+    if warnings:
+        result["warnings"] = warnings
+
+    return json.dumps(result, indent=2)
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def create_ad_creative(
@@ -1235,9 +1343,26 @@ async def create_ad_creative(
                 caption field in link_data. If not provided, Meta auto-generates it
                 from the destination URL. Only applies to image (link_data) creatives.
         image_crops: Crop coordinates for different aspect ratios. Applied in link_data for
-                    image creatives. Format: {"100x100": [[x1,y1],[x2,y2]], "191x100": [[x1,y1],[x2,y2]]}.
-                    Coordinates specify top-left and bottom-right corners of the crop rectangle
-                    in the original image's pixel space. Omit to let Meta auto-crop.
+                    image creatives.
+
+                    Use the compute_image_crops tool first to get the correct coordinates
+                    for your specific image dimensions — it computes centered crop boxes
+                    for any source size automatically.
+
+                    Valid crop keys (only these 6 are accepted by Meta's API):
+                      "100x100"  — 1:1 square (Feed, Marketplace, Search)
+                      "100x72"   — ~1.39:1 horizontal (Marketplace, some placements)
+                      "400x500"  — 4:5 portrait (Feed on mobile, Stories fallback)
+                      "400x150"  — ~2.67:1 wide banner (Audience Network)
+                      "600x360"  — ~1.67:1 horizontal (Right column, some placements)
+                      "90x160"   — 9:16 tall portrait (Stories)
+
+                    Format: {"100x100": [[x1,y1],[x2,y2]], "400x500": [[x1,y1],[x2,y2]]}
+                    Coordinates are pixel-based (top-left and bottom-right corners).
+                    The bounding box aspect ratio must match the key ratio as closely as possible.
+                    Image origin (0,0) is the upper-left corner.
+
+                    Omit to let Meta auto-crop (default for horizontal is 1.91:1 recommended).
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
