@@ -1235,9 +1235,33 @@ async def create_ad_creative(
                 caption field in link_data. If not provided, Meta auto-generates it
                 from the destination URL. Only applies to image (link_data) creatives.
         image_crops: Crop coordinates for different aspect ratios. Applied in link_data for
-                    image creatives. Format: {"100x100": [[x1,y1],[x2,y2]], "191x100": [[x1,y1],[x2,y2]]}.
-                    Coordinates specify top-left and bottom-right corners of the crop rectangle
-                    in the original image's pixel space. Omit to let Meta auto-crop.
+                    image creatives.
+
+                    Valid crop keys (only these are accepted by Meta's API):
+                      "100x100"  — 1:1 square (Feed, Marketplace, Search)
+                      "100x72"   — ~1.39:1 horizontal (Marketplace, some placements)
+                      "400x500"  — 4:5 portrait (Feed on mobile, Stories fallback)
+                      "400x150"  — ~2.67:1 wide banner (Audience Network)
+                      "600x360"  — ~1.67:1 horizontal (Right column, some placements)
+                      "90x160"   — 9:16 tall portrait (Stories)
+
+                    NOTE: "191x100" is NOT a valid key and will cause "Invalid parameter" for
+                    all creatives. Use "600x360" for horizontal placements instead.
+
+                    Format: {"100x100": [[x1,y1],[x2,y2]], "400x500": [[x1,y1],[x2,y2]]}
+                    Coordinates are pixel-based (top-left and bottom-right corners).
+                    The bounding box aspect ratio must match the key ratio as closely as possible.
+                    Image origin (0,0) is the upper-left corner.
+
+                    Pre-computed "original" (no cropping) coordinates for a 1080x1080 source:
+                      "100x100":  [[0, 0],   [1080, 1080]]
+                      "100x72":   [[0, 151], [1080, 929]]
+                      "400x500":  [[108, 0], [972,  1080]]
+                      "400x150":  [[0, 337], [1080, 742]]
+                      "600x360":  [[0, 216], [1080, 864]]
+                      "90x160":   [[236, 0], [844,  1080]]
+
+                    Omit to let Meta auto-crop (default for horizontal is 1.91:1 recommended).
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
