@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 from meta_ads_mcp.core.ads import (
     create_ad_creative,
     _translate_video_customization_rules_for_existing_post,
+    _ALL_ENHANCEMENT_KEYS,
 )
 
 
@@ -225,7 +226,7 @@ async def test_create_ad_creative_object_story_id_no_page_required():
 
 @pytest.mark.asyncio
 async def test_create_ad_creative_disable_all_enhancements():
-    """disable_all_enhancements=True adds standard_enhancements OPT_OUT."""
+    """disable_all_enhancements=True sets every individual enhancement key to OPT_OUT."""
     with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api, \
          patch("meta_ads_mcp.core.ads._discover_pages_for_account") as mock_discover:
         mock_discover.return_value = {"success": True, "page_id": "111", "page_name": "Test"}
@@ -245,7 +246,12 @@ async def test_create_ad_creative_disable_all_enhancements():
         creative_data = mock_api.call_args_list[0][0][2]
         dof = creative_data.get("degrees_of_freedom_spec", {})
         cfs = dof.get("creative_features_spec", {})
-        assert cfs.get("standard_enhancements") == {"enroll_status": "OPT_OUT"}
+        # Every individual key should be OPT_OUT — "standard_enhancements" is deprecated
+        for key in _ALL_ENHANCEMENT_KEYS:
+            assert cfs.get(key) == {"enroll_status": "OPT_OUT"}, f"Expected {key} OPT_OUT"
+        assert "standard_enhancements" not in cfs, "deprecated key must not be sent"
+        # contextual_multi_ads should also be disabled
+        assert creative_data.get("contextual_multi_ads") == {"enroll_status": "OPT_OUT"}
 
 
 @pytest.mark.asyncio
@@ -270,4 +276,7 @@ async def test_create_ad_creative_object_story_id_with_disable_enhancements():
         assert creative_data["object_story_id"] == "124965744226834_3888007311337206"
         dof = creative_data.get("degrees_of_freedom_spec", {})
         cfs = dof.get("creative_features_spec", {})
-        assert cfs.get("standard_enhancements") == {"enroll_status": "OPT_OUT"}
+        for key in _ALL_ENHANCEMENT_KEYS:
+            assert cfs.get(key) == {"enroll_status": "OPT_OUT"}, f"Expected {key} OPT_OUT"
+        assert "standard_enhancements" not in cfs
+        assert creative_data.get("contextual_multi_ads") == {"enroll_status": "OPT_OUT"}

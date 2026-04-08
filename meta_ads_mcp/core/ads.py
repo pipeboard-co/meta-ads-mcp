@@ -152,6 +152,38 @@ def _translate_asset_customization_rules(
     return translated_rules, updated_images
 
 
+# All writable creative_features_spec keys for Meta Ads API v24+.
+# Mirrors ALL_ENHANCEMENT_KEYS in pipeboard.co/lib/meta-ads-enhancement-keys.ts.
+# Setting each key to {"enroll_status": "OPT_OUT"} disables the enhancement.
+# NOTE: The legacy "standard_enhancements" key is deprecated for POST operations
+# (Meta error subcode 3858504) — individual keys must be used instead.
+_ALL_ENHANCEMENT_KEYS: tuple[str, ...] = (
+    "add_text_overlay",
+    "creative_stickers",
+    "description_automation",
+    "image_animation",
+    "image_background_gen",
+    "image_templates",
+    "image_touchups",
+    "image_uncrop",
+    "inline_comment",
+    "media_type_automation",
+    "music_generation",
+    "pac_relaxation",
+    "product_extensions",
+    "profile_card",
+    "reveal_details_over_time",
+    "show_destination_blurbs",
+    "show_summary",
+    "site_extensions",
+    "text_optimizations",
+    "text_translation",
+    "translate_voiceover",
+    "video_auto_crop",
+    "video_highlights",
+)
+
+
 def _translate_video_customization_rules_for_existing_post(
     rules: List[Dict[str, Any]],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -1986,12 +2018,19 @@ async def create_ad_creative(
                 "creative_features_spec": creative_features_spec
             }
 
-        # Opt out of all Advantage+ Creative standard enhancements when requested.
-        # Merges into degrees_of_freedom_spec if creative_features_spec was also provided.
+        # Opt out of all Advantage+ Creative enhancements when requested.
+        # Sets every known individual creative_features_spec key to OPT_OUT and
+        # disables contextual_multi_ads.  The legacy "standard_enhancements" key
+        # is deprecated for POST operations (Meta error subcode 3858504), so we
+        # enumerate each key explicitly — matching the TS expandDisableAllEnhancements().
         if disable_all_enhancements:
             dof = creative_data.setdefault("degrees_of_freedom_spec", {})
             cfs = dof.setdefault("creative_features_spec", {})
-            cfs["standard_enhancements"] = {"enroll_status": "OPT_OUT"}
+            for key in _ALL_ENHANCEMENT_KEYS:
+                if key not in cfs:
+                    cfs[key] = {"enroll_status": "OPT_OUT"}
+            if "contextual_multi_ads" not in creative_data:
+                creative_data["contextual_multi_ads"] = {"enroll_status": "OPT_OUT"}
 
         # Add URL tracking parameters if provided.
         if url_tags:
