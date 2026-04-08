@@ -1184,8 +1184,6 @@ async def compute_image_crops(
     aspect ratio — equivalent to "Original" crop (no content is cut off beyond
     what the ratio requires).
 
-    This tool requires no authentication.
-
     Args:
         image_width: Width of the source image in pixels (e.g. 1080).
         image_height: Height of the source image in pixels (e.g. 1080).
@@ -1197,10 +1195,6 @@ async def compute_image_crops(
               "400x150"  — ~2.67:1 wide banner (Audience Network)
               "600x360"  — ~1.67:1 horizontal (Right column, some placements)
               "90x160"   — 9:16 tall portrait (Stories)
-
-            IMPORTANT: "191x100" is NOT a valid Meta API key. Passing it to
-            create_ad_creative causes all creatives to fail with "Invalid
-            parameter". Use "600x360" for horizontal placements instead.
 
     Returns:
         JSON with the image_crops dict (ready for copy-paste into create_ad_creative),
@@ -1226,8 +1220,7 @@ async def compute_image_crops(
         if key not in key_map:
             warnings.append(
                 f"'{key}' is not a valid Meta API crop key and was skipped. "
-                f"Valid keys: {', '.join(_VALID_CROP_KEY_NAMES)}. "
-                f"Note: '191x100' is invalid — use '600x360' for horizontal placements."
+                f"Valid keys: {', '.join(_VALID_CROP_KEY_NAMES)}."
             )
             continue
         kw, kh = key_map[key]
@@ -1363,9 +1356,6 @@ async def create_ad_creative(
                       "400x150"  — ~2.67:1 wide banner (Audience Network)
                       "600x360"  — ~1.67:1 horizontal (Right column, some placements)
                       "90x160"   — 9:16 tall portrait (Stories)
-
-                    NOTE: "191x100" is NOT a valid key and causes "Invalid parameter" for
-                    all creatives. Use "600x360" for horizontal placements instead.
 
                     Format: {"100x100": [[x1,y1],[x2,y2]], "400x500": [[x1,y1],[x2,y2]]}
                     Coordinates are pixel-based (top-left and bottom-right corners).
