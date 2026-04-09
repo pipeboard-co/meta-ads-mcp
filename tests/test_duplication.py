@@ -70,11 +70,11 @@ async def test_forward_duplication_request_no_facebook_token():
 async def test_forward_duplication_request_with_both_tokens():
     """Test that _forward_duplication_request makes HTTP request with dual headers."""
     from meta_ads_mcp.core.duplication import _forward_duplication_request, DuplicationError
-    
+
     mock_response = Mock()
     mock_response.status_code = 403
     mock_response.json.return_value = {"error": "premium_feature"}
-    
+
     # Mock the auth integration to return both tokens.
     # Explicitly unset PIPEBOARD_API_BASE_URL so the default production URL is used;
     # otherwise a dev-env value like http://localhost:4000 would override it.

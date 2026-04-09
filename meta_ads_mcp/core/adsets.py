@@ -133,8 +133,16 @@ async def create_adset(
                           OUTCOME_APP_PROMOTION: APP_INSTALLS, APP_INSTALLS_AND_OFFSITE_CONVERSIONS, VALUE.
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
-        daily_budget: Daily budget in account currency (in cents) as a string
-        lifetime_budget: Lifetime budget in account currency (in cents) as a string
+        daily_budget: Daily budget in account currency (in cents) as a string.
+                     CBO NOTE: Do NOT set this if the parent campaign already has a budget
+                     (Campaign Budget Optimization / CBO mode). Meta only allows budgets at one
+                     level: either the campaign OR the ad set, not both. If the campaign has a
+                     daily_budget or lifetime_budget, omit this field — the ad set will
+                     automatically use the campaign budget.
+        lifetime_budget: Lifetime budget in account currency (in cents) as a string.
+                        CBO NOTE: Do NOT set this if the parent campaign already has a budget
+                        (Campaign Budget Optimization / CBO mode). Omit this field when the
+                        campaign uses CBO — the ad set inherits the campaign budget automatically.
         targeting: Targeting specs (age, location, interests, etc).
                   targeting_automation.advantage_audience defaults to 0 if not set (Meta API v24+ requirement).
                   Set to 1 to enable Advantage+ Audience (requires age_max>=65). Use search_interests for interest IDs.
@@ -320,24 +328,45 @@ async def create_adset(
                 "example": '{"bid_strategy": "LOWEST_COST_WITH_MIN_ROAS", "bid_constraints": {"roas_average_floor": 20000}, "optimization_goal": "VALUE"}'
             }, indent=2)
 
-    # Pre-flight check: if no bid_amount provided, check whether the parent campaign's
-    # bid_strategy requires one. This prevents a confusing error from Meta's API when
-    # the campaign-level bid strategy forces child ad sets to provide bid_amount.
-    if bid_amount is None:
+    # Pre-flight check: fetch campaign data to catch common errors before hitting Meta's API.
+    # Triggered when the user provides a budget (CBO conflict check) or omits bid_amount
+    # (bid strategy compatibility check). A single API call covers both checks.
+    needs_campaign_check = (daily_budget is not None or lifetime_budget is not None or bid_amount is None)
+    if needs_campaign_check:
         try:
             campaign_data = await make_api_request(
-                campaign_id, access_token, {"fields": "bid_strategy,name"}
+                campaign_id, access_token, {"fields": "bid_strategy,name,daily_budget,lifetime_budget"}
             )
-            campaign_bid_strategy = campaign_data.get("bid_strategy")
-            if campaign_bid_strategy and campaign_bid_strategy in strategies_requiring_bid_amount:
-                campaign_name = campaign_data.get("name", campaign_id)
-                return json.dumps({
-                    "error": f"bid_amount is required because the parent campaign uses bid_strategy '{campaign_bid_strategy}'",
-                    "details": f"Campaign '{campaign_name}' ({campaign_id}) uses '{campaign_bid_strategy}', which requires all child ad sets to provide a bid_amount (in cents).",
-                    "workaround": "Either provide the bid_amount parameter, or change the campaign's bid_strategy to 'LOWEST_COST_WITHOUT_CAP'",
-                    "example_with_bid_amount": f'{{"bid_amount": 500}}  (= $5.00 bid cap)',
-                    "example_without_bid_amount": 'Change campaign bid strategy: update_campaign(campaign_id="' + campaign_id + '", bid_strategy="LOWEST_COST_WITHOUT_CAP")'
-                }, indent=2)
+            campaign_name = campaign_data.get("name", campaign_id)
+
+            # Check 1: CBO budget conflict.
+            # Meta does not allow budgets at both the campaign and ad set level.
+            # If the campaign already has a budget (CBO mode), reject ad-set-level budgets early.
+            if daily_budget is not None or lifetime_budget is not None:
+                campaign_daily_budget = campaign_data.get("daily_budget")
+                campaign_lifetime_budget = campaign_data.get("lifetime_budget")
+                if campaign_daily_budget or campaign_lifetime_budget:
+                    budget_type = "daily_budget" if campaign_daily_budget else "lifetime_budget"
+                    return json.dumps({
+                        "error": f"Budget conflict: campaign '{campaign_name}' ({campaign_id}) already has a {budget_type} set (Campaign Budget Optimization / CBO).",
+                        "details": "Meta does not allow budgets at both the campaign and ad set level. When a campaign uses CBO, its ad sets must not specify daily_budget or lifetime_budget.",
+                        "fix": "Remove daily_budget and lifetime_budget from your create_adset call. The ad set will automatically use the campaign budget.",
+                        "alternative": "To use ad set-level budgets (ABO), you would need to create a campaign without a campaign-level budget."
+                    }, indent=2)
+
+            # Check 2: Campaign bid strategy requires bid_amount.
+            # This prevents a confusing error from Meta's API when the campaign-level
+            # bid strategy forces child ad sets to provide bid_amount.
+            if bid_amount is None:
+                campaign_bid_strategy = campaign_data.get("bid_strategy")
+                if campaign_bid_strategy and campaign_bid_strategy in strategies_requiring_bid_amount:
+                    return json.dumps({
+                        "error": f"bid_amount is required because the parent campaign uses bid_strategy '{campaign_bid_strategy}'",
+                        "details": f"Campaign '{campaign_name}' ({campaign_id}) uses '{campaign_bid_strategy}', which requires all child ad sets to provide a bid_amount (in cents).",
+                        "workaround": "Either provide the bid_amount parameter, or change the campaign's bid_strategy to 'LOWEST_COST_WITHOUT_CAP'",
+                        "example_with_bid_amount": f'{{"bid_amount": 500}}  (= $5.00 bid cap)',
+                        "example_without_bid_amount": 'Change campaign bid strategy: update_campaign(campaign_id="' + campaign_id + '", bid_strategy="LOWEST_COST_WITHOUT_CAP")'
+                    }, indent=2)
         except Exception:
             pass  # If the pre-flight check fails, let the create request proceed normally
 
