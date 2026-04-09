@@ -1306,9 +1306,9 @@ async def create_ad_creative(
                           work without it). When using DEGREES_OF_FREEDOM, at least one asset field
                           (image_hashes, messages, headlines, or descriptions) must contain more than
                           one variant.
-                          NOTE: Meta silently ignores asset_customization_rules for DOF creatives.
-                          If you need per-placement images, use regular dynamic creative mode
-                          (without optimization_type) with is_dynamic_creative on the ad set.
+                          NOTE: If asset_customization_rules is also provided, optimization_type
+                          is automatically removed because Meta ignores placement rules for DOF
+                          creatives. The creative will use regular dynamic creative mode instead.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
                             'CALL_NOW'). When using CALL_NOW, also provide phone_number.
@@ -1552,14 +1552,29 @@ async def create_ad_creative(
             "name": name
         }
 
+        # Auto-downgrade DOF when asset_customization_rules is provided.
+        # Meta silently ignores asset_customization_rules for DEGREES_OF_FREEDOM
+        # creatives (confirmed by e2e testing). Dropping optimization_type lets the
+        # rules take effect under regular dynamic creative mode instead.
+        dof_downgraded = False
+        if optimization_type and asset_customization_rules:
+            logger.info(
+                "Dropping optimization_type=%s because asset_customization_rules is set "
+                "(Meta ignores placement rules for DOF creatives)",
+                optimization_type,
+            )
+            optimization_type = None
+            dof_downgraded = True
+
         # Determine whether to use asset_feed_spec path:
         # - plural parameters (headlines/descriptions/messages/image_hashes), OR
-        # - optimization_type is set (FLEX creatives always use asset_feed_spec)
+        # - optimization_type is set (FLEX creatives always use asset_feed_spec), OR
+        # - asset_customization_rules requires asset_feed_spec, OR
         # - video_id + description: Meta's video_data rejects "description" directly,
         #   so route through asset_feed_spec which supports descriptions for video ads
         use_asset_feed = bool(
             headlines or descriptions or messages or image_hashes or optimization_type
-            or (video_id and description)
+            or asset_customization_rules or (video_id and description)
         )
 
         # Track if this is a video creative
@@ -1876,11 +1891,20 @@ async def create_ad_creative(
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
-            return json.dumps({
+            result = {
                 "success": True,
                 "creative_id": creative_id,
-                "details": creative_details
-            }, indent=2)
+                "details": creative_details,
+            }
+            if dof_downgraded:
+                result["warning"] = (
+                    "optimization_type DEGREES_OF_FREEDOM was automatically removed because "
+                    "asset_customization_rules was provided. Meta silently ignores placement "
+                    "rules for DOF creatives. The creative was created using regular dynamic "
+                    "creative mode so placement-specific images are respected. To use DOF "
+                    "instead, remove asset_customization_rules."
+                )
+            return json.dumps(result, indent=2)
 
         return json.dumps(data, indent=2)
 
