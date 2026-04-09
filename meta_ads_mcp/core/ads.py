@@ -629,16 +629,19 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
 
 @mcp_server.tool()
 @meta_api_tool
-async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Optional[str] = None) -> str:
+async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = "", access_token: Optional[str] = None) -> str:
     """
     Get video details and source URL for a Meta ad video creative. Returns the video source URL
     (direct download link), thumbnail URL, and metadata (title, description, duration).
 
     Provide either ad_id (to auto-extract the video from the ad creative) or video_id directly.
+    Providing account_id is strongly recommended — it enables the advideos edge which works
+    with Business Manager tokens (avoids error 100/33 and error #10 on account-uploaded videos).
 
     Args:
         ad_id: Meta Ads ad ID (will extract video_id from the ad creative)
         video_id: Meta video ID (use this if you already have it from get_ad_creatives)
+        account_id: Ad account ID (e.g. "act_123" or "123"). Enables advideos edge lookup.
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not ad_id and not video_id:
@@ -674,12 +677,41 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", access_token: Option
                 "hint": "This ad may be an image ad. Use get_ad_image instead."
             }, indent=2)
 
-    # Fetch video details including source URL
-    video_data = await make_api_request(
-        video_id,
-        access_token,
-        {"fields": "source,title,description,length,picture,thumbnails,created_time"}
-    )
+    video_fields = "source,title,description,length,picture,thumbnails,created_time"
+
+    # Strategy 1: Try fetching via the ad account's advideos edge.
+    # Direct GET /{video_id} fails for BM-shared tokens (error 100/33) and
+    # page-owned videos (error #10). The ad account edge works for any video
+    # that belongs to the account's video library.
+    # Normalize: strip act_ prefix if present (we add it back below)
+    if account_id and account_id.startswith("act_"):
+        account_id = account_id[4:]
+
+    if not account_id and ad_id:
+        ad_data = await make_api_request(ad_id, access_token, {"fields": "account_id"})
+        account_id = ad_data.get("account_id", "")
+
+    video_data = None
+    if account_id:
+        advideos_data = await make_api_request(
+            f"act_{account_id}/advideos",
+            access_token,
+            {
+                "fields": video_fields,
+                "filtering": json.dumps([{"field": "id", "operator": "IN", "value": [video_id]}]),
+            },
+        )
+        if "data" in advideos_data and advideos_data["data"]:
+            video_data = advideos_data["data"][0]
+            logger.debug(f"Video {video_id} resolved via ad account advideos edge")
+
+    # Strategy 2: Fall back to direct video node access.
+    if not video_data:
+        video_data = await make_api_request(
+            video_id,
+            access_token,
+            {"fields": video_fields}
+        )
 
     if "error" in video_data:
         return json.dumps({"error": f"Could not get video {video_id}", "details": video_data}, indent=2)
@@ -834,6 +866,7 @@ if ENABLE_SAVE_AD_IMAGE_LOCALLY:
 @meta_api_tool
 async def update_ad(
     ad_id: str,
+    name: Optional[str] = None,
     status: Optional[str] = None,
     bid_amount: Optional[int] = None,
     tracking_specs: Optional[List[Dict[str, Any]]] = None,
@@ -845,6 +878,7 @@ async def update_ad(
 
     Args:
         ad_id: Meta Ads ad ID
+        name: New ad name
         status: Update ad status (ACTIVE, PAUSED, etc.)
         bid_amount: Bid amount in account currency (in cents for USD)
         tracking_specs: Optional tracking specifications (e.g., for pixel events).
@@ -859,6 +893,8 @@ async def update_ad(
         creative_id = str(creative_id)
 
     params = {}
+    if name is not None:
+        params["name"] = name
     if status:
         params["status"] = status
     if bid_amount is not None:
@@ -871,7 +907,7 @@ async def update_ad(
         params["creative"] = json.dumps({"creative_id": creative_id})
 
     if not params:
-        return json.dumps({"error": "No update parameters provided (status, bid_amount, tracking_specs, or creative_id)"}, indent=2)
+        return json.dumps({"error": "No update parameters provided (name, status, bid_amount, tracking_specs, or creative_id)"}, indent=2)
 
     endpoint = f"{ad_id}"
     try:
@@ -1096,6 +1132,114 @@ async def upload_ad_image(
         }, indent=2)
 
 
+# Valid image_crops keys accepted by Meta's API and their aspect ratios (width/height).
+_VALID_CROP_KEYS: list[tuple[str, int, int]] = [
+    ("100x100", 100, 100),   # 1:1 square — Feed, Marketplace, Search
+    ("100x72",  100,  72),   # ~1.39:1 horizontal — Marketplace, some placements
+    ("400x500", 400, 500),   # 4:5 portrait — Feed on mobile, Stories fallback
+    ("400x150", 400, 150),   # ~2.67:1 wide banner — Audience Network
+    ("600x360", 600, 360),   # ~1.67:1 horizontal — Right column, some placements
+    ("90x160",   90, 160),   # 9:16 tall portrait — Stories
+]
+_VALID_CROP_KEY_NAMES = [k for k, _, _ in _VALID_CROP_KEYS]
+
+
+def _compute_crop_box(
+    src_w: int, src_h: int, kw: int, kh: int
+) -> list[list[int]]:
+    """
+    Compute the largest centered crop box that fits within src_w×src_h
+    while matching the aspect ratio kw:kh.
+
+    Returns [[x1, y1], [x2, y2]] in pixel coordinates.
+    """
+    # Scale to fill the full height; check if it fits within width.
+    crop_w_from_h = src_h * kw / kh
+    if crop_w_from_h <= src_w:
+        # Use full height; crop width centered.
+        crop_w = round(crop_w_from_h)
+        crop_h = src_h
+    else:
+        # Use full width; crop height centered.
+        crop_w = src_w
+        crop_h = round(src_w * kh / kw)
+
+    x1 = (src_w - crop_w) // 2
+    y1 = (src_h - crop_h) // 2
+    return [[x1, y1], [x1 + crop_w, y1 + crop_h]]
+
+
+@mcp_server.tool()
+async def compute_image_crops(
+    image_width: int,
+    image_height: int,
+    crop_keys: Optional[List[str]] = None,
+) -> str:
+    """
+    Compute image_crops coordinates for a source image of the given dimensions.
+
+    Returns the image_crops dict ready to pass directly to create_ad_creative
+    or bulk_create_ad_creatives. For each crop key the result is the largest
+    centered region that fits within the source image while matching the key's
+    aspect ratio — equivalent to "Original" crop (no content is cut off beyond
+    what the ratio requires).
+
+    Args:
+        image_width: Width of the source image in pixels (e.g. 1080).
+        image_height: Height of the source image in pixels (e.g. 1080).
+        crop_keys: Optional list of specific crop keys to compute. Defaults to
+            all 6 keys accepted by Meta's API:
+              "100x100"  — 1:1 square (Feed, Marketplace, Search)
+              "100x72"   — ~1.39:1 horizontal (Marketplace, some placements)
+              "400x500"  — 4:5 portrait (Feed on mobile, Stories fallback)
+              "400x150"  — ~2.67:1 wide banner (Audience Network)
+              "600x360"  — ~1.67:1 horizontal (Right column, some placements)
+              "90x160"   — 9:16 tall portrait (Stories)
+
+    Returns:
+        JSON with the image_crops dict (ready for copy-paste into create_ad_creative),
+        plus validation notes for any invalid keys requested.
+    """
+    if image_width <= 0 or image_height <= 0:
+        return json.dumps({
+            "error": "image_width and image_height must be positive integers."
+        }, indent=2)
+
+    # Resolve which keys to compute.
+    if crop_keys:
+        requested = crop_keys
+    else:
+        requested = _VALID_CROP_KEY_NAMES
+
+    crops: dict[str, list[list[int]]] = {}
+    warnings: list[str] = []
+
+    key_map = {k: (kw, kh) for k, kw, kh in _VALID_CROP_KEYS}
+
+    for key in requested:
+        if key not in key_map:
+            warnings.append(
+                f"'{key}' is not a valid Meta API crop key and was skipped. "
+                f"Valid keys: {', '.join(_VALID_CROP_KEY_NAMES)}."
+            )
+            continue
+        kw, kh = key_map[key]
+        crops[key] = _compute_crop_box(image_width, image_height, kw, kh)
+
+    result: dict = {
+        "image_crops": crops,
+        "usage": (
+            "Pass image_crops directly to create_ad_creative or as the image_crops "
+            "field inside each element of bulk_create_ad_creatives."
+        ),
+        "source_dimensions": {"width": image_width, "height": image_height},
+    }
+    if warnings:
+        result["warnings"] = warnings
+
+    return json.dumps(result, indent=2)
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def create_ad_creative(
@@ -1199,9 +1343,26 @@ async def create_ad_creative(
                 caption field in link_data. If not provided, Meta auto-generates it
                 from the destination URL. Only applies to image (link_data) creatives.
         image_crops: Crop coordinates for different aspect ratios. Applied in link_data for
-                    image creatives. Format: {"100x100": [[x1,y1],[x2,y2]], "191x100": [[x1,y1],[x2,y2]]}.
-                    Coordinates specify top-left and bottom-right corners of the crop rectangle
-                    in the original image's pixel space. Omit to let Meta auto-crop.
+                    image creatives.
+
+                    Use the compute_image_crops tool first to get the correct coordinates
+                    for your specific image dimensions — it computes centered crop boxes
+                    for any source size automatically.
+
+                    Valid crop keys (only these 6 are accepted by Meta's API):
+                      "100x100"  — 1:1 square (Feed, Marketplace, Search)
+                      "100x72"   — ~1.39:1 horizontal (Marketplace, some placements)
+                      "400x500"  — 4:5 portrait (Feed on mobile, Stories fallback)
+                      "400x150"  — ~2.67:1 wide banner (Audience Network)
+                      "600x360"  — ~1.67:1 horizontal (Right column, some placements)
+                      "90x160"   — 9:16 tall portrait (Stories)
+
+                    Format: {"100x100": [[x1,y1],[x2,y2]], "400x500": [[x1,y1],[x2,y2]]}
+                    Coordinates are pixel-based (top-left and bottom-right corners).
+                    The bounding box aspect ratio must match the key ratio as closely as possible.
+                    Image origin (0,0) is the upper-left corner.
+
+                    Omit to let Meta auto-crop (default for horizontal is 1.91:1 recommended).
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
@@ -1408,8 +1569,13 @@ async def create_ad_creative(
         # Determine whether to use asset_feed_spec path:
         # - plural parameters (headlines/descriptions/messages/image_hashes), OR
         # - optimization_type is set (FLEX creatives always use asset_feed_spec), OR
-        # - asset_customization_rules requires asset_feed_spec
-        use_asset_feed = bool(headlines or descriptions or messages or image_hashes or optimization_type or asset_customization_rules)
+        # - asset_customization_rules requires asset_feed_spec, OR
+        # - video_id + description: Meta's video_data rejects "description" directly,
+        #   so route through asset_feed_spec which supports descriptions for video ads
+        use_asset_feed = bool(
+            headlines or descriptions or messages or image_hashes or optimization_type
+            or asset_customization_rules or (video_id and description)
+        )
 
         # Track if this is a video creative
         is_video = bool(video_id)

@@ -29,14 +29,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -69,7 +69,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,regional_regulated_categories,regional_regulation_identities"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -109,6 +109,7 @@ async def create_adset(
     multi_advertiser_ads: Optional[int] = None,
     regional_regulated_categories: Optional[List[str]] = None,
     regional_regulation_identities: Optional[Dict[str, Any]] = None,
+    attribution_spec: Optional[List[Dict[str, Any]]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -118,7 +119,18 @@ async def create_adset(
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         campaign_id: Meta Ads campaign ID this ad set belongs to
         name: Ad set name
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS', 'VALUE')
+        optimization_goal: Conversion optimization goal. Valid values depend on the campaign objective and destination_type.
+                          OUTCOME_ENGAGEMENT + destination_type=WEBSITE: OFFSITE_CONVERSIONS, LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Post: POST_ENGAGEMENT, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Video: THRUPLAY, TWO_SECOND_CONTINUOUS_VIDEO_VIEWS.
+                          OUTCOME_ENGAGEMENT + On Event: EVENT_RESPONSES, IMPRESSIONS, POST_ENGAGEMENT, REACH.
+                          OUTCOME_ENGAGEMENT + On Page: PAGE_LIKES.
+                          OUTCOME_ENGAGEMENT + Messaging (MESSENGER/WHATSAPP/INSTAGRAM_DIRECT): CONVERSATIONS, LINK_CLICKS.
+                          OUTCOME_TRAFFIC + WEBSITE: LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_AWARENESS: REACH, IMPRESSIONS, AD_RECALL_LIFT, THRUPLAY.
+                          OUTCOME_LEADS: LEAD_GENERATION, QUALITY_LEAD (forms), QUALITY_CALL (calls), OFFSITE_CONVERSIONS, LINK_CLICKS (website).
+                          OUTCOME_SALES: OFFSITE_CONVERSIONS, VALUE, CONVERSATIONS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_APP_PROMOTION: APP_INSTALLS, APP_INSTALLS_AND_OFFSITE_CONVERSIONS, VALUE.
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
         daily_budget: Daily budget in account currency (in cents) as a string
@@ -175,6 +187,12 @@ async def create_adset(
                                         - AUSTRALIA_FINSERV: australia_finserv_beneficiary, australia_finserv_payer
                                         - SINGAPORE_UNIVERSAL: singapore_universal_beneficiary, singapore_universal_payer
                                         Example: {"taiwan_universal_beneficiary": "<id>", "taiwan_universal_payer": "<id>"}
+        attribution_spec: Attribution window specification for the ad set. Controls how conversions are
+                         attributed to ads. Default is 7-day click if not specified.
+                         Example for 1-day click: [{"event_type": "CLICK_THROUGH", "window_days": 1}]
+                         Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -386,6 +404,9 @@ async def create_adset(
     if regional_regulation_identities is not None:
         params["regional_regulation_identities"] = json.dumps(regional_regulation_identities)
 
+    if attribution_spec is not None:
+        params["attribution_spec"] = json.dumps(attribution_spec)
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         return json.dumps(data, indent=2)
@@ -437,6 +458,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         multi_advertiser_ads: Optional[int] = None,
                         regional_regulated_categories: Optional[List[str]] = None,
                         regional_regulation_identities: Optional[Dict[str, Any]] = None,
+                        attribution_spec: Optional[List[Dict[str, Any]]] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -482,6 +504,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
                                         Required when regional_regulated_categories is set.
                                         Set individual keys to null to remove them.
+        attribution_spec: Attribution window specification for the ad set.
+                         WARNING: Meta no longer supports updating attribution_spec after ad set creation
+                         (error 1504040). To change attribution windows, create a new ad set instead.
+                         This parameter is kept for compatibility but will be rejected by Meta's API.
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -588,6 +616,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if regional_regulation_identities is not None:
         params['regional_regulation_identities'] = json.dumps(regional_regulation_identities)
+
+    if attribution_spec is not None:
+        params['attribution_spec'] = json.dumps(attribution_spec)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
