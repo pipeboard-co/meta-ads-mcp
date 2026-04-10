@@ -1399,6 +1399,7 @@ async def create_ad_creative(
     image_crops: Optional[Dict[str, Any]] = None,
     object_story_id: Optional[str] = None,
     disable_all_enhancements: Optional[bool] = None,
+    event_id: Optional[Union[str, int]] = None,
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash, video ID, or an existing post.
@@ -1509,6 +1510,12 @@ async def create_ad_creative(
                         text_optimizations, video_auto_crop, etc.) to OPT_OUT and also
                         disabling contextual_multi_ads. Use when you want full creative
                         control without Meta's auto-modifications.
+        event_id: Facebook Event ID for EVENT_RESPONSES campaigns. Required for
+                 event RSVP/ticket ads so the event card renders properly. Placed
+                 inside link_data.event_id, and also inside call_to_action.value
+                 when call_to_action_type is EVENT_RSVP or BUY_TICKETS. Use with
+                 link_url set to the Facebook event URL
+                 (https://www.facebook.com/events/EVENT_ID).
         asset_customization_rules: Lets you assign different images or videos to specific placement groups
                    (e.g., feed vs. stories). Only valid with image_hashes or plural asset params.
                    Each rule uses a user-friendly format that is automatically translated to
@@ -1542,6 +1549,8 @@ async def create_ad_creative(
         instagram_actor_id = str(instagram_actor_id).strip('"').strip("'")
     if lead_gen_form_id is not None:
         lead_gen_form_id = str(lead_gen_form_id)
+    if event_id is not None:
+        event_id = str(event_id)
 
     # Defensive coercion: some MCP transports deliver array/dict params as JSON strings
     if isinstance(asset_customization_rules, str):
@@ -1917,6 +1926,8 @@ async def create_ad_creative(
                         link_data["caption"] = caption
                     if image_crops:
                         link_data["image_crops"] = image_crops
+                    if event_id:
+                        link_data["event_id"] = event_id
                     if call_to_action_type:
                         cta = {"type": call_to_action_type}
                         cta_value = {}
@@ -1926,6 +1937,8 @@ async def create_ad_creative(
                             cta_value["lead_gen_form_id"] = lead_gen_form_id
                         if phone_number:
                             cta_value["phone_number"] = phone_number
+                        if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
+                            cta_value["event_id"] = event_id
                         if cta_value:
                             cta["value"] = cta_value
                         link_data["call_to_action"] = cta
@@ -2007,6 +2020,10 @@ async def create_ad_creative(
                 if image_crops:
                     creative_data["object_story_spec"]["link_data"]["image_crops"] = image_crops
 
+                # Add event_id to link_data for EVENT_RESPONSES campaigns
+                if event_id:
+                    creative_data["object_story_spec"]["link_data"]["event_id"] = event_id
+
                 # Add call_to_action to link_data for simple creatives
                 if call_to_action_type:
                     cta_data = {"type": call_to_action_type}
@@ -2017,6 +2034,8 @@ async def create_ad_creative(
                         cta_value["lead_gen_form_id"] = lead_gen_form_id
                     if phone_number:
                         cta_value["phone_number"] = phone_number
+                    if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
+                        cta_value["event_id"] = event_id
                     if cta_value:
                         cta_data["value"] = cta_value
 
