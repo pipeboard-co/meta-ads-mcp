@@ -1400,6 +1400,7 @@ async def create_ad_creative(
     object_story_id: Optional[str] = None,
     disable_all_enhancements: Optional[bool] = None,
     event_id: Optional[Union[str, int]] = None,
+    reminder_data: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash, video ID, or an existing post.
@@ -1421,7 +1422,7 @@ async def create_ad_creative(
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
-        link_url: Destination URL for the ad (required unless using lead_gen_form_id)
+        link_url: Destination URL for the ad (required unless using lead_gen_form_id or reminder_data)
         message: Single ad copy/text (cannot be used with messages)
         messages: List of primary text variants for multi-variant copy testing (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
@@ -1534,6 +1535,19 @@ async def create_ad_creative(
                      {"placement_groups": ["STORY"],
                       "customization_spec": {"image_hashes": ["<story_hash>"]}}
                    ]
+        reminder_data: Inline reminder event data for Instagram Reminder Ads
+                      (REMINDERS_SET optimization goal). Placed in
+                      object_story_spec.link_data.reminder_data. Use this instead of
+                      upcoming_events (which requires an existing ig_upcoming_event_id).
+                      Required fields:
+                        - event_name (str): Display title of the reminder event
+                        - start_time (int): Event start as a Unix timestamp (seconds)
+                        - end_time (int): Event end as a Unix timestamp (seconds)
+                      Example:
+                        {"event_name": "Summer Sale", "start_time": 1745596800, "end_time": 1745611200}
+                      The ad set must use optimization_goal=REMINDERS_SET and the placement
+                      must be restricted to Instagram feeds/stories. link_url is still
+                      recommended (the URL users visit after the reminder fires).
 
     Returns:
         JSON response with created creative details
@@ -1574,6 +1588,14 @@ async def create_ad_creative(
             _parsed = json.loads(image_crops)
             if isinstance(_parsed, dict):
                 image_crops = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(reminder_data, str):
+        try:
+            _parsed = json.loads(reminder_data)
+            if isinstance(_parsed, dict):
+                reminder_data = _parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -1639,8 +1661,8 @@ async def create_ad_creative(
     if message and messages:
         return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
     
-    if not link_url and not lead_gen_form_id and not object_story_id:
-        return json.dumps({"error": "No link_url provided. A destination URL is required for ad creatives (unless using lead_gen_form_id or object_story_id)."}, indent=2)
+    if not link_url and not lead_gen_form_id and not object_story_id and not reminder_data:
+        return json.dumps({"error": "No link_url provided. A destination URL is required for ad creatives (unless using lead_gen_form_id, object_story_id, or reminder_data)."}, indent=2)
 
     if not name:
         name = f"Creative {int(time.time())}"
@@ -1917,7 +1939,9 @@ async def create_ad_creative(
                     }
                 else:
                     # DOF: link_data serves as the "anchor" creative template.
-                    link_data = {"link": link_url}
+                    link_data = {}
+                    if link_url:
+                        link_data["link"] = link_url
                     if image_hashes:
                         link_data["image_hash"] = image_hashes[0]
                     elif image_hash:
@@ -1928,6 +1952,8 @@ async def create_ad_creative(
                         link_data["image_crops"] = image_crops
                     if event_id:
                         link_data["event_id"] = event_id
+                    if reminder_data:
+                        link_data["reminder_data"] = reminder_data
                     if call_to_action_type:
                         cta = {"type": call_to_action_type}
                         cta_value = {}
@@ -1992,12 +2018,15 @@ async def create_ad_creative(
                 }
             else:
                 # Use traditional object_story_spec with link_data for simple image creatives
+                link_data: Dict[str, Any] = {
+                    "image_hash": image_hash,
+                }
+                if link_url:
+                    link_data["link"] = link_url
+
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
-                    "link_data": {
-                        "image_hash": image_hash,
-                        "link": link_url
-                    }
+                    "link_data": link_data,
                 }
 
                 # Add optional parameters if provided
@@ -2023,6 +2052,12 @@ async def create_ad_creative(
                 # Add event_id to link_data for EVENT_RESPONSES campaigns
                 if event_id:
                     creative_data["object_story_spec"]["link_data"]["event_id"] = event_id
+
+                # Add reminder_data to link_data for Instagram Reminder Ads (REMINDERS_SET goal).
+                # The event details (name, start/end timestamps) are set inline rather than
+                # linking to an existing FB event via upcoming_events/ig_upcoming_event_id.
+                if reminder_data:
+                    creative_data["object_story_spec"]["link_data"]["reminder_data"] = reminder_data
 
                 # Add call_to_action to link_data for simple creatives
                 if call_to_action_type:
