@@ -45,7 +45,7 @@ class TestSearchInterests:
 
             result = await search_interests(access_token="test_token", query="movies", limit=10)
 
-            # Verify API call (no account_id by default)
+            # Verify API call
             mock_api.assert_called_once_with(
                 "search",
                 "test_token",
@@ -61,36 +61,6 @@ class TestSearchInterests:
             assert result_data == mock_response
             assert len(result_data["data"]) == 2
             assert result_data["data"][0]["name"] == "Movies"
-
-    @pytest.mark.asyncio
-    async def test_search_interests_with_account_id(self):
-        """Test search_interests passes account_id when provided (for account-restricted tokens)"""
-        mock_response = {"data": [{"id": "123", "name": "Cooking"}]}
-
-        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = mock_response
-
-            result = await search_interests(
-                access_token="test_token",
-                query="cooking",
-                limit=5,
-                account_id="act_123456789"
-            )
-
-            # Verify account_id is included in the API call
-            mock_api.assert_called_once_with(
-                "search",
-                "test_token",
-                {
-                    "type": "adinterest",
-                    "q": "cooking",
-                    "limit": 5,
-                    "account_id": "act_123456789"
-                }
-            )
-
-            result_data = json.loads(result)
-            assert result_data == mock_response
 
     @pytest.mark.asyncio
     async def test_search_interests_no_query(self):
@@ -120,7 +90,7 @@ class TestSearchInterests:
 
                 result = await search_interests(query="test")
 
-                # Verify default limit is used and no account_id
+                # Verify default limit is used
                 mock_api.assert_called_once_with(
                     "search",
                     "test_token",
@@ -170,7 +140,7 @@ class TestGetInterestSuggestions:
                 limit=15
             )
 
-            # Verify API call (no account_id by default)
+            # Verify API call
             mock_api.assert_called_once_with(
                 "search",
                 "test_token",
@@ -185,36 +155,6 @@ class TestGetInterestSuggestions:
             result_data = json.loads(result)
             assert result_data == mock_response
             assert len(result_data["data"]) == 2
-
-    @pytest.mark.asyncio
-    async def test_get_interest_suggestions_with_account_id(self):
-        """Test get_interest_suggestions passes account_id for account-restricted tokens"""
-        mock_response = {"data": [{"id": "999", "name": "Cricket"}]}
-
-        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = mock_response
-
-            result = await get_interest_suggestions(
-                access_token="test_token",
-                interest_list=["Basketball"],
-                limit=10,
-                account_id="act_987654321"
-            )
-
-            # Verify account_id is included in the API call
-            mock_api.assert_called_once_with(
-                "search",
-                "test_token",
-                {
-                    "type": "adinterestsuggestion",
-                    "interest_list": '["Basketball"]',
-                    "limit": 10,
-                    "account_id": "act_987654321"
-                }
-            )
-
-            result_data = json.loads(result)
-            assert result_data == mock_response
 
     @pytest.mark.asyncio
     async def test_get_interest_suggestions_no_list(self):
@@ -350,7 +290,7 @@ class TestSearchBehaviors:
 
             result = await search_behaviors(access_token="test_token", limit=25)
 
-            # Verify API call (no account_id by default)
+            # Verify API call
             mock_api.assert_called_once_with(
                 "search",
                 "test_token",
@@ -362,35 +302,6 @@ class TestSearchBehaviors:
             )
 
             # Verify response
-            result_data = json.loads(result)
-            assert result_data == mock_response
-
-    @pytest.mark.asyncio
-    async def test_search_behaviors_with_account_id(self):
-        """Test search_behaviors passes account_id for account-restricted tokens"""
-        mock_response = {"data": [{"id": 111, "name": "Frequent Travelers"}]}
-
-        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
-            mock_api.return_value = mock_response
-
-            result = await search_behaviors(
-                access_token="test_token",
-                limit=10,
-                account_id="act_111222333"
-            )
-
-            # Verify account_id is included in the API call
-            mock_api.assert_called_once_with(
-                "search",
-                "test_token",
-                {
-                    "type": "adTargetingCategory",
-                    "class": "behaviors",
-                    "limit": 10,
-                    "account_id": "act_111222333"
-                }
-            )
-
             result_data = json.loads(result)
             assert result_data == mock_response
 
