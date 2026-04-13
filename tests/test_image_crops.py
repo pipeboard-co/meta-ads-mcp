@@ -58,7 +58,7 @@ async def test_dof_creative_includes_image_crops():
 
         await create_ad_creative(
             account_id="act_123",
-            image_hash="abc123",
+            image_hashes=["abc123", "def456"],
             name="DOF Crop Test",
             link_url="https://example.com/",
             messages=["Msg 1", "Msg 2"],

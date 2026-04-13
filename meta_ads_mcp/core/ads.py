@@ -1691,24 +1691,6 @@ async def create_ad_creative(
     if thumbnail_url and not video_id:
         return json.dumps({"error": "thumbnail_url can only be used with video_id. For videos[], include thumbnail_url in each video entry."}, indent=2)
 
-    # Warn about DOF + multiple image_hashes: Meta silently serves only one image
-    if optimization_type == "DEGREES_OF_FREEDOM" and image_hashes and len(image_hashes) > 1:
-        return json.dumps({
-            "warning": "DOF/FLEX mode does not support multiple image_hashes",
-            "details": (
-                f"You provided {len(image_hashes)} image hashes with optimization_type=DEGREES_OF_FREEDOM. "
-                "The Meta API will accept this without error and all hashes will appear in asset_feed_spec, "
-                "but Meta silently collapses to a single image at serving time — the additional hashes are ignored. "
-                "Multi-ratio image delivery does NOT work in FLEX/DOF mode."
-            ),
-            "action_required": (
-                "Choose one of: "
-                "(1) Keep DOF mode but use only a single image hash — remove the extra hashes and retry. "
-                "(2) Remove optimization_type to use regular dynamic creative mode with is_dynamic_creative "
-                "on the ad set, which supports multiple images and asset_customization_rules."
-            )
-        }, indent=2)
-
     # Validate message / messages mutual exclusivity
     if message and messages:
         return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)

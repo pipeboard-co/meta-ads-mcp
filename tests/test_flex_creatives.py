@@ -51,29 +51,41 @@ class TestFlexCreatives:
             assert "asset_feed_spec" in creative_data
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
 
-    async def test_dof_with_multiple_image_hashes_returns_warning(self):
-        """DOF mode + multiple image_hashes must return a warning, not create the creative.
+    async def test_flex_creative_multiple_image_hashes(self):
+        """Multiple image_hashes produces correct images array in asset_feed_spec."""
+        sample_creative_data = {
+            "id": "123456789",
+            "name": "Multi-Image FLEX",
+            "status": "ACTIVE"
+        }
 
-        Meta silently collapses to one image at serving time — the extras are ignored.
-        The function must warn the LLM before the wasted API call.
-        """
-        result = await create_ad_creative(
-            access_token="test_token",
-            account_id="act_123456789",
-            name="Multi-Image FLEX",
-            image_hashes=["hash1", "hash2", "hash3"],
-            page_id="987654321",
-            link_url="https://example.com",
-            message="Test message",
-            optimization_type="DEGREES_OF_FREEDOM"
-        )
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
 
-        result_data = json.loads(result)
-        assert "warning" in result_data
-        assert "action_required" in result_data
-        assert "DEGREES_OF_FREEDOM" in result_data["details"]
-        # No API call should have been made
-        # (no mock needed — validation happens before any network call)
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Multi-Image FLEX",
+                image_hashes=["hash1", "hash2", "hash3"],
+                page_id="987654321",
+                link_url="https://example.com",
+                message="Test message",
+                optimization_type="DEGREES_OF_FREEDOM"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            call_args_list = mock_api.call_args_list
+            first_call = call_args_list[0]
+            creative_data = first_call[0][2]
+
+            assert "asset_feed_spec" in creative_data
+            assert creative_data["asset_feed_spec"]["images"] == [
+                {"hash": "hash1"},
+                {"hash": "hash2"},
+                {"hash": "hash3"}
+            ]
 
     async def test_flex_creative_multiple_messages(self):
         """Multiple messages produces correct bodies array in asset_feed_spec."""
@@ -275,11 +287,7 @@ class TestFlexCreatives:
             assert "asset_feed_spec" not in creative_data
 
     async def test_flex_creative_full_combination(self):
-        """FLEX creative with all plural params: single image_hash, messages, headlines, descriptions.
-
-        DOF mode supports only a single image — use image_hash (not image_hashes) for a single anchor
-        image while relying on multiple text variants for creative diversity.
-        """
+        """FLEX creative with all plural params: image_hashes, messages, headlines, descriptions."""
         sample_creative_data = {
             "id": "123456789",
             "name": "Full FLEX",
@@ -293,7 +301,7 @@ class TestFlexCreatives:
                 access_token="test_token",
                 account_id="act_123456789",
                 name="Full FLEX",
-                image_hash="hash1",
+                image_hashes=["hash1", "hash2"],
                 page_id="987654321",
                 link_url="https://example.com",
                 messages=["Text A", "Text B"],
@@ -312,6 +320,7 @@ class TestFlexCreatives:
 
             afs = creative_data["asset_feed_spec"]
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
+            assert afs["images"] == [{"hash": "hash1"}, {"hash": "hash2"}]
             assert afs["bodies"] == [{"text": "Text A"}, {"text": "Text B"}]
             assert afs["titles"] == [{"text": "Headline 1"}, {"text": "Headline 2"}]
             assert afs["descriptions"] == [{"text": "Desc 1"}, {"text": "Desc 2"}]
@@ -320,6 +329,8 @@ class TestFlexCreatives:
             # DOF: link_urls omitted, link goes in link_data.link
             assert "link_urls" not in afs
 
+            # Multi-image: link_data must include image_hash as primary anchor.
+            # Without it, Meta silently ignores asset_feed_spec.
             # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
