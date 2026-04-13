@@ -16,11 +16,12 @@ from meta_ads_mcp.core.ads import create_ad_creative, update_ad_creative
 class TestAdFormatsDefaultCreate:
     """Test ad_formats defaults in create_ad_creative."""
 
-    async def test_dof_with_image_hashes_omits_ad_formats(self):
-        """DEGREES_OF_FREEDOM + image_hashes should omit ad_formats entirely.
+    async def test_dof_with_single_image_hash_omits_ad_formats(self):
+        """DEGREES_OF_FREEDOM + single image_hash should omit ad_formats entirely.
 
         For DOF creatives, ad_formats is not needed — Meta handles format
-        selection via optimization_type=DEGREES_OF_FREEDOM.
+        selection via optimization_type=DEGREES_OF_FREEDOM. In DOF mode, only
+        a single image is supported (multiple image_hashes are blocked with a warning).
         """
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
@@ -31,7 +32,7 @@ class TestAdFormatsDefaultCreate:
                 access_token="test_token",
                 account_id="act_123456789",
                 name="Flexible Creative",
-                image_hashes=["hash1", "hash2", "hash3"],
+                image_hash="hash1",
                 page_id="987654321",
                 link_url="https://example.com",
                 messages=["Text A", "Text B"],
@@ -95,7 +96,7 @@ class TestAdFormatsDefaultCreate:
             assert afs["ad_formats"] == ["SINGLE_IMAGE"]
 
     async def test_explicit_ad_formats_overrides_default(self):
-        """Explicit ad_formats parameter overrides the smart default."""
+        """Explicit ad_formats parameter overrides the smart default (single image DOF creative)."""
         sample_creative_data = {"id": "123", "name": "Override", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -105,7 +106,7 @@ class TestAdFormatsDefaultCreate:
                 access_token="test_token",
                 account_id="act_123456789",
                 name="Override Format",
-                image_hashes=["hash1", "hash2"],
+                image_hash="hash1",
                 page_id="987654321",
                 link_url="https://example.com",
                 message="Test",
@@ -248,7 +249,11 @@ class TestFlexibleCreativeFullFlow:
     """Integration-style tests for the full Flexible creative flow."""
 
     async def test_full_flexible_creative_payload(self):
-        """Full DEGREES_OF_FREEDOM + image_hashes creative produces correct Flexible payload."""
+        """Full DEGREES_OF_FREEDOM + single image creative produces correct Flexible payload.
+
+        DOF mode only supports a single image — use image_hash (not image_hashes) and rely
+        on multiple text variants (messages, headlines, descriptions) for creative diversity.
+        """
         sample_creative_data = {"id": "123", "name": "Full Flex", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -258,7 +263,7 @@ class TestFlexibleCreativeFullFlow:
                 access_token="test_token",
                 account_id="act_123456789",
                 name="Full Flexible Creative",
-                image_hashes=["hash1", "hash2", "hash3"],
+                image_hash="hash1",
                 page_id="987654321",
                 link_url="https://example.com",
                 messages=["Primary text A", "Primary text B"],
@@ -277,9 +282,6 @@ class TestFlexibleCreativeFullFlow:
             # DOF creatives omit ad_formats — Meta handles format via optimization_type
             assert "ad_formats" not in afs
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
-            assert afs["images"] == [
-                {"hash": "hash1"}, {"hash": "hash2"}, {"hash": "hash3"}
-            ]
             assert afs["bodies"] == [
                 {"text": "Primary text A"}, {"text": "Primary text B"}
             ]
@@ -294,8 +296,6 @@ class TestFlexibleCreativeFullFlow:
             # DOF: link_urls omitted, link goes in link_data.link
             assert "link_urls" not in afs
 
-            # Multi-image: link_data must include image_hash as primary anchor.
-            # Without it, Meta silently ignores asset_feed_spec.
             # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
