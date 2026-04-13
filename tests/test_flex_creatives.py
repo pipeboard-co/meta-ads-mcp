@@ -52,7 +52,7 @@ class TestFlexCreatives:
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
 
     async def test_flex_creative_multiple_image_hashes(self):
-        """Multiple image_hashes produces correct images array in asset_feed_spec."""
+        """Multiple image_hashes with DOF: call proceeds but includes a warning in the response."""
         sample_creative_data = {
             "id": "123456789",
             "name": "Multi-Image FLEX",
@@ -75,6 +75,9 @@ class TestFlexCreatives:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
+            # Warning is present in the response
+            assert "warning" in result_data
+            assert "DEGREES_OF_FREEDOM" in result_data["warning"]
 
             call_args_list = mock_api.call_args_list
             first_call = call_args_list[0]

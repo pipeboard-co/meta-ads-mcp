@@ -1691,6 +1691,15 @@ async def create_ad_creative(
     if thumbnail_url and not video_id:
         return json.dumps({"error": "thumbnail_url can only be used with video_id. For videos[], include thumbnail_url in each video entry."}, indent=2)
 
+    # Note: DOF + multiple image_hashes — Meta accepts the spec but serves only ONE image at
+    # delivery time. The call proceeds; a warning is included in the response.
+    dof_multi_image_warning = (
+        f"DEGREES_OF_FREEDOM mode with {len(image_hashes)} image_hashes: Meta will only serve "
+        "ONE image at delivery time. Multiple image_hashes are accepted by the API but silently "
+        "collapsed at serving. To use multiple images, remove optimization_type and enable "
+        "is_dynamic_creative on the ad set instead."
+    ) if (optimization_type == "DEGREES_OF_FREEDOM" and image_hashes and len(image_hashes) > 1) else None
+
     # Validate message / messages mutual exclusivity
     if message and messages:
         return json.dumps({"error": "Cannot specify both 'message' and 'messages'. Use 'message' for single text or 'messages' for multiple variants."}, indent=2)
@@ -2214,7 +2223,7 @@ async def create_ad_creative(
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
-            result = {
+            result: dict = {
                 "success": True,
                 "creative_id": creative_id,
                 "details": creative_details,
@@ -2227,6 +2236,8 @@ async def create_ad_creative(
                     "creative mode so placement-specific images are respected. To use DOF "
                     "instead, remove asset_customization_rules."
                 )
+            elif dof_multi_image_warning:
+                result["warning"] = dof_multi_image_warning
             return json.dumps(result, indent=2)
 
         return json.dumps(data, indent=2)
