@@ -1401,6 +1401,8 @@ async def create_ad_creative(
     disable_all_enhancements: Optional[bool] = None,
     event_id: Optional[Union[str, int]] = None,
     reminder_data: Optional[Dict[str, Any]] = None,
+    videos: Optional[List[Dict[str, Any]]] = None,
+    images: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash, video ID, or an existing post.
@@ -1434,15 +1436,14 @@ async def create_ad_creative(
                   Upload a video first via the Meta API, then use the returned video ID here.
         thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
                       Meta will auto-generate a thumbnail if not provided.
-        optimization_type: Optional. Set to "DEGREES_OF_FREEDOM" for FLEX (Advantage+) creatives that
-                          allow Meta to auto-optimize across all asset combinations. Not required for
-                          text-only multi-variant creatives (messages[], headlines[], descriptions[]
-                          work without it). When using DEGREES_OF_FREEDOM, at least one asset field
-                          (image_hashes, messages, headlines, or descriptions) must contain more than
-                          one variant.
-                          NOTE: If asset_customization_rules is also provided, optimization_type
-                          is automatically removed because Meta ignores placement rules for DOF
-                          creatives. The creative will use regular dynamic creative mode instead.
+        optimization_type: Optional. Valid values:
+                          - "DEGREES_OF_FREEDOM": FLEX (Advantage+) creatives where Meta auto-optimizes
+                            across all asset combinations. At least one multi-variant asset field required.
+                            NOTE: Meta ignores asset_customization_rules for DOF creatives.
+                          - "PLACEMENT": Placement Asset Customization. Use with videos[]/images[] (with
+                            labels) and asset_customization_rules (with video_label/image_label references)
+                            to serve different aspect ratios per placement (e.g., 1:1 Feed + 9:16 Reels).
+                          Other values are passed through to Meta as-is.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
                             'CALL_NOW'). When using CALL_NOW, also provide phone_number.
@@ -1535,6 +1536,16 @@ async def create_ad_creative(
                      {"placement_groups": ["STORY"],
                       "customization_spec": {"image_hashes": ["<story_hash>"]}}
                    ]
+        videos: List of video objects for placement asset customization (multiple videos with
+                   different aspect ratios). Each entry: {"video_id": "...", "thumbnail_url": "...",
+                   "label": "my_label"}. The "label" field is converted to adlabels for use with
+                   asset_customization_rules video_label references. Cannot be used with video_id.
+                   Use with optimization_type="PLACEMENT" and asset_customization_rules.
+        images: List of image objects for placement asset customization (multiple images with
+                   different aspect ratios). Each entry: {"image_hash": "...", "label": "my_label"}.
+                   The "label" field is converted to adlabels for use with asset_customization_rules
+                   image_label references. Cannot be used with image_hash or image_hashes.
+                   Use with optimization_type="PLACEMENT" and asset_customization_rules.
         reminder_data: Inline reminder event data for Instagram Reminder Ads
                       (REMINDERS_SET optimization goal). Placed in
                       object_story_spec.link_data.reminder_data. Use this instead of
@@ -1599,6 +1610,22 @@ async def create_ad_creative(
         except (json.JSONDecodeError, TypeError):
             pass
 
+    if isinstance(videos, str):
+        try:
+            _parsed = json.loads(videos)
+            if isinstance(_parsed, list):
+                videos = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(images, str):
+        try:
+            _parsed = json.loads(images)
+            if isinstance(_parsed, list):
+                images = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     for _param_name, _param_val in [
         ('image_hashes', image_hashes),
         ('messages', messages),
@@ -1635,27 +1662,23 @@ async def create_ad_creative(
         optimization_type,
     )
 
-    # Validate media mutual exclusivity: exactly one of image_hash, image_hashes, or video_id
+    # Validate media mutual exclusivity: exactly one media source allowed
     # (object_story_id is an alternative media source — it references an existing post)
-    media_params = sum(1 for x in [image_hash, image_hashes, video_id] if x)
+    media_params = sum(1 for x in [image_hash, image_hashes, video_id, videos, images] if x)
     if media_params > 1:
-        return json.dumps({"error": "Only one media source allowed. Use 'image_hash' for a single image, 'image_hashes' for multiple images, or 'video_id' for video."}, indent=2)
+        return json.dumps({"error": "Only one media source allowed. Use 'image_hash' for a single image, 'image_hashes' for multiple images, 'video_id' for a single video, 'videos' for multiple videos with placement labels, or 'images' for multiple images with placement labels."}, indent=2)
 
     if media_params == 0 and not object_story_id:
-        return json.dumps({"error": "No media provided. Specify 'image_hash' for a single image, 'image_hashes' for multiple images, 'video_id' for a video, or 'object_story_id' to promote an existing post (format: {page_id}_{post_id})."}, indent=2)
+        return json.dumps({"error": "No media provided. Specify 'image_hash', 'image_hashes', 'video_id', 'videos', 'images', or 'object_story_id'."}, indent=2)
 
     # Validate image_hashes limits
     if image_hashes:
         if len(image_hashes) > 10:
             return json.dumps({"error": "Maximum 10 image hashes allowed for FLEX creatives"}, indent=2)
 
-    # Validate thumbnail_url only with video_id
+    # Validate thumbnail_url only with video_id (videos[] entries carry their own thumbnail_url)
     if thumbnail_url and not video_id:
-        return json.dumps({"error": "thumbnail_url can only be used with video_id"}, indent=2)
-
-    # Validate optimization_type
-    if optimization_type and optimization_type != "DEGREES_OF_FREEDOM":
-        return json.dumps({"error": f"Invalid optimization_type '{optimization_type}'. Only 'DEGREES_OF_FREEDOM' is supported."}, indent=2)
+        return json.dumps({"error": "thumbnail_url can only be used with video_id. For videos[], include thumbnail_url in each video entry."}, indent=2)
 
     # Validate message / messages mutual exclusivity
     if message and messages:
@@ -1737,8 +1760,10 @@ async def create_ad_creative(
         # Meta silently ignores asset_customization_rules for DEGREES_OF_FREEDOM
         # creatives (confirmed by e2e testing). Dropping optimization_type lets the
         # rules take effect under regular dynamic creative mode instead.
+        # NOTE: PLACEMENT optimization_type is NOT downgraded — it requires
+        # asset_customization_rules to work (that is its core purpose).
         dof_downgraded = False
-        if optimization_type and asset_customization_rules:
+        if optimization_type == "DEGREES_OF_FREEDOM" and asset_customization_rules:
             logger.info(
                 "Dropping optimization_type=%s because asset_customization_rules is set "
                 "(Meta ignores placement rules for DOF creatives)",
@@ -1754,12 +1779,12 @@ async def create_ad_creative(
         # - video_id + description: Meta's video_data rejects "description" directly,
         #   so route through asset_feed_spec which supports descriptions for video ads
         use_asset_feed = bool(
-            headlines or descriptions or messages or image_hashes or optimization_type
-            or asset_customization_rules or (video_id and description)
+            headlines or descriptions or messages or image_hashes or videos or images
+            or optimization_type or asset_customization_rules or (video_id and description)
         )
 
         # Track if this is a video creative
-        is_video = bool(video_id)
+        is_video = bool(video_id or videos)
 
         # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
         # If the caller didn't provide one, auto-fetch from the video object.
@@ -1818,21 +1843,46 @@ async def create_ad_creative(
 
         elif use_asset_feed:
             # Build the media array from the provided source
-            if is_video:
-                # Video in asset_feed_spec uses "videos" key
+            videos_array = None
+            images_array = None
+            if videos:
+                # Multiple videos with placement labels (e.g., 1:1 Feed + 9:16 Reels)
+                videos_array = []
+                for v in videos:
+                    entry = {"video_id": str(v["video_id"])}
+                    if v.get("thumbnail_url"):
+                        entry["thumbnail_url"] = v["thumbnail_url"]
+                    if v.get("label"):
+                        entry["adlabels"] = [{"name": v["label"]}]
+                    elif v.get("adlabels"):
+                        entry["adlabels"] = v["adlabels"]
+                    videos_array.append(entry)
+            elif video_id:
+                # Single video in asset_feed_spec uses "videos" key
                 videos_array = [{"video_id": video_id}]
                 if thumbnail_url:
                     videos_array[0]["thumbnail_url"] = thumbnail_url
+            elif images:
+                # Multiple images with placement labels (e.g., 1:1 Feed + 4:5 mobile + 9:16 Stories)
+                images_array = []
+                for img in images:
+                    entry = {"hash": img.get("image_hash") or img.get("hash")}
+                    if img.get("label"):
+                        entry["adlabels"] = [{"name": img["label"]}]
+                    elif img.get("adlabels"):
+                        entry["adlabels"] = img["adlabels"]
+                    images_array.append(entry)
             elif image_hashes:
                 images_array = [{"hash": h} for h in image_hashes]
-            else:
+            elif image_hash:
                 images_array = [{"hash": image_hash}]
 
             # Translate placement_groups-style asset_customization_rules to Meta API format.
             # Meta API uses customization_spec for placement selection (publisher_platforms,
             # facebook_positions, instagram_positions) and image_label/video_label at the
-            # rule level for asset selection. Images also need adlabels assigned.
-            if asset_customization_rules and not is_video:
+            # rule level for asset selection. Assets also need adlabels assigned.
+            # Rules in raw Meta API format (without placement_groups) are passed through unchanged.
+            if asset_customization_rules and images_array:
                 asset_customization_rules, images_array = _translate_asset_customization_rules(
                     asset_customization_rules, images_array
                 )
@@ -1853,22 +1903,28 @@ async def create_ad_creative(
             #   asset_feed_spec includes link_urls, ad_formats, call_to_action_types
             #   as before (this path is verified working).
             # ------------------------------------------------------------------
-            if optimization_type:
+            is_dof = optimization_type == "DEGREES_OF_FREEDOM"
+            if is_dof:
+                # DOF: asset_feed_spec has ONLY media, optimization_type, text variants.
+                # URL, ad_formats, and CTA go in object_story_spec.link_data.
                 asset_feed_spec = {"optimization_type": optimization_type}
                 # Only include ad_formats if explicitly provided by the caller
                 if ad_formats:
                     asset_feed_spec["ad_formats"] = ad_formats
             else:
+                # Non-DOF (including PLACEMENT): link_urls and ad_formats in asset_feed_spec.
                 resolved_ad_formats = ad_formats or (["SINGLE_VIDEO"] if is_video else ["SINGLE_IMAGE"])
                 asset_feed_spec = {
                     "link_urls": [{"website_url": link_url}],
                     "ad_formats": resolved_ad_formats,
                 }
+                if optimization_type:
+                    asset_feed_spec["optimization_type"] = optimization_type
 
             # Add media to asset_feed_spec (shared by both paths)
-            if is_video:
+            if videos_array:
                 asset_feed_spec["videos"] = videos_array
-            else:
+            if images_array:
                 asset_feed_spec["images"] = images_array
 
             # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
@@ -1892,7 +1948,7 @@ async def create_ad_creative(
                 asset_feed_spec["bodies"] = [{"text": message}]
 
             # CTA in asset_feed_spec only for non-DOF (DOF puts CTA in link_data)
-            if call_to_action_type and not optimization_type:
+            if call_to_action_type and not is_dof:
                 asset_feed_spec["call_to_action_types"] = [call_to_action_type]
 
             # Add placement-specific asset customization rules if provided
@@ -1905,8 +1961,8 @@ async def create_ad_creative(
             # Build object_story_spec for asset_feed_spec creatives.
             # Meta rejects bare page_id (error 2061015) — needs a link anchor.
             # ------------------------------------------------------------------
-            if is_video:
-                # Video FLEX: use video_data with call_to_action carrying
+            if video_id:
+                # Single video: use video_data with call_to_action carrying
                 # the link URL. This is required for Meta to associate the
                 # video and destination URL with the creative.
                 video_anchor = {"video_id": video_id}
@@ -1928,50 +1984,48 @@ async def create_ad_creative(
                     "page_id": page_id,
                     "video_data": video_anchor
                 }
+            elif not is_dof:
+                # Non-DOF (including PLACEMENT): bare object_story_spec.
+                # URLs, images, CTA live exclusively in asset_feed_spec.
+                # Ref: developers.facebook.com/docs/marketing-api/asset-customization-rules
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                }
             else:
-                if not optimization_type:
-                    # Non-DOF asset_feed_spec: Meta requires bare
-                    # object_story_spec (no link_data).  URLs, images, CTA
-                    # live exclusively in asset_feed_spec.
-                    # Ref: developers.facebook.com/docs/marketing-api/asset-customization-rules
-                    creative_data["object_story_spec"] = {
-                        "page_id": page_id,
-                    }
-                else:
-                    # DOF: link_data serves as the "anchor" creative template.
-                    link_data = {}
+                # DOF image: link_data serves as the "anchor" creative template.
+                link_data = {}
+                if link_url:
+                    link_data["link"] = link_url
+                if image_hashes:
+                    link_data["image_hash"] = image_hashes[0]
+                elif image_hash:
+                    link_data["image_hash"] = image_hash
+                if caption:
+                    link_data["caption"] = caption
+                if image_crops:
+                    link_data["image_crops"] = image_crops
+                if event_id:
+                    link_data["event_id"] = event_id
+                if reminder_data:
+                    link_data["reminder_data"] = reminder_data
+                if call_to_action_type:
+                    cta = {"type": call_to_action_type}
+                    cta_value = {}
                     if link_url:
-                        link_data["link"] = link_url
-                    if image_hashes:
-                        link_data["image_hash"] = image_hashes[0]
-                    elif image_hash:
-                        link_data["image_hash"] = image_hash
-                    if caption:
-                        link_data["caption"] = caption
-                    if image_crops:
-                        link_data["image_crops"] = image_crops
-                    if event_id:
-                        link_data["event_id"] = event_id
-                    if reminder_data:
-                        link_data["reminder_data"] = reminder_data
-                    if call_to_action_type:
-                        cta = {"type": call_to_action_type}
-                        cta_value = {}
-                        if link_url:
-                            cta_value["link"] = link_url
-                        if lead_gen_form_id:
-                            cta_value["lead_gen_form_id"] = lead_gen_form_id
-                        if phone_number:
-                            cta_value["phone_number"] = phone_number
-                        if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
-                            cta_value["event_id"] = event_id
-                        if cta_value:
-                            cta["value"] = cta_value
-                        link_data["call_to_action"] = cta
-                    creative_data["object_story_spec"] = {
-                        "page_id": page_id,
-                        "link_data": link_data,
-                    }
+                        cta_value["link"] = link_url
+                    if lead_gen_form_id:
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        cta_value["phone_number"] = phone_number
+                    if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
+                        cta_value["event_id"] = event_id
+                    if cta_value:
+                        cta["value"] = cta_value
+                    link_data["call_to_action"] = cta
+                creative_data["object_story_spec"] = {
+                    "page_id": page_id,
+                    "link_data": link_data,
+                }
         else:
             if is_video:
                 # Use object_story_spec with video_data for simple video creatives.
