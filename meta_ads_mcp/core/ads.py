@@ -1431,7 +1431,13 @@ async def create_ad_creative(
         headlines: List of headline variants for multi-variant copy testing (cannot be used with headline)
         description: Single description for simple ads (cannot be used with descriptions)
         descriptions: List of description variants for multi-variant copy testing (cannot be used with description)
-        image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash or video_id)
+        image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash or video_id).
+                     IMPORTANT: When optimization_type="DEGREES_OF_FREEDOM" (FLEX/Advantage+ mode),
+                     only ONE image is served at delivery time regardless of how many hashes you provide.
+                     The Meta API accepts multiple hashes without error and they all appear in
+                     asset_feed_spec, but Meta silently collapses to a single image at serving time.
+                     Use image_hashes with multiple entries only in non-DOF (regular dynamic creative)
+                     mode. In DOF mode, pass a single hash.
         video_id: Meta video ID for video creatives (cannot be used with image_hash or image_hashes).
                   Upload a video first via the Meta API, then use the returned video ID here.
         thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
@@ -1440,6 +1446,11 @@ async def create_ad_creative(
                           - "DEGREES_OF_FREEDOM": FLEX (Advantage+) creatives where Meta auto-optimizes
                             across all asset combinations. At least one multi-variant asset field required.
                             NOTE: Meta ignores asset_customization_rules for DOF creatives.
+                            NOTE: When using DEGREES_OF_FREEDOM with image_hashes, providing multiple
+                            hashes is accepted by the API without error, but Meta silently serves only
+                            ONE image at delivery time. A warning is included in the response if multiple
+                            hashes are detected. To serve multiple images, omit optimization_type and
+                            enable is_dynamic_creative on the ad set instead.
                           - "PLACEMENT": Placement Asset Customization. Use with videos[]/images[] (with
                             labels) and asset_customization_rules (with video_label/image_label references)
                             to serve different aspect ratios per placement (e.g., 1:1 Feed + 9:16 Reels).
@@ -1679,6 +1690,15 @@ async def create_ad_creative(
     # Validate thumbnail_url only with video_id (videos[] entries carry their own thumbnail_url)
     if thumbnail_url and not video_id:
         return json.dumps({"error": "thumbnail_url can only be used with video_id. For videos[], include thumbnail_url in each video entry."}, indent=2)
+
+    # Note: DOF + multiple image_hashes — Meta accepts the spec but serves only ONE image at
+    # delivery time. The call proceeds; a warning is included in the response.
+    dof_multi_image_warning = (
+        f"DEGREES_OF_FREEDOM mode with {len(image_hashes)} image_hashes: Meta will only serve "
+        "ONE image at delivery time. Multiple image_hashes are accepted by the API but silently "
+        "collapsed at serving. To use multiple images, remove optimization_type and enable "
+        "is_dynamic_creative on the ad set instead."
+    ) if (optimization_type == "DEGREES_OF_FREEDOM" and image_hashes and len(image_hashes) > 1) else None
 
     # Validate message / messages mutual exclusivity
     if message and messages:
@@ -2203,7 +2223,7 @@ async def create_ad_creative(
             }
 
             creative_details = await make_api_request(creative_endpoint, access_token, creative_params)
-            result = {
+            result: dict = {
                 "success": True,
                 "creative_id": creative_id,
                 "details": creative_details,
@@ -2216,6 +2236,8 @@ async def create_ad_creative(
                     "creative mode so placement-specific images are respected. To use DOF "
                     "instead, remove asset_customization_rules."
                 )
+            elif dof_multi_image_warning:
+                result["warning"] = dof_multi_image_warning
             return json.dumps(result, indent=2)
 
         return json.dumps(data, indent=2)
