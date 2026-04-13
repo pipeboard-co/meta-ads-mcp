@@ -1,0 +1,11 @@
+# Allowed email addresses for the pre-commit check.
+# This repo is public — only add addresses here if they are
+# intentionally part of the project (e.g. package metadata, support contacts).
+#
+# One address per line. Lines starting with # are comments.
+
+# Package author (pyproject.toml)
+yves.junqueira@gmail.com
+
+# Pipeboard support contact (README, reports.py)
+info@pipeboard.co
