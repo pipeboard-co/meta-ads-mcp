@@ -1440,6 +1440,11 @@ async def create_ad_creative(
                      mode. In DOF mode, pass a single hash.
         video_id: Meta video ID for video creatives (cannot be used with image_hash or image_hashes).
                   Upload a video first via the Meta API, then use the returned video ID here.
+                  IMPORTANT: When also providing instagram_actor_id, both instagram_actor_id AND
+                  ad_formats=["SINGLE_VIDEO"] must be present — otherwise Meta returns error 1443048
+                  ("object_story_spec ill formed"). This is handled automatically: video creatives
+                  that include instagram_actor_id are routed through asset_feed_spec so that
+                  ad_formats=["SINGLE_VIDEO"] is always included in the API request.
         thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
                       Meta will auto-generate a thumbnail if not provided.
         optimization_type: Optional. Valid values:
@@ -1464,6 +1469,11 @@ async def create_ad_creative(
                            to avoid JavaScript integer precision loss for IDs exceeding
                            Number.MAX_SAFE_INTEGER). Sent as instagram_user_id inside
                            object_story_spec (Meta deprecated instagram_actor_id in Jan 2026).
+                           IMPORTANT for video creatives: Meta requires ad_formats=["SINGLE_VIDEO"]
+                           in asset_feed_spec alongside instagram_user_id in object_story_spec —
+                           omitting either causes error 1443048 ("object_story_spec ill formed").
+                           This is auto-handled: video_id + instagram_actor_id always routes through
+                           asset_feed_spec so ad_formats=["SINGLE_VIDEO"] is included automatically.
         ad_formats: List of ad format strings for asset_feed_spec (e.g., ["AUTOMATIC_FORMAT"] for
                    Flexible ads, ["SINGLE_IMAGE"] for single image, ["SINGLE_VIDEO"] for video).
                    When optimization_type is "DEGREES_OF_FREEDOM" with image_hashes, defaults to
@@ -1798,9 +1808,14 @@ async def create_ad_creative(
         # - asset_customization_rules requires asset_feed_spec, OR
         # - video_id + description: Meta's video_data rejects "description" directly,
         #   so route through asset_feed_spec which supports descriptions for video ads
+        # - video_id + instagram_actor_id: Meta requires ad_formats=["SINGLE_VIDEO"] in
+        #   asset_feed_spec alongside instagram_user_id in object_story_spec — error 1443048
+        #   ("object_story_spec ill formed") occurs when asset_feed_spec is absent. Routing
+        #   through asset_feed_spec ensures ad_formats is automatically included.
         use_asset_feed = bool(
             headlines or descriptions or messages or image_hashes or videos or images
             or optimization_type or asset_customization_rules or (video_id and description)
+            or (video_id and instagram_actor_id)
         )
 
         # Track if this is a video creative

@@ -9,3 +9,7 @@ yves.junqueira@gmail.com
 
 # Pipeboard support contact (README, reports.py)
 info@pipeboard.co
+
+# pytest decorator false-positive: @pytest.mark.asyncio matches the email regex
+# because the diff +@pytest.mark.asyncio has + in the character class
+pytest.mark.asyncio
