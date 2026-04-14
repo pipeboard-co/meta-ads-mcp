@@ -117,7 +117,13 @@ async def test_video_creative_with_thumbnail():
 
 @pytest.mark.asyncio
 async def test_video_creative_with_instagram_actor_id():
-    """Test that instagram_actor_id goes at the top level for video creatives (not inside video_data)."""
+    """Test that video_id + instagram_actor_id routes through asset_feed_spec.
+
+    Meta returns error 1443048 ("object_story_spec ill formed") when instagram_user_id is
+    in object_story_spec but ad_formats=["SINGLE_VIDEO"] is absent from asset_feed_spec.
+    The fix: video_id + instagram_actor_id always triggers asset_feed_spec so that
+    ad_formats=["SINGLE_VIDEO"] is automatically included in the API call.
+    """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -144,11 +150,24 @@ async def test_video_creative_with_instagram_actor_id():
         )
 
         creative_data = mock_api.call_args_list[1][0][2]
-        video_data = creative_data["object_story_spec"]["video_data"]
 
-        # instagram_actor_id is sent as instagram_user_id inside object_story_spec
-        # (Meta deprecated instagram_actor_id in Jan 2026).
-        # It must NOT be inside video_data (error_subcode 1443050).
+        # Must use asset_feed_spec path (not simple video_data-only path) so that
+        # ad_formats=["SINGLE_VIDEO"] is present alongside instagram_user_id.
+        assert "asset_feed_spec" in creative_data, (
+            "video_id + instagram_actor_id must route through asset_feed_spec "
+            "to include ad_formats — otherwise Meta returns error 1443048"
+        )
+        afs = creative_data["asset_feed_spec"]
+        assert afs["ad_formats"] == ["SINGLE_VIDEO"], (
+            "ad_formats must be SINGLE_VIDEO for video creatives with instagram_actor_id"
+        )
+        assert "videos" in afs
+        assert afs["videos"][0]["video_id"] == "vid_333444"
+
+        # instagram_user_id must be in object_story_spec (not inside video_data)
+        # (Meta deprecated instagram_actor_id in Jan 2026; error_subcode 1443050 if inside video_data)
+        assert "object_story_spec" in creative_data
+        video_data = creative_data["object_story_spec"]["video_data"]
         assert "instagram_actor_id" not in video_data
         assert "instagram_user_id" not in video_data
         assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_555666"
@@ -519,3 +538,94 @@ async def test_video_creative_description_only():
         afs = creative_data["asset_feed_spec"]
         assert afs["descriptions"] == [{"text": "Only description, no other plural params"}]
         assert "videos" in afs
+
+
+@pytest.mark.asyncio
+async def test_video_creative_instagram_actor_id_with_explicit_ad_formats():
+    """Test that explicitly passing ad_formats with instagram_actor_id + video_id also works.
+
+    The caller can still explicitly pass ad_formats=["SINGLE_VIDEO"]; it should be
+    respected (not overridden) when both instagram_actor_id and video_id are present.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_vid_ig_fmt"},
+            # 3) GET creative details
+            {"id": "creative_vid_ig_fmt", "name": "Video IG Explicit Fmt", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_explicit_fmt",
+            name="Video IG Explicit Format",
+            link_url="https://example.com/",
+            instagram_actor_id="ig_777888",
+            ad_formats=["SINGLE_VIDEO"],
+            access_token="test_token"
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # Must route through asset_feed_spec with explicit ad_formats respected
+        assert "asset_feed_spec" in creative_data
+        afs = creative_data["asset_feed_spec"]
+        assert afs["ad_formats"] == ["SINGLE_VIDEO"]
+        assert "videos" in afs
+        assert afs["videos"][0]["video_id"] == "vid_explicit_fmt"
+        assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_777888"
+
+
+@pytest.mark.asyncio
+async def test_video_creative_without_instagram_actor_id_uses_simple_path():
+    """Regression: video_id without instagram_actor_id still uses simple object_story_spec path.
+
+    Only video_id + instagram_actor_id together triggers asset_feed_spec routing.
+    A plain video creative (no instagram_actor_id) should still use the simple path.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_vid_simple"},
+            # 3) GET creative details
+            {"id": "creative_vid_simple", "name": "Simple Video", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_simple_only",
+            name="Simple Video No IG",
+            link_url="https://example.com/",
+            # No instagram_actor_id — should stay on simple path
+            access_token="test_token"
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # Without instagram_actor_id, should use simple object_story_spec path (no asset_feed_spec)
+        assert "asset_feed_spec" not in creative_data
+        assert "object_story_spec" in creative_data
+        assert "video_data" in creative_data["object_story_spec"]
+        assert "instagram_user_id" not in creative_data["object_story_spec"]
