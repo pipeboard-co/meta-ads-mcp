@@ -1403,6 +1403,8 @@ async def create_ad_creative(
     reminder_data: Optional[Dict[str, Any]] = None,
     videos: Optional[List[Dict[str, Any]]] = None,
     images: Optional[List[Dict[str, Any]]] = None,
+    facebook_branded_content: Optional[Dict[str, Any]] = None,
+    instagram_branded_content: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Create a new ad creative using an uploaded image hash, video ID, or an existing post.
@@ -1580,6 +1582,16 @@ async def create_ad_creative(
                       The ad set must use optimization_goal=REMINDERS_SET and the placement
                       must be restricted to Instagram feeds/stories. link_url is still
                       recommended (the URL users visit after the reminder fires).
+        facebook_branded_content: Branded content settings for Facebook partnership ads.
+                      Used when a brand sponsors a creator's content on Facebook.
+                      Format: {"sponsor_page_id": "<page_id>"} where sponsor_page_id is the
+                      Facebook Page ID of the sponsoring brand. Passed as a top-level field
+                      on the ad creative. The creator's page should be set as page_id.
+        instagram_branded_content: Branded content settings for Instagram partnership ads.
+                      Used when a brand sponsors a creator's content on Instagram.
+                      Format: {"sponsor_id": "<instagram_user_id>"} where sponsor_id is the
+                      Instagram account ID of the sponsoring brand. Passed as a top-level
+                      field on the ad creative.
 
     Returns:
         JSON response with created creative details
@@ -1644,6 +1656,22 @@ async def create_ad_creative(
             _parsed = json.loads(images)
             if isinstance(_parsed, list):
                 images = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(facebook_branded_content, str):
+        try:
+            _parsed = json.loads(facebook_branded_content)
+            if isinstance(_parsed, dict):
+                facebook_branded_content = _parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    if isinstance(instagram_branded_content, str):
+        try:
+            _parsed = json.loads(instagram_branded_content)
+            if isinstance(_parsed, dict):
+                instagram_branded_content = _parsed
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -2199,6 +2227,12 @@ async def create_ad_creative(
         # inside object_story_spec (sibling of page_id and video_data/link_data).
         if instagram_actor_id and "object_story_spec" in creative_data:
             creative_data["object_story_spec"]["instagram_user_id"] = instagram_actor_id
+
+        # Branded/partnership content fields — top-level creative params.
+        if facebook_branded_content:
+            creative_data["facebook_branded_content"] = facebook_branded_content
+        if instagram_branded_content:
+            creative_data["instagram_branded_content"] = instagram_branded_content
 
         # Make API request to create the creative
         data = await make_api_request(endpoint, access_token, creative_data, method="POST")
