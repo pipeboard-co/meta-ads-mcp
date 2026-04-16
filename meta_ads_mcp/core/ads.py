@@ -2188,35 +2188,22 @@ async def create_ad_creative(
 
             # ------------------------------------------------------------------
             # Build object_story_spec for asset_feed_spec creatives.
-            # Meta rejects bare page_id (error 2061015) — needs a link anchor.
+            #
+            # When asset_feed_spec.videos[] carries the video, object_story_spec
+            # MUST contain only page_id (plus instagram_user_id, appended later).
+            # Adding a video_data anchor here triggers Meta API v24 error 1443048
+            # ("object_story_spec ill formed"). Per Meta's official docs, the
+            # canonical shape for asset_feed_spec.videos[] is bare page_id —
+            # the video, thumbnail, link URL, and CTA all live in
+            # asset_feed_spec.
+            # Ref: https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
             # ------------------------------------------------------------------
-            if video_id:
-                # Single video: use video_data with call_to_action carrying
-                # the link URL. This is required for Meta to associate the
-                # video and destination URL with the creative.
-                video_anchor = {"video_id": video_id}
-                if thumbnail_url:
-                    video_anchor["image_url"] = thumbnail_url
-                cta_type = call_to_action_type or "LEARN_MORE"
-                cta_value = {}
-                if link_url:
-                    cta_value["link"] = link_url
-                if lead_gen_form_id:
-                    cta_value["lead_gen_form_id"] = lead_gen_form_id
-                if phone_number:
-                    cta_value["phone_number"] = phone_number
-                cta_data = {"type": cta_type}
-                if cta_value:
-                    cta_data["value"] = cta_value
-                video_anchor["call_to_action"] = cta_data
-                creative_data["object_story_spec"] = {
-                    "page_id": page_id,
-                    "video_data": video_anchor
-                }
-            elif not is_dof:
-                # Non-DOF (including PLACEMENT): bare object_story_spec.
-                # URLs, images, CTA live exclusively in asset_feed_spec.
-                # Ref: developers.facebook.com/docs/marketing-api/asset-customization-rules
+            if video_id or not is_dof:
+                # video_id branch: asset_feed_spec.videos already carries the
+                # video + thumbnail; link_urls + call_to_action_types carry
+                # the destination + CTA. object_story_spec must be bare.
+                # Non-DOF image (PLACEMENT etc.) branch: same shape — URLs,
+                # images, CTA live exclusively in asset_feed_spec.
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                 }
