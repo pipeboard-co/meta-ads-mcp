@@ -1851,7 +1851,11 @@ async def create_ad_creative(
 
         # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
         # If the caller didn't provide one, auto-fetch from the video object.
-        if is_video and not thumbnail_url:
+        # Guard on `video_id` (not `is_video`): when only `videos=[...]` is passed,
+        # `video_id` is None and calling Meta with a None ID returns a generic error
+        # ("Could not auto-fetch thumbnail for video None"). Per-video thumbnail
+        # fetching for the videos[] loop is handled separately downstream.
+        if video_id and not thumbnail_url:
             try:
                 video_info = await make_api_request(
                     video_id, access_token, {"fields": "picture"}

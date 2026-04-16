@@ -629,3 +629,60 @@ async def test_video_creative_without_instagram_actor_id_uses_simple_path():
         assert "object_story_spec" in creative_data
         assert "video_data" in creative_data["object_story_spec"]
         assert "instagram_user_id" not in creative_data["object_story_spec"]
+
+
+@pytest.mark.asyncio
+async def test_videos_array_does_not_trigger_thumbnail_fetch_with_none():
+    """Regression: when only videos=[...] is passed (no singular video_id, no thumbnail_url),
+    the singular-video thumbnail auto-fetch must NOT call Meta with video_id=None.
+
+    Previously the guard was `if is_video and not thumbnail_url`, where
+    `is_video = bool(video_id or videos)`. That meant the videos=[...] path also
+    triggered the singular-video thumbnail fetch — which then called
+    make_api_request(None, ...) and Meta returned a generic error logged as
+    "Could not auto-fetch thumbnail for video None".
+
+    The fix tightens the guard to `if video_id and not thumbnail_url`, so the
+    singular-video fetch only runs when video_id is actually set.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # POST create creative (no thumbnail auto-fetch precedes this)
+            {"id": "creative_videos_arr"},
+            # GET creative details
+            {"id": "creative_videos_arr", "name": "Videos Array Creative", "status": "ACTIVE"},
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            videos=[{"video_id": "vid_videos_arr"}],  # plural form, no thumbnail_url
+            name="Videos Array Test",
+            link_url="https://example.com/",
+            access_token="test_token",
+        )
+
+        # Exactly two calls: POST create + GET details. No thumbnail auto-fetch
+        # should have been issued for the singular video_id branch.
+        assert mock_api.call_count == 2, (
+            f"Expected exactly 2 API calls (POST create + GET details), "
+            f"got {mock_api.call_count}: "
+            f"{[c.args[0] for c in mock_api.call_args_list]}"
+        )
+
+        # And critically, none of the calls should have been made with None as the
+        # first positional argument (which is what the buggy guard produced).
+        for call in mock_api.call_args_list:
+            assert call.args[0] is not None, (
+                f"make_api_request was called with None as the first arg "
+                f"(args={call.args!r}); the singular-video thumbnail auto-fetch "
+                f"should be skipped when only videos=[...] is provided"
+            )
