@@ -3,7 +3,10 @@
 import pytest
 import json
 from unittest.mock import AsyncMock, patch
-from meta_ads_mcp.core.ads import create_ad_creative
+from meta_ads_mcp.core.ads import (
+    create_ad_creative,
+    _translate_video_customization_rules,
+)
 
 
 def parse_error_result(result: str) -> dict:
@@ -686,3 +689,230 @@ async def test_videos_array_does_not_trigger_thumbnail_fetch_with_none():
                 f"(args={call.args!r}); the singular-video thumbnail auto-fetch "
                 f"should be skipped when only videos=[...] is provided"
             )
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _translate_video_customization_rules (videos[] path)
+# ---------------------------------------------------------------------------
+
+def test_translate_video_rules_placement_groups_format():
+    """placement_groups + customization_spec.video_ids translates to Meta API format.
+
+    Expected Meta format:
+      - rule has customization_spec.publisher_platforms and facebook/instagram_positions
+      - rule has video_label: {"name": "..."} at the rule level
+      - rule has NO `placement_groups` key
+      - videos_array entries get `adlabels` assigned matching their rule
+    """
+    videos_array = [
+        {"video_id": "vidA"},
+        {"video_id": "vidB"},
+    ]
+    rules = [
+        {
+            "placement_groups": ["FEED"],
+            "customization_spec": {"video_ids": ["vidA"]},
+        },
+        {
+            "placement_groups": ["STORY"],
+            "customization_spec": {"video_ids": ["vidB"]},
+        },
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
+
+    # Both rules translated
+    assert len(translated) == 2
+
+    # FEED rule
+    feed_rule = translated[0]
+    assert "placement_groups" not in feed_rule
+    feed_cspec = feed_rule["customization_spec"]
+    assert "facebook" in feed_cspec["publisher_platforms"]
+    assert "instagram" in feed_cspec["publisher_platforms"]
+    assert "feed" in feed_cspec["facebook_positions"]
+    assert feed_rule["video_label"] == {"name": "PBOARD_VID_0"}
+
+    # STORY rule
+    story_rule = translated[1]
+    assert "placement_groups" not in story_rule
+    story_cspec = story_rule["customization_spec"]
+    assert "story" in story_cspec["facebook_positions"]
+    assert "story" in story_cspec["instagram_positions"]
+    assert story_rule["video_label"] == {"name": "PBOARD_VID_1"}
+
+    # videos_array gets adlabels
+    assert len(updated_videos) == 2
+    assert updated_videos[0]["video_id"] == "vidA"
+    assert updated_videos[0]["adlabels"] == [{"name": "PBOARD_VID_0"}]
+    assert updated_videos[1]["video_id"] == "vidB"
+    assert updated_videos[1]["adlabels"] == [{"name": "PBOARD_VID_1"}]
+
+
+def test_translate_video_rules_passthrough_raw_format():
+    """Rules already in Meta API format (no placement_groups) pass through unchanged."""
+    videos_array = [
+        {"video_id": "vidA", "adlabels": [{"name": "labelfb"}]},
+    ]
+    raw_rules = [
+        {
+            "customization_spec": {
+                "publisher_platforms": ["facebook"],
+                "facebook_positions": ["feed"],
+            },
+            "video_label": {"name": "labelfb"},
+        },
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(raw_rules, videos_array)
+
+    # Rules passed through unchanged
+    assert translated == raw_rules
+    # videos_array passed through unchanged
+    assert updated_videos == videos_array
+
+
+def test_translate_video_rules_preserves_existing_adlabels():
+    """If videos_array entries already have adlabels, do not override them."""
+    # User-supplied labels via videos[{"label": "my_label"}]
+    videos_array = [
+        {"video_id": "vidA", "adlabels": [{"name": "user_label"}]},
+    ]
+    rules = [
+        {
+            "placement_groups": ["FEED"],
+            "customization_spec": {"video_ids": ["vidA"]},
+        },
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
+
+    # video_label at rule level uses auto-generated name
+    assert translated[0]["video_label"] == {"name": "PBOARD_VID_0"}
+    # ...but the existing adlabels on the video are preserved (not overridden)
+    assert updated_videos[0]["adlabels"] == [{"name": "user_label"}]
+
+
+def test_translate_video_rules_string_video_label_coerced():
+    """Caller passes customization_spec.video_label: 'str' — coerce to {"name": 'str'}.
+
+    This handles TEST 3 from matt's test cases: string video_label inside
+    customization_spec should be lifted to the rule level as an object.
+    """
+    videos_array = [
+        {"video_id": "vidA", "adlabels": [{"name": "vert"}]},
+    ]
+    rules = [
+        {
+            "placement_groups": ["STORY"],
+            "customization_spec": {"video_label": "vert"},
+        },
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
+
+    assert len(translated) == 1
+    rule = translated[0]
+    assert "placement_groups" not in rule
+    # video_label coerced from string to object, hoisted to rule level
+    assert rule["video_label"] == {"name": "vert"}
+    # customization_spec does not carry video_label (it's moved to rule level)
+    assert "video_label" not in rule["customization_spec"]
+    # videos_array untouched because we didn't generate any labels
+    assert updated_videos == videos_array
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_videos_with_placement_rules_sends_correct_payload():
+    """End-to-end: videos[] + asset_customization_rules with placement_groups.
+
+    Mirrors matt's TEST 6 payload. The resulting Meta API payload must have:
+      - asset_feed_spec.videos with adlabels
+      - asset_feed_spec.asset_customization_rules in Meta format
+        (publisher_platforms, facebook/instagram_positions, video_label)
+      - NO `placement_groups` key anywhere
+      - NO raw `video_ids` inside customization_spec in the outgoing rules
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        mock_api.side_effect = [
+            # 1) POST create creative
+            {"id": "creative_vid_rules"},
+            # 2) GET creative details
+            {"id": "creative_vid_rules", "name": "Video Placement Rules", "status": "ACTIVE"},
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            videos=[
+                {"video_id": "vidA"},
+                {"video_id": "vidB"},
+            ],
+            asset_customization_rules=[
+                {
+                    "placement_groups": ["FEED"],
+                    "customization_spec": {"video_ids": ["vidA"]},
+                },
+                {
+                    "placement_groups": ["STORY"],
+                    "customization_spec": {"video_ids": ["vidB"]},
+                },
+            ],
+            name="Video Placement Rules",
+            link_url="https://example.com/",
+            message="Check it out",
+            headline="Watch Now",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        # No thumbnail auto-fetch (no singular video_id)
+        assert mock_api.call_count == 2
+        creative_data = mock_api.call_args_list[0][0][2]
+
+        assert "asset_feed_spec" in creative_data
+        afs = creative_data["asset_feed_spec"]
+
+        # videos[] entries must have adlabels
+        assert "videos" in afs
+        videos_out = afs["videos"]
+        assert len(videos_out) == 2
+        assert videos_out[0]["video_id"] == "vidA"
+        assert videos_out[0]["adlabels"] == [{"name": "PBOARD_VID_0"}]
+        assert videos_out[1]["video_id"] == "vidB"
+        assert videos_out[1]["adlabels"] == [{"name": "PBOARD_VID_1"}]
+
+        # Rules must be in Meta API format
+        assert "asset_customization_rules" in afs
+        rules_out = afs["asset_customization_rules"]
+        assert len(rules_out) == 2
+
+        # No user-facing placement_groups anywhere in outgoing payload
+        for r in rules_out:
+            assert "placement_groups" not in r, (
+                f"placement_groups must not ship to Meta: {r!r}"
+            )
+            # video_ids inside customization_spec should have been converted to
+            # video_label at the rule level; raw video_ids must not ship to Meta
+            cspec = r.get("customization_spec", {})
+            assert "video_ids" not in cspec, (
+                f"customization_spec.video_ids must not ship to Meta: {r!r}"
+            )
+
+        # FEED rule has feed positions and video_label
+        feed_rule = rules_out[0]
+        assert "feed" in feed_rule["customization_spec"]["facebook_positions"]
+        assert feed_rule["video_label"] == {"name": "PBOARD_VID_0"}
+
+        # STORY rule has story positions and video_label
+        story_rule = rules_out[1]
+        assert "story" in story_rule["customization_spec"]["facebook_positions"]
+        assert "story" in story_rule["customization_spec"]["instagram_positions"]
+        assert story_rule["video_label"] == {"name": "PBOARD_VID_1"}
