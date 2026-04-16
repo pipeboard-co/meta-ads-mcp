@@ -1,5 +1,6 @@
 """Ad and Creative-related functionality for Meta Ads API."""
 
+import asyncio
 import json
 import logging
 from typing import Optional, Dict, Any, List, Union
@@ -1367,6 +1368,20 @@ async def compute_image_crops(
     return json.dumps(result, indent=2)
 
 
+async def _fetch_video_thumbnail(vid_id: str, access_token: str) -> Optional[str]:
+    """Fetch a thumbnail URL for a video from the Meta API. Returns None on failure."""
+    try:
+        info = await make_api_request(vid_id, access_token, {"fields": "picture,thumbnails"})
+        if isinstance(info, dict):
+            thumbs = info.get("thumbnails", {}).get("data", [])
+            if thumbs and thumbs[0].get("uri"):
+                return thumbs[0]["uri"]
+            return info.get("picture") or None
+    except Exception as e:
+        logger.warning(f"Failed to auto-fetch thumbnail for video {vid_id}: {e}")
+    return None
+
+
 @mcp_server.tool()
 @meta_api_tool
 async def create_ad_creative(
@@ -1860,23 +1875,11 @@ async def create_ad_creative(
         # Auto-fetch from the video object when video_id is provided without a thumbnail.
         # For videos[] (plural), thumbnails are auto-fetched per-entry inside the loop below.
         if video_id and not thumbnail_url:
-            try:
-                video_info = await make_api_request(
-                    str(video_id), access_token, {"fields": "picture,thumbnails"}
-                )
-                if isinstance(video_info, dict):
-                    # Prefer pre-generated thumbnails list (more reliable than picture field)
-                    thumbnails_data = video_info.get("thumbnails", {}).get("data", [])
-                    if thumbnails_data and thumbnails_data[0].get("uri"):
-                        thumbnail_url = thumbnails_data[0]["uri"]
-                    elif video_info.get("picture"):
-                        thumbnail_url = video_info["picture"]
-                    if thumbnail_url:
-                        logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
-                    else:
-                        logger.warning(f"Could not auto-fetch thumbnail for video {video_id}: {video_info}")
-            except Exception as e:
-                logger.warning(f"Failed to auto-fetch thumbnail for video {video_id}: {e}")
+            thumbnail_url = await _fetch_video_thumbnail(str(video_id), access_token)
+            if thumbnail_url:
+                logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
+            else:
+                logger.warning(f"Could not auto-fetch thumbnail for video {video_id}")
 
         if object_story_id:
             # ---------------------------------------------------------------------------
@@ -1924,36 +1927,24 @@ async def create_ad_creative(
             images_array = None
             if videos:
                 # Multiple videos with placement labels (e.g., 1:1 Feed + 9:16 Reels).
-                # Auto-fetch thumbnails for any video entry that doesn't include one —
-                # Meta requires a thumbnail in each videos[] entry for asset_feed_spec.
+                # Auto-fetch missing thumbnails in parallel — Meta requires a thumbnail
+                # in each videos[] entry for asset_feed_spec.
+                thumb_coros = [
+                    _fetch_video_thumbnail(str(v["video_id"]), access_token)
+                    for v in videos if not v.get("thumbnail_url")
+                ]
+                fetched = iter(await asyncio.gather(*thumb_coros) if thumb_coros else [])
                 videos_array = []
                 for v in videos:
                     vid_id = str(v["video_id"])
                     entry: Dict[str, Any] = {"video_id": vid_id}
-                    vid_thumb = v.get("thumbnail_url")
-                    if not vid_thumb:
-                        try:
-                            vid_info = await make_api_request(
-                                vid_id, access_token, {"fields": "picture,thumbnails"}
-                            )
-                            if isinstance(vid_info, dict):
-                                thumbs = vid_info.get("thumbnails", {}).get("data", [])
-                                if thumbs and thumbs[0].get("uri"):
-                                    vid_thumb = thumbs[0]["uri"]
-                                elif vid_info.get("picture"):
-                                    vid_thumb = vid_info["picture"]
-                                if vid_thumb:
-                                    logger.info(
-                                        f"Auto-fetched thumbnail for video {vid_id}: {str(vid_thumb)[:80]}..."
-                                    )
-                                else:
-                                    logger.warning(
-                                        f"Could not auto-fetch thumbnail for video {vid_id}: {vid_info}"
-                                    )
-                        except Exception as e:
-                            logger.warning(f"Failed to auto-fetch thumbnail for video {vid_id}: {e}")
+                    vid_thumb = v.get("thumbnail_url") or next(fetched, None)
                     if vid_thumb:
+                        if not v.get("thumbnail_url"):
+                            logger.info(f"Auto-fetched thumbnail for video {vid_id}: {str(vid_thumb)[:80]}...")
                         entry["thumbnail_url"] = vid_thumb
+                    else:
+                        logger.warning(f"Could not auto-fetch thumbnail for video {vid_id}")
                     if v.get("label"):
                         entry["adlabels"] = [{"name": v["label"]}]
                     elif v.get("adlabels"):

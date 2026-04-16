@@ -144,15 +144,14 @@ async def create_adset(
                         (Campaign Budget Optimization / CBO mode). Omit this field when the
                         campaign uses CBO — the ad set inherits the campaign budget automatically.
         targeting: Targeting specs (age, location, interests, etc).
-                  targeting_automation.advantage_audience defaults to 0 if not set (Meta API v24+ requirement).
-                  Set to 1 to enable Advantage+ Audience (requires age_max>=65). Use search_interests for interest IDs.
-                  IMPORTANT: Do NOT copy-paste the full targeting object from get_adsets output —
-                  it contains read-only computed fields like age_range that Meta will reject on
-                  create/update (error "unknown field: age_range"). Use only writable fields:
-                  age_min, age_max, geo_locations, interests, behaviors, custom_audiences,
-                  excluded_custom_audiences (NOT exclusions.custom_audiences — that field was
-                  deprecated in Meta API v24; use excluded_custom_audiences at the top level of
-                  the targeting object instead), targeting_automation, etc.
+                  Only include writable fields — get_adsets output contains read-only fields
+                  (e.g. age_range) that Meta rejects on write with "unknown field" errors.
+                  Writable fields: age_min, age_max, geo_locations, interests, behaviors,
+                  custom_audiences, excluded_custom_audiences, targeting_automation.
+                  Use search_interests to look up interest IDs.
+                  Note: use excluded_custom_audiences (not exclusions.custom_audiences, deprecated in v24).
+                  Set targeting_automation.advantage_audience=1 to enable Advantage+ Audience
+                  (requires age_max>=65); defaults to 0 if omitted.
         bid_amount: Bid amount in account currency (in cents).
                    REQUIRED for: LOWEST_COST_WITH_BID_CAP, COST_CAP, TARGET_COST.
                    NOT USED by: LOWEST_COST_WITH_MIN_ROAS (uses bid_constraints instead).
