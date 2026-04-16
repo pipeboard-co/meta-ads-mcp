@@ -167,22 +167,14 @@ async def test_video_creative_with_instagram_actor_id():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_333444"
 
-        # PR-C: object_story_spec is now bare page_id (+ instagram_user_id) when
-        # asset_feed_spec.videos[] is used. Adding video_data here triggered Meta
-        # API v24 error 1443048 ("object_story_spec ill formed"). The video,
-        # thumbnail, link_url, and CTA all live in asset_feed_spec.
-        # Ref: https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # instagram_user_id stays in object_story_spec (instagram_actor_id deprecated Jan 2026).
         assert "object_story_spec" in creative_data
         oss = creative_data["object_story_spec"]
-        assert "video_data" not in oss, (
-            "PR-C: object_story_spec must NOT contain video_data when "
-            "asset_feed_spec.videos[] is used (Meta v24 error 1443048)"
-        )
+        assert "video_data" not in oss
         assert "link_data" not in oss
-        assert oss["instagram_user_id"] == "ig_555666"
-        # instagram_actor_id was deprecated in Jan 2026 — must use instagram_user_id
         assert "instagram_actor_id" not in oss
-        assert set(oss.keys()) == {"page_id", "instagram_user_id"}
+        assert oss == {"page_id": "123456789", "instagram_user_id": "ig_555666"}
 
 
 @pytest.mark.asyncio
@@ -232,21 +224,12 @@ async def test_video_creative_asset_feed_spec_path():
         assert len(afs["titles"]) == 2
         assert len(afs["bodies"]) == 2
 
-        # PR-C: when asset_feed_spec.videos[] is used, object_story_spec must be
-        # bare page_id only. Previously this branch emitted a video_data anchor
-        # (with video_id + image_url + call_to_action), but Meta v24 rejects that
-        # dual shape with error 1443048 ("object_story_spec ill formed").
-        # The video, thumbnail, link_url, and CTA already live in asset_feed_spec
-        # (videos[], link_urls[], call_to_action_types[]).
-        # Inverse-check fbtrace from posting the old dual shape directly to Meta
-        # v24 (debug repro): AC3CmeSWCCiBf8hbELlhdOI.
-        # Ref: https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
         oss = creative_data["object_story_spec"]
         assert "video_data" not in oss
         assert "link_data" not in oss
-        assert set(oss.keys()) == {"page_id"}
-        # The destination URL comes from asset_feed_spec.link_urls, not from
-        # an object_story_spec.video_data.call_to_action like before.
+        assert oss == {"page_id": "123456789"}
+        # link relocated from video_data.call_to_action.value.link to asset_feed_spec.link_urls.
         assert afs["link_urls"] == [{"website_url": "https://example.com/"}]
 
 
@@ -290,14 +273,12 @@ async def test_video_creative_with_dof_optimization():
         # Auto-fetched thumbnail should be included in videos array
         assert afs["videos"] == [{"video_id": "vid_777888", "thumbnail_url": "https://example.com/auto-thumb.jpg"}]
 
-        # PR-C: object_story_spec is bare page_id when asset_feed_spec.videos[]
-        # is used. The thumbnail (image_url) and CTA used to be in
-        # object_story_spec.video_data but Meta v24 rejects that with error
-        # 1443048. They are carried by asset_feed_spec instead.
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # Thumbnail (was video_data.image_url) is now on asset_feed_spec.videos[].
         oss = creative_data["object_story_spec"]
         assert "video_data" not in oss
-        assert set(oss.keys()) == {"page_id"}
-        # Thumbnail lives on the asset_feed_spec.videos[] entry
+        assert "link_data" not in oss
+        assert oss == {"page_id": "123456789"}
         assert afs["videos"][0]["thumbnail_url"] == "https://example.com/auto-thumb.jpg"
 
 
@@ -513,17 +494,12 @@ async def test_video_creative_with_description():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_desc_test"
 
-        # PR-C: object_story_spec is bare page_id when asset_feed_spec.videos[]
-        # is used. Previously this branch emitted a video_data anchor, but Meta
-        # v24 rejected that dual shape with error 1443048. ISSUE 4 e2e fbtrace
-        # from main: A00w7vziSZBi5_J_OciqeuH. After PR-C, posting this same
-        # singular-video + singular-description payload directly to Meta v24
-        # succeeds (creative 1272282771659661 created in our test account).
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # description is carried by asset_feed_spec.descriptions (asserted above).
         oss = creative_data["object_story_spec"]
         assert "video_data" not in oss
         assert "link_data" not in oss
-        assert set(oss.keys()) == {"page_id"}
-        # description is carried by asset_feed_spec.descriptions (asserted above)
+        assert oss == {"page_id": "123456789"}
 
 
 @pytest.mark.asyncio
@@ -565,170 +541,6 @@ async def test_video_creative_description_only():
         afs = creative_data["asset_feed_spec"]
         assert afs["descriptions"] == [{"text": "Only description, no other plural params"}]
         assert "videos" in afs
-
-
-@pytest.mark.asyncio
-async def test_video_creative_asset_feed_spec_uses_bare_page_id():
-    """PR-C: video_id + plural messages must build object_story_spec={page_id}.
-
-    Meta API v24 rejects the dual shape (asset_feed_spec.videos[] + an
-    object_story_spec.video_data anchor carrying the same video_id) with
-    error 1443048 ("object_story_spec ill formed"). Posting that exact dual
-    shape directly to Meta v24 produced fbtrace AC3CmeSWCCiBf8hbELlhdOI in
-    a debug repro. Posting the bare-page_id shape this test asserts succeeds
-    on Meta v24 (creative 937436332460350 created in our test account).
-
-    Per Meta's official docs, the canonical shape for asset_feed_spec.videos[]
-    is bare page_id only (plus instagram_user_id when set):
-    https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
-    """
-
-    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
-         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-
-        mock_discover.return_value = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-        }
-
-        mock_api.side_effect = [
-            # 1) Auto-fetch video thumbnail
-            {"picture": "https://example.com/auto-thumb.jpg"},
-            # 2) POST create creative
-            {"id": "creative_bare_oss_1"},
-            # 3) GET creative details
-            {"id": "creative_bare_oss_1", "name": "Bare OSS", "status": "ACTIVE"},
-        ]
-
-        await create_ad_creative(
-            account_id="act_123456",
-            video_id="vid_bare_oss",
-            name="Bare OSS Creative",
-            link_url="https://example.com/",
-            messages=["Body text 1", "Body text 2"],
-            call_to_action_type="LEARN_MORE",
-            access_token="test_token",
-        )
-
-        creative_data = mock_api.call_args_list[1][0][2]
-
-        # asset_feed_spec carries the video, link_url, and CTA
-        assert "asset_feed_spec" in creative_data
-        afs = creative_data["asset_feed_spec"]
-        assert afs["videos"][0]["video_id"] == "vid_bare_oss"
-        assert afs["link_urls"] == [{"website_url": "https://example.com/"}]
-        assert afs["call_to_action_types"] == ["LEARN_MORE"]
-
-        # object_story_spec is bare page_id only — no video_data, no link_data
-        oss = creative_data["object_story_spec"]
-        assert set(oss.keys()) == {"page_id"}, (
-            f"object_story_spec must be bare page_id only when "
-            f"asset_feed_spec.videos[] is used (Meta v24 error 1443048), "
-            f"got keys: {sorted(oss.keys())}"
-        )
-        assert "video_data" not in oss
-        assert "link_data" not in oss
-
-
-@pytest.mark.asyncio
-async def test_video_creative_asset_feed_spec_uses_bare_page_id_with_instagram():
-    """PR-C: when instagram_actor_id is set, object_story_spec={page_id, instagram_user_id}.
-
-    Same bare-page_id contract as the no-Instagram variant; the only addition
-    is instagram_user_id (Meta deprecated instagram_actor_id in Jan 2026).
-    No video_data, no link_data.
-    """
-
-    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
-         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-
-        mock_discover.return_value = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-        }
-
-        mock_api.side_effect = [
-            {"picture": "https://example.com/auto-thumb.jpg"},
-            {"id": "creative_bare_oss_ig"},
-            {"id": "creative_bare_oss_ig", "name": "Bare OSS IG", "status": "ACTIVE"},
-        ]
-
-        await create_ad_creative(
-            account_id="act_123456",
-            video_id="vid_bare_oss_ig",
-            name="Bare OSS IG Creative",
-            link_url="https://example.com/",
-            instagram_actor_id="ig_999000",
-            access_token="test_token",
-        )
-
-        creative_data = mock_api.call_args_list[1][0][2]
-
-        oss = creative_data["object_story_spec"]
-        assert set(oss.keys()) == {"page_id", "instagram_user_id"}
-        assert oss["instagram_user_id"] == "ig_999000"
-        assert "video_data" not in oss
-        assert "link_data" not in oss
-
-
-@pytest.mark.asyncio
-async def test_video_creative_singular_description_uses_bare_page_id():
-    """PR-C: video_id + singular description (ISSUE 4 case) builds bare page_id.
-
-    A singular description flips create_ad_creative into the asset_feed_spec
-    path because Meta's video_data does not support description. After PR-C,
-    object_story_spec must be bare page_id only — no video_data anchor.
-
-    On main, posting this scenario to Meta v24 returned error 1443048
-    (fbtrace A00w7vziSZBi5_J_OciqeuH). After PR-C, posting the bare-page_id
-    payload directly to Meta v24 succeeds (creative 1272282771659661 created
-    in our test account).
-    """
-
-    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
-         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-
-        mock_discover.return_value = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-        }
-
-        mock_api.side_effect = [
-            {"picture": "https://example.com/auto-thumb.jpg"},
-            {"id": "creative_bare_oss_desc"},
-            {"id": "creative_bare_oss_desc", "name": "Bare OSS Desc", "status": "ACTIVE"},
-        ]
-
-        await create_ad_creative(
-            account_id="act_123456",
-            video_id="vid_bare_oss_desc",
-            name="Bare OSS With Singular Description",
-            link_url="https://example.com/",
-            message="Primary text",
-            headline="Watch Now",
-            description="Single description triggers asset_feed_spec routing",
-            call_to_action_type="LEARN_MORE",
-            access_token="test_token",
-        )
-
-        creative_data = mock_api.call_args_list[1][0][2]
-
-        # Confirm we are on the asset_feed_spec path (asset_feed_spec present)
-        assert "asset_feed_spec" in creative_data
-        afs = creative_data["asset_feed_spec"]
-        assert afs["videos"][0]["video_id"] == "vid_bare_oss_desc"
-        assert afs["descriptions"] == [
-            {"text": "Single description triggers asset_feed_spec routing"}
-        ]
-
-        # object_story_spec must be bare page_id only
-        oss = creative_data["object_story_spec"]
-        assert set(oss.keys()) == {"page_id"}
-        assert "video_data" not in oss
-        assert "link_data" not in oss
 
 
 @pytest.mark.asyncio
