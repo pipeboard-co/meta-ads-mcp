@@ -2262,8 +2262,15 @@ async def create_ad_creative(
         if instagram_branded_content:
             creative_data["instagram_branded_content"] = instagram_branded_content
 
-        # Make API request to create the creative
-        data = await make_api_request(endpoint, access_token, creative_data, method="POST")
+        # Make API request to create the creative.
+        # PLACEMENT + videos[] (per-placement video selection via asset_customization_rules)
+        # requires v25.0+ — Meta's v24 asset_feed_spec endpoint does not correctly handle
+        # multiple labelled videos with per-placement customization_spec rules.
+        creative_api_version = "v25.0" if videos else None
+        data = await make_api_request(
+            endpoint, access_token, creative_data, method="POST",
+            api_version=creative_api_version,
+        )
 
         # Check for instagram_actor_id / instagram_user_id permission errors.
         # This happens when the user's Meta access token lacks the instagram_basic

@@ -101,17 +101,21 @@ async def make_api_request(
     endpoint: str,
     access_token: str,
     params: Optional[Dict[str, Any]] = None,
-    method: str = "GET"
+    method: str = "GET",
+    api_version: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Make a request to the Meta Graph API.
-    
+
     Args:
         endpoint: API endpoint path (without base URL)
         access_token: Meta API access token
         params: Additional query parameters
         method: HTTP method (GET, POST, DELETE)
-    
+        api_version: Override the default API version (e.g. "v25.0"). When None,
+            META_GRAPH_API_VERSION is used. Use for calls that require a specific
+            version — e.g. PLACEMENT + videos[] asset_feed_spec creatives (v25+).
+
     Returns:
         API response as a dictionary
     """
@@ -125,8 +129,9 @@ async def make_api_request(
                 "action_required": "Please authenticate first"
             }
         }
-        
-    url = f"{META_GRAPH_API_BASE}/{endpoint}"
+
+    base = f"https://graph.facebook.com/{api_version}" if api_version else META_GRAPH_API_BASE
+    url = f"{base}/{endpoint}"
     
     headers = {
         "User-Agent": USER_AGENT,
