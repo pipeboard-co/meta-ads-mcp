@@ -1447,8 +1447,12 @@ async def create_ad_creative(
                   ("object_story_spec ill formed"). This is handled automatically: video creatives
                   that include instagram_actor_id are routed through asset_feed_spec so that
                   ad_formats=["SINGLE_VIDEO"] is always included in the API request.
-        thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
-                      Meta will auto-generate a thumbnail if not provided.
+        thumbnail_url: Thumbnail image URL for video creatives used with video_id.
+                      If not provided, a thumbnail is auto-fetched from the video object
+                      (GET /{video_id}?fields=picture,thumbnails). For videos[] (plural),
+                      include thumbnail_url in each video entry; entries without one are
+                      also auto-fetched. Providing thumbnail_url explicitly is still
+                      recommended for reliability.
         optimization_type: Optional. Valid values:
                           - "DEGREES_OF_FREEDOM": FLEX (Advantage+) creatives where Meta auto-optimizes
                             across all asset combinations. At least one multi-variant asset field required.
@@ -1458,9 +1462,13 @@ async def create_ad_creative(
                             ONE image at delivery time. A warning is included in the response if multiple
                             hashes are detected. To serve multiple images, omit optimization_type and
                             enable is_dynamic_creative on the ad set instead.
-                          - "PLACEMENT": Placement Asset Customization. Use with videos[]/images[] (with
-                            labels) and asset_customization_rules (with video_label/image_label references)
-                            to serve different aspect ratios per placement (e.g., 1:1 Feed + 9:16 Reels).
+                          - "PLACEMENT": Placement Asset Customization for images. Use with images[]
+                            (with labels) and asset_customization_rules to serve different aspect ratios
+                            per placement (e.g., 1:1 Feed + 4:5 mobile + 9:16 Stories). IMPORTANT:
+                            PLACEMENT mode with videos[] is currently broken in Meta's API — all
+                            multi-video placement variations consistently fail with error 1487390
+                            ("Adcreative Create Failed") regardless of payload format. For
+                            placement-customized video creatives, use Meta Ads Manager UI instead.
                           Other values are passed through to Meta as-is.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
@@ -1850,17 +1858,24 @@ async def create_ad_creative(
         is_video = bool(video_id or videos)
 
         # Meta API v24 REQUIRES a thumbnail (image_hash or image_url) in video_data.
-        # If the caller didn't provide one, auto-fetch from the video object.
-        if is_video and not thumbnail_url:
+        # Auto-fetch from the video object when video_id is provided without a thumbnail.
+        # For videos[] (plural), thumbnails are auto-fetched per-entry inside the loop below.
+        if video_id and not thumbnail_url:
             try:
                 video_info = await make_api_request(
-                    video_id, access_token, {"fields": "picture"}
+                    str(video_id), access_token, {"fields": "picture,thumbnails"}
                 )
-                if isinstance(video_info, dict) and "picture" in video_info:
-                    thumbnail_url = video_info["picture"]
-                    logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
-                else:
-                    logger.warning(f"Could not auto-fetch thumbnail for video {video_id}: {video_info}")
+                if isinstance(video_info, dict):
+                    # Prefer pre-generated thumbnails list (more reliable than picture field)
+                    thumbnails_data = video_info.get("thumbnails", {}).get("data", [])
+                    if thumbnails_data and thumbnails_data[0].get("uri"):
+                        thumbnail_url = thumbnails_data[0]["uri"]
+                    elif video_info.get("picture"):
+                        thumbnail_url = video_info["picture"]
+                    if thumbnail_url:
+                        logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
+                    else:
+                        logger.warning(f"Could not auto-fetch thumbnail for video {video_id}: {video_info}")
             except Exception as e:
                 logger.warning(f"Failed to auto-fetch thumbnail for video {video_id}: {e}")
 
@@ -1909,12 +1924,37 @@ async def create_ad_creative(
             videos_array = None
             images_array = None
             if videos:
-                # Multiple videos with placement labels (e.g., 1:1 Feed + 9:16 Reels)
+                # Multiple videos with placement labels (e.g., 1:1 Feed + 9:16 Reels).
+                # Auto-fetch thumbnails for any video entry that doesn't include one —
+                # Meta requires a thumbnail in each videos[] entry for asset_feed_spec.
                 videos_array = []
                 for v in videos:
-                    entry = {"video_id": str(v["video_id"])}
-                    if v.get("thumbnail_url"):
-                        entry["thumbnail_url"] = v["thumbnail_url"]
+                    vid_id = str(v["video_id"])
+                    entry: Dict[str, Any] = {"video_id": vid_id}
+                    vid_thumb = v.get("thumbnail_url")
+                    if not vid_thumb:
+                        try:
+                            vid_info = await make_api_request(
+                                vid_id, access_token, {"fields": "picture,thumbnails"}
+                            )
+                            if isinstance(vid_info, dict):
+                                thumbs = vid_info.get("thumbnails", {}).get("data", [])
+                                if thumbs and thumbs[0].get("uri"):
+                                    vid_thumb = thumbs[0]["uri"]
+                                elif vid_info.get("picture"):
+                                    vid_thumb = vid_info["picture"]
+                                if vid_thumb:
+                                    logger.info(
+                                        f"Auto-fetched thumbnail for video {vid_id}: {str(vid_thumb)[:80]}..."
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Could not auto-fetch thumbnail for video {vid_id}: {vid_info}"
+                                    )
+                        except Exception as e:
+                            logger.warning(f"Failed to auto-fetch thumbnail for video {vid_id}: {e}")
+                    if vid_thumb:
+                        entry["thumbnail_url"] = vid_thumb
                     if v.get("label"):
                         entry["adlabels"] = [{"name": v["label"]}]
                     elif v.get("adlabels"):

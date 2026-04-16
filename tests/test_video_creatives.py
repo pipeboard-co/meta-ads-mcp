@@ -629,3 +629,228 @@ async def test_video_creative_without_instagram_actor_id_uses_simple_path():
         assert "object_story_spec" in creative_data
         assert "video_data" in creative_data["object_story_spec"]
         assert "instagram_user_id" not in creative_data["object_story_spec"]
+
+
+@pytest.mark.asyncio
+async def test_video_multi_variant_without_thumbnail_auto_fetches():
+    """Test that video_id + plural text params auto-fetches thumbnail (Issue 1).
+
+    When passing messages[]/headlines[]/descriptions[] with a video_id (no thumbnail),
+    the code routes to asset_feed_spec and must auto-fetch the thumbnail so that
+    object_story_spec.video_data.image_url is populated (required by Meta API v24).
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch thumbnail for video_id (no thumbnail provided)
+            {"picture": "https://cdn.example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_multivariant"},
+            # 3) GET creative details
+            {"id": "creative_multivariant", "name": "Multi-Variant Video", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_multivariant",
+            name="Multi-Variant Video Creative",
+            link_url="https://example.com/product",
+            messages=["Copy A", "Copy B", "Copy C", "Copy D", "Copy E"],
+            headlines=["H1", "H2", "H3", "H4", "H5"],
+            descriptions=["Desc 1", "Desc 2"],
+            call_to_action_type="SHOP_NOW",
+            access_token="test_token"
+        )
+
+        # Must call auto-fetch (3 calls total: fetch, create, details)
+        assert mock_api.call_count == 3, (
+            "Expected 3 calls: thumbnail auto-fetch, creative create, details fetch"
+        )
+
+        # First call should be the auto-fetch for the video thumbnail
+        first_call_endpoint = mock_api.call_args_list[0][0][0]
+        assert first_call_endpoint == "vid_multivariant"
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # Must use asset_feed_spec (triggered by plural params)
+        assert "asset_feed_spec" in creative_data
+
+        afs = creative_data["asset_feed_spec"]
+        assert len(afs["bodies"]) == 5
+        assert len(afs["titles"]) == 5
+        assert len(afs["descriptions"]) == 2
+        assert afs["ad_formats"] == ["SINGLE_VIDEO"]
+
+        # Videos array must include auto-fetched thumbnail
+        assert "videos" in afs
+        assert afs["videos"][0]["video_id"] == "vid_multivariant"
+        assert afs["videos"][0]["thumbnail_url"] == "https://cdn.example.com/auto-thumb.jpg"
+
+        # object_story_spec must have video_data with image_url (thumbnail)
+        assert "video_data" in creative_data["object_story_spec"]
+        vd = creative_data["object_story_spec"]["video_data"]
+        assert vd["image_url"] == "https://cdn.example.com/auto-thumb.jpg"
+
+
+@pytest.mark.asyncio
+async def test_video_thumbnail_auto_fetch_prefers_thumbnails_field():
+    """Test that auto-fetch prefers thumbnails[].uri over picture field.
+
+    When the video API returns both thumbnails and picture, we prefer
+    the pre-generated thumbnail URI from thumbnails[] (more reliable).
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch: return both picture and thumbnails
+            {
+                "picture": "https://cdn.example.com/picture.jpg",
+                "thumbnails": {
+                    "data": [
+                        {"uri": "https://cdn.example.com/thumb-720p.jpg", "width": 720, "height": 405},
+                        {"uri": "https://cdn.example.com/thumb-360p.jpg", "width": 360, "height": 203},
+                    ]
+                }
+            },
+            # 2) POST create creative
+            {"id": "creative_pref_thumb"},
+            # 3) GET creative details
+            {"id": "creative_pref_thumb", "name": "Pref Thumb", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_pref_test",
+            name="Thumbnail Preference Test",
+            link_url="https://example.com/",
+            access_token="test_token"
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        # Should use the thumbnails[0].uri, not the picture field
+        video_data = creative_data["object_story_spec"]["video_data"]
+        assert video_data["image_url"] == "https://cdn.example.com/thumb-720p.jpg", (
+            "Should prefer thumbnails[0].uri over picture"
+        )
+
+
+@pytest.mark.asyncio
+async def test_videos_array_auto_fetches_missing_thumbnails():
+    """Test that videos[] entries without thumbnail_url get auto-fetched (Issue 3).
+
+    When using the videos[] (plural) parameter without explicit thumbnail_url
+    on each entry, the code should auto-fetch thumbnails via the Meta API.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch thumbnail for vid_a
+            {"picture": "https://cdn.example.com/thumb-a.jpg"},
+            # 2) Auto-fetch thumbnail for vid_b (has thumbnails field)
+            {
+                "thumbnails": {
+                    "data": [{"uri": "https://cdn.example.com/thumb-b.jpg", "width": 720, "height": 405}]
+                }
+            },
+            # 3) POST create creative
+            {"id": "creative_videos_arr"},
+            # 4) GET creative details
+            {"id": "creative_videos_arr", "name": "Videos Array Creative", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            videos=[
+                {"video_id": "vid_a"},                    # No thumbnail_url → auto-fetch
+                {"video_id": "vid_b", "label": "story"},  # No thumbnail_url → auto-fetch
+            ],
+            name="Placement Video Creative",
+            link_url="https://example.com/",
+            message="Check us out",
+            headline="Shop Now",
+            call_to_action_type="SHOP_NOW",
+            access_token="test_token"
+        )
+
+        # 4 calls: 2 thumbnail fetches + create + details
+        assert mock_api.call_count == 4
+
+        creative_data = mock_api.call_args_list[2][0][2]
+        afs = creative_data["asset_feed_spec"]
+        assert "videos" in afs
+
+        # Both videos should have thumbnails
+        vids = afs["videos"]
+        assert len(vids) == 2
+        assert vids[0]["thumbnail_url"] == "https://cdn.example.com/thumb-a.jpg"
+        assert vids[1]["thumbnail_url"] == "https://cdn.example.com/thumb-b.jpg"
+        # Second video has a label → adlabels
+        assert vids[1]["adlabels"] == [{"name": "story"}]
+
+
+@pytest.mark.asyncio
+async def test_videos_array_uses_provided_thumbnails_without_fetch():
+    """Test that videos[] entries WITH thumbnail_url skip the auto-fetch."""
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # Only 2 calls: create + details (no thumbnail fetches needed)
+            {"id": "creative_explicit_thumb"},
+            {"id": "creative_explicit_thumb", "name": "Explicit Thumb", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            videos=[
+                {"video_id": "vid_a", "thumbnail_url": "https://cdn.example.com/explicit-a.jpg"},
+                {"video_id": "vid_b", "thumbnail_url": "https://cdn.example.com/explicit-b.jpg"},
+            ],
+            name="Explicit Thumbnail Creative",
+            link_url="https://example.com/",
+            message="No auto-fetch needed",
+            access_token="test_token"
+        )
+
+        # Only 2 calls: no thumbnail auto-fetch needed
+        assert mock_api.call_count == 2, (
+            "When thumbnail_url is provided, no auto-fetch should occur"
+        )
+
+        creative_data = mock_api.call_args_list[0][0][2]
+        afs = creative_data["asset_feed_spec"]
+        vids = afs["videos"]
+        assert vids[0]["thumbnail_url"] == "https://cdn.example.com/explicit-a.jpg"
+        assert vids[1]["thumbnail_url"] == "https://cdn.example.com/explicit-b.jpg"
