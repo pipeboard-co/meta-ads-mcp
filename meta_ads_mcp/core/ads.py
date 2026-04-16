@@ -1462,13 +1462,12 @@ async def create_ad_creative(
                             ONE image at delivery time. A warning is included in the response if multiple
                             hashes are detected. To serve multiple images, omit optimization_type and
                             enable is_dynamic_creative on the ad set instead.
-                          - "PLACEMENT": Placement Asset Customization for images. Use with images[]
-                            (with labels) and asset_customization_rules to serve different aspect ratios
-                            per placement (e.g., 1:1 Feed + 4:5 mobile + 9:16 Stories). IMPORTANT:
-                            PLACEMENT mode with videos[] is currently broken in Meta's API — all
-                            multi-video placement variations consistently fail with error 1487390
-                            ("Adcreative Create Failed") regardless of payload format. For
-                            placement-customized video creatives, use Meta Ads Manager UI instead.
+                          - "PLACEMENT": Placement Asset Customization. Use with videos[]/images[]
+                            (with labels) and asset_customization_rules (with video_label/image_label
+                            references) to serve different assets per placement (e.g., 1:1 Feed +
+                            9:16 Reels). The API automatically sets optimization_type=PLACEMENT
+                            when placement customization rules are detected. PLACEMENT + videos[]
+                            uses the v25 API automatically.
                           Other values are passed through to Meta as-is.
         dynamic_creative_spec: Dynamic creative optimization settings
         call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
