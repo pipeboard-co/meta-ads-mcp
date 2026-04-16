@@ -164,13 +164,18 @@ async def test_video_creative_with_instagram_actor_id():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_333444"
 
-        # instagram_user_id must be in object_story_spec (not inside video_data)
-        # (Meta deprecated instagram_actor_id in Jan 2026; error_subcode 1443050 if inside video_data)
+        # Instagram video in asset_feed_spec: object_story_spec has page_id +
+        # instagram_user_id only. Adding video_data or link_data alongside
+        # asset_feed_spec.videos[] triggers Meta error 1443048.
         assert "object_story_spec" in creative_data
-        video_data = creative_data["object_story_spec"]["video_data"]
-        assert "instagram_actor_id" not in video_data
-        assert "instagram_user_id" not in video_data
-        assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_555666"
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss, (
+            "video_data must NOT be in object_story_spec when video is in asset_feed_spec.videos"
+        )
+        assert "link_data" not in oss, (
+            "link_data must NOT be in object_story_spec for video + asset_feed_spec — causes 1443048"
+        )
+        assert oss["instagram_user_id"] == "ig_555666"
 
 
 @pytest.mark.asyncio
@@ -220,13 +225,20 @@ async def test_video_creative_asset_feed_spec_path():
         assert len(afs["titles"]) == 2
         assert len(afs["bodies"]) == 2
 
-        # Video FLEX: object_story_spec uses video_data with call_to_action
-        assert "video_data" in creative_data["object_story_spec"]
-        vd = creative_data["object_story_spec"]["video_data"]
-        assert vd["video_id"] == "vid_555666"
-        assert "link" not in vd, "link must NOT be in video_data directly"
-        assert vd["call_to_action"]["type"] == "LEARN_MORE"
-        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
+        # Video in asset_feed_spec: object_story_spec must have ONLY page_id.
+        # Adding video_data or link_data alongside asset_feed_spec.videos[] triggers
+        # Meta error 1443048 ("object_story_spec ill formed").
+        # The video content and CTA live exclusively in asset_feed_spec.
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss, (
+            "video_data must NOT be in object_story_spec when video is in asset_feed_spec.videos — "
+            "this causes Meta error 1443048 ('object_story_spec ill formed')"
+        )
+        assert "link_data" not in oss, (
+            "link_data must NOT be in object_story_spec for video + asset_feed_spec — "
+            "this also causes Meta error 1443048"
+        )
+        assert oss["page_id"] == "123456789"
 
 
 @pytest.mark.asyncio
@@ -269,13 +281,19 @@ async def test_video_creative_with_dof_optimization():
         # Auto-fetched thumbnail should be included in videos array
         assert afs["videos"] == [{"video_id": "vid_777888", "thumbnail_url": "https://example.com/auto-thumb.jpg"}]
 
-        # Video FLEX: video_data anchor with call_to_action
-        assert "video_data" in creative_data["object_story_spec"]
-        vd = creative_data["object_story_spec"]["video_data"]
-        assert vd["image_url"] == "https://example.com/auto-thumb.jpg"
-        assert "link" not in vd
-        assert vd["call_to_action"]["type"] == "LEARN_MORE"
-        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
+        # DOF video in asset_feed_spec: object_story_spec must have ONLY page_id.
+        # Adding video_data or link_data alongside asset_feed_spec.videos[]
+        # triggers Meta error 1443048 ("object_story_spec ill formed").
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss, (
+            "video_data must NOT be in object_story_spec when video is in asset_feed_spec.videos"
+        )
+        assert "link_data" not in oss, (
+            "link_data must NOT be in object_story_spec for video + asset_feed_spec — causes 1443048"
+        )
+        assert oss["page_id"] == "123456789"
+        # Thumbnail is in asset_feed_spec.videos[], not in object_story_spec
+        assert afs["videos"][0].get("thumbnail_url") == "https://example.com/auto-thumb.jpg"
 
 
 @pytest.mark.asyncio
@@ -490,13 +508,14 @@ async def test_video_creative_with_description():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_desc_test"
 
-        # object_story_spec should use video_data as the anchor (not link_data)
-        assert "video_data" in creative_data["object_story_spec"]
-        assert "link_data" not in creative_data["object_story_spec"]
-
-        # description must NOT be in video_data (Meta API v24 rejects it there)
-        video_data = creative_data["object_story_spec"]["video_data"]
-        assert "description" not in video_data
+        # object_story_spec must have ONLY page_id (no link_data, no video_data).
+        # Adding link_data or video_data alongside asset_feed_spec.videos[]
+        # triggers Meta error 1443048 ("object_story_spec ill formed").
+        oss = creative_data["object_story_spec"]
+        assert "link_data" not in oss, (
+            "link_data must NOT be in object_story_spec for video + asset_feed_spec — causes 1443048"
+        )
+        assert "video_data" not in oss
 
 
 @pytest.mark.asyncio
@@ -637,7 +656,9 @@ async def test_video_multi_variant_without_thumbnail_auto_fetches():
 
     When passing messages[]/headlines[]/descriptions[] with a video_id (no thumbnail),
     the code routes to asset_feed_spec and must auto-fetch the thumbnail so that
-    object_story_spec.video_data.image_url is populated (required by Meta API v24).
+    asset_feed_spec.videos[0].thumbnail_url is populated.
+    object_story_spec must use link_data (NOT video_data) — having video_data alongside
+    asset_feed_spec.videos causes Meta error 1443048 ("object_story_spec ill formed").
     """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
@@ -695,10 +716,15 @@ async def test_video_multi_variant_without_thumbnail_auto_fetches():
         assert afs["videos"][0]["video_id"] == "vid_multivariant"
         assert afs["videos"][0]["thumbnail_url"] == "https://cdn.example.com/auto-thumb.jpg"
 
-        # object_story_spec must have video_data with image_url (thumbnail)
-        assert "video_data" in creative_data["object_story_spec"]
-        vd = creative_data["object_story_spec"]["video_data"]
-        assert vd["image_url"] == "https://cdn.example.com/auto-thumb.jpg"
+        # object_story_spec must have ONLY page_id (no link_data, no video_data).
+        # Adding either alongside asset_feed_spec.videos[] triggers Meta error 1443048.
+        oss = creative_data["object_story_spec"]
+        assert "link_data" not in oss, (
+            "link_data must NOT be in object_story_spec for video + asset_feed_spec — causes 1443048"
+        )
+        assert "video_data" not in oss
+        # Thumbnail is stored in asset_feed_spec.videos[], not in object_story_spec
+        assert afs["videos"][0]["thumbnail_url"] == "https://cdn.example.com/auto-thumb.jpg"
 
 
 @pytest.mark.asyncio
