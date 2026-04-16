@@ -184,6 +184,121 @@ _ALL_ENHANCEMENT_KEYS: tuple[str, ...] = (
 )
 
 
+def _translate_video_customization_rules(
+    rules: List[Dict[str, Any]],
+    videos_array: List[Dict[str, Any]],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Translate user-friendly placement_groups format to Meta API format for videos[].
+
+    Parallels `_translate_asset_customization_rules` (which handles the images[] path).
+    When callers pass `videos=[...]` with placement_groups-style rules, the rules and
+    videos_array need to be rewritten into the shape Meta expects:
+
+    Our user-facing format:
+        videos_array = [{"video_id": "A"}, {"video_id": "B"}]
+        rules = [
+            {"placement_groups": ["FEED"], "customization_spec": {"video_ids": ["A"]}},
+            {"placement_groups": ["STORY"], "customization_spec": {"video_ids": ["B"]}}
+        ]
+
+    Meta API format:
+        videos_array = [
+            {"video_id": "A", "adlabels": [{"name": "PBOARD_VID_0"}]},
+            {"video_id": "B", "adlabels": [{"name": "PBOARD_VID_1"}]}
+        ]
+        rules = [
+            {"customization_spec": {"publisher_platforms": [...], "facebook_positions": [...]},
+             "video_label": {"name": "PBOARD_VID_0"}},
+            ...
+        ]
+
+    Also tolerates `customization_spec.video_label: "str"` (string) by hoisting it to
+    `video_label: {"name": "str"}` at the rule level. Existing adlabels on
+    videos_array entries (e.g., user-supplied via `videos[].label`) are preserved.
+
+    Rules that do NOT contain placement_groups are passed through unchanged.
+    """
+    if not rules or not any("placement_groups" in r for r in rules):
+        return rules, videos_array
+
+    vid_to_label: Dict[str, str] = {}
+    label_counter = 0
+    translated_rules: List[Dict[str, Any]] = []
+
+    for rule in rules:
+        if "placement_groups" not in rule:
+            translated_rules.append(rule)
+            continue
+
+        placement_groups = rule.get("placement_groups", [])
+        cspec_input = rule.get("customization_spec", {})
+
+        # Build Meta-format customization_spec from placement_groups
+        publisher_platforms: set = set()
+        facebook_positions: set = set()
+        instagram_positions: set = set()
+        audience_network_positions: set = set()
+
+        for pg in placement_groups:
+            mapping = _PLACEMENT_GROUP_TO_POSITIONS.get(pg, {})
+            publisher_platforms.update(mapping.get("publisher_platforms", []))
+            facebook_positions.update(mapping.get("facebook_positions", []))
+            instagram_positions.update(mapping.get("instagram_positions", []))
+            audience_network_positions.update(mapping.get("audience_network_positions", []))
+
+        meta_cspec: Dict[str, Any] = {}
+        if publisher_platforms:
+            meta_cspec["publisher_platforms"] = sorted(publisher_platforms)
+        if facebook_positions:
+            meta_cspec["facebook_positions"] = sorted(facebook_positions)
+        if instagram_positions:
+            meta_cspec["instagram_positions"] = sorted(instagram_positions)
+        if audience_network_positions:
+            meta_cspec["audience_network_positions"] = sorted(audience_network_positions)
+
+        # Carry over text overrides into customization_spec
+        for text_field in ("bodies", "titles", "descriptions", "link_urls", "call_to_action_types"):
+            if text_field in cspec_input:
+                meta_cspec[text_field] = cspec_input[text_field]
+
+        translated_rule: Dict[str, Any] = {"customization_spec": meta_cspec}
+
+        # Assign video_label at the rule level. Precedence:
+        #   1) customization_spec.video_ids: [id] — map id → generated label
+        #   2) customization_spec.video_label: "str" — coerce string to {"name": str}
+        #   3) customization_spec.video_label: {"name": "str"} — pass through
+        vid_ids = cspec_input.get("video_ids", [])
+        raw_video_label = cspec_input.get("video_label")
+        if vid_ids:
+            v = vid_ids[0]
+            if v not in vid_to_label:
+                vid_to_label[v] = f"PBOARD_VID_{label_counter}"
+                label_counter += 1
+            translated_rule["video_label"] = {"name": vid_to_label[v]}
+        elif isinstance(raw_video_label, str):
+            translated_rule["video_label"] = {"name": raw_video_label}
+        elif isinstance(raw_video_label, dict):
+            translated_rule["video_label"] = raw_video_label
+
+        translated_rules.append(translated_rule)
+
+    # Add adlabels to videos_array for referenced video_ids. Preserve any adlabels
+    # the caller already set (via `videos[].label` in create_ad_creative), so explicit
+    # labels win over auto-generated ones.
+    updated_videos: List[Dict[str, Any]] = []
+    for v in videos_array:
+        vid_id = str(v.get("video_id", ""))
+        if vid_id in vid_to_label and "adlabels" not in v:
+            updated = dict(v)
+            updated["adlabels"] = [{"name": vid_to_label[vid_id]}]
+            updated_videos.append(updated)
+        else:
+            updated_videos.append(v)
+
+    return translated_rules, updated_videos
+
+
 def _translate_video_customization_rules_for_existing_post(
     rules: List[Dict[str, Any]],
 ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -1949,10 +2064,15 @@ async def create_ad_creative(
             # facebook_positions, instagram_positions) and image_label/video_label at the
             # rule level for asset selection. Assets also need adlabels assigned.
             # Rules in raw Meta API format (without placement_groups) are passed through unchanged.
-            if asset_customization_rules and images_array:
-                asset_customization_rules, images_array = _translate_asset_customization_rules(
-                    asset_customization_rules, images_array
-                )
+            if asset_customization_rules:
+                if images_array:
+                    asset_customization_rules, images_array = _translate_asset_customization_rules(
+                        asset_customization_rules, images_array
+                    )
+                elif videos_array:
+                    asset_customization_rules, videos_array = _translate_video_customization_rules(
+                        asset_customization_rules, videos_array
+                    )
 
             # ------------------------------------------------------------------
             # Build asset_feed_spec base: DOF vs non-DOF use different patterns.
