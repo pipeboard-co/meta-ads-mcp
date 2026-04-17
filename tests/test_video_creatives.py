@@ -167,13 +167,14 @@ async def test_video_creative_with_instagram_actor_id():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_333444"
 
-        # instagram_user_id must be in object_story_spec (not inside video_data)
-        # (Meta deprecated instagram_actor_id in Jan 2026; error_subcode 1443050 if inside video_data)
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # instagram_user_id stays in object_story_spec (instagram_actor_id deprecated Jan 2026).
         assert "object_story_spec" in creative_data
-        video_data = creative_data["object_story_spec"]["video_data"]
-        assert "instagram_actor_id" not in video_data
-        assert "instagram_user_id" not in video_data
-        assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_555666"
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss
+        assert "link_data" not in oss
+        assert "instagram_actor_id" not in oss
+        assert oss == {"page_id": "123456789", "instagram_user_id": "ig_555666"}
 
 
 @pytest.mark.asyncio
@@ -223,13 +224,13 @@ async def test_video_creative_asset_feed_spec_path():
         assert len(afs["titles"]) == 2
         assert len(afs["bodies"]) == 2
 
-        # Video FLEX: object_story_spec uses video_data with call_to_action
-        assert "video_data" in creative_data["object_story_spec"]
-        vd = creative_data["object_story_spec"]["video_data"]
-        assert vd["video_id"] == "vid_555666"
-        assert "link" not in vd, "link must NOT be in video_data directly"
-        assert vd["call_to_action"]["type"] == "LEARN_MORE"
-        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss
+        assert "link_data" not in oss
+        assert oss == {"page_id": "123456789"}
+        # link relocated from video_data.call_to_action.value.link to asset_feed_spec.link_urls.
+        assert afs["link_urls"] == [{"website_url": "https://example.com/"}]
 
 
 @pytest.mark.asyncio
@@ -272,13 +273,13 @@ async def test_video_creative_with_dof_optimization():
         # Auto-fetched thumbnail should be included in videos array
         assert afs["videos"] == [{"video_id": "vid_777888", "thumbnail_url": "https://example.com/auto-thumb.jpg"}]
 
-        # Video FLEX: video_data anchor with call_to_action
-        assert "video_data" in creative_data["object_story_spec"]
-        vd = creative_data["object_story_spec"]["video_data"]
-        assert vd["image_url"] == "https://example.com/auto-thumb.jpg"
-        assert "link" not in vd
-        assert vd["call_to_action"]["type"] == "LEARN_MORE"
-        assert vd["call_to_action"]["value"]["link"] == "https://example.com/"
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # Thumbnail (was video_data.image_url) is now on asset_feed_spec.videos[].
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss
+        assert "link_data" not in oss
+        assert oss == {"page_id": "123456789"}
+        assert afs["videos"][0]["thumbnail_url"] == "https://example.com/auto-thumb.jpg"
 
 
 @pytest.mark.asyncio
@@ -493,13 +494,12 @@ async def test_video_creative_with_description():
         assert "videos" in afs
         assert afs["videos"][0]["video_id"] == "vid_desc_test"
 
-        # object_story_spec should use video_data as the anchor (not link_data)
-        assert "video_data" in creative_data["object_story_spec"]
-        assert "link_data" not in creative_data["object_story_spec"]
-
-        # description must NOT be in video_data (Meta API v24 rejects it there)
-        video_data = creative_data["object_story_spec"]["video_data"]
-        assert "description" not in video_data
+        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
+        # description is carried by asset_feed_spec.descriptions (asserted above).
+        oss = creative_data["object_story_spec"]
+        assert "video_data" not in oss
+        assert "link_data" not in oss
+        assert oss == {"page_id": "123456789"}
 
 
 @pytest.mark.asyncio
