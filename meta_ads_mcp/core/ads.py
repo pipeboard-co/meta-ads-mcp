@@ -2465,9 +2465,12 @@ async def create_ad_creative(
             if dof_downgraded:
                 warnings_.append(
                     "optimization_type=DEGREES_OF_FREEDOM was dropped because "
-                    "asset_customization_rules was also provided. Whether placement "
-                    "rules take effect depends on the target ad set's "
-                    "is_dynamic_creative capability."
+                    "asset_customization_rules was also provided (Meta ignores "
+                    "rules under DOF). The creative is stored in Placement-Asset-"
+                    "Customization mode, which routes each asset to its placement "
+                    "via rules and does not require is_dynamic_creative on the "
+                    "ad set. If you wanted Advantage+ auto-optimization across "
+                    "all assets instead, remove asset_customization_rules."
                 )
             elif dof_multi_image_warning:
                 warnings_.append(dof_multi_image_warning)

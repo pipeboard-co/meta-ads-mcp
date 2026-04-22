@@ -112,4 +112,9 @@ async def test_dof_downgrade_warning_revised():
         assert warning is not None
         warn_text = warning if isinstance(warning, str) else " ".join(warning)
         assert "placement-specific images are respected" not in warn_text
-        assert "is_dynamic_creative" in warn_text
+        # The downgrade lands the creative in PAC, which routes by placement
+        # without the ad set's is_dynamic_creative flag. The warning must not
+        # claim rules depend on is_dynamic_creative (they don't — that's the
+        # gate for regular Dynamic Creative, not Placement Asset Customization).
+        assert "depends on" not in warn_text and "take effect depends" not in warn_text
+        assert "Placement" in warn_text or "PLACEMENT" in warn_text
