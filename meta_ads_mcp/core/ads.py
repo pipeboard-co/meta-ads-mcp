@@ -2430,16 +2430,38 @@ async def create_ad_creative(
                 "creative_id": creative_id,
                 "details": creative_details,
             }
+
+            posted_afs = creative_data.get("asset_feed_spec") if isinstance(creative_data.get("asset_feed_spec"), dict) else None
+            posted_images = posted_afs.get("images") if posted_afs else None
+            posted_rules = posted_afs.get("asset_customization_rules") if posted_afs else None
+            stored_afs = creative_details.get("asset_feed_spec") if isinstance(creative_details, dict) else None
+            collapsed = bool(
+                posted_images and len(posted_images) > 1
+                and posted_rules
+                and (not stored_afs or not stored_afs.get("images"))
+            )
+
+            warnings_ = []
             if dof_downgraded:
-                result["warning"] = (
-                    "optimization_type DEGREES_OF_FREEDOM was automatically removed because "
-                    "asset_customization_rules was provided. Meta silently ignores placement "
-                    "rules for DOF creatives. The creative was created using regular dynamic "
-                    "creative mode so placement-specific images are respected. To use DOF "
-                    "instead, remove asset_customization_rules."
+                warnings_.append(
+                    "optimization_type=DEGREES_OF_FREEDOM was dropped because "
+                    "asset_customization_rules was also provided. Whether placement "
+                    "rules take effect depends on the target ad set's "
+                    "is_dynamic_creative capability."
                 )
             elif dof_multi_image_warning:
-                result["warning"] = dof_multi_image_warning
+                warnings_.append(dof_multi_image_warning)
+            if collapsed:
+                warnings_.append(
+                    "Meta silently rewrote this creative from multi-image "
+                    "asset_feed_spec to single-image object_story_spec. Only the "
+                    "first image will serve; asset_customization_rules were "
+                    "discarded. Attach the creative to an ad set with "
+                    "is_dynamic_creative=true, or use image_crops on a single "
+                    "image_hash for per-placement cropping."
+                )
+            if warnings_:
+                result["warning"] = warnings_[0] if len(warnings_) == 1 else warnings_
             return json.dumps(result, indent=2)
 
         return json.dumps(data, indent=2)
