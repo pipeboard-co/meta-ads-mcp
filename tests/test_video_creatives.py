@@ -770,9 +770,12 @@ def test_translate_video_rules_passthrough_raw_format():
     assert updated_videos == videos_array
 
 
-def test_translate_video_rules_preserves_existing_adlabels():
-    """If videos_array entries already have adlabels, do not override them."""
-    # User-supplied labels via videos[{"label": "my_label"}]
+def test_translate_video_rules_reuses_existing_adlabel():
+    """If videos_array entries already have adlabels (from videos[].label),
+    the rule's video_label must reuse that label name so Meta sees matching
+    asset labels on both sides. Minting PBOARD_VID_N while preserving the
+    user's adlabel triggers error_subcode 2446173 ("Target rule label ...
+    doesn't refer to any of the asset labels")."""
     videos_array = [
         {"video_id": "vidA", "adlabels": [{"name": "user_label"}]},
     ]
@@ -785,10 +788,42 @@ def test_translate_video_rules_preserves_existing_adlabels():
 
     translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
 
-    # video_label at rule level uses auto-generated name
-    assert translated[0]["video_label"] == {"name": "PBOARD_VID_0"}
-    # ...but the existing adlabels on the video are preserved (not overridden)
+    # Rule video_label points at the adlabel the caller set on the video.
+    assert translated[0]["video_label"] == {"name": "user_label"}
+    # Video adlabel is unchanged.
     assert updated_videos[0]["adlabels"] == [{"name": "user_label"}]
+
+
+def test_translate_video_rules_same_video_id_different_labels_uses_first():
+    """Caller passes the same video_id twice with different labels (the ALYNNE
+    repro): videos=[{vid:X,label:L1},{vid:X,label:L2}] +
+    rules=[{FEED,video_ids:[X]},{STORY,video_ids:[X]}].
+
+    Both rules resolve to the first adlabel found for that video_id, producing
+    a payload Meta accepts (rule labels match the asset labels present on the
+    videos). Meta previously rejected this with error_subcode 2446173 because
+    the translator minted PBOARD_VID_0 for the rules but left feed_video /
+    story_video on the videos."""
+    videos_array = [
+        {"video_id": "X", "adlabels": [{"name": "feed_video"}]},
+        {"video_id": "X", "adlabels": [{"name": "story_video"}]},
+    ]
+    rules = [
+        {"placement_groups": ["FEED"], "customization_spec": {"video_ids": ["X"]}},
+        {"placement_groups": ["STORY"], "customization_spec": {"video_ids": ["X"]}},
+    ]
+
+    translated, updated_videos = _translate_video_customization_rules(rules, videos_array)
+
+    assert translated[0]["video_label"] == {"name": "feed_video"}
+    assert translated[1]["video_label"] == {"name": "feed_video"}
+    # Videos retain their explicit labels (Meta sees feed_video + story_video
+    # as valid asset labels, so PBOARD_VID_0 never appears).
+    assert updated_videos[0]["adlabels"] == [{"name": "feed_video"}]
+    assert updated_videos[1]["adlabels"] == [{"name": "story_video"}]
+    # Sanity: no PBOARD_VID_* leaks into the payload.
+    for rule in translated:
+        assert "PBOARD_VID" not in rule["video_label"]["name"]
 
 
 def test_translate_video_rules_string_video_label_coerced():

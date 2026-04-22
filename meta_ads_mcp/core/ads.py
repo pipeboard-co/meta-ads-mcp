@@ -216,12 +216,25 @@ def _translate_video_customization_rules(
 
     Also tolerates `customization_spec.video_label: "str"` (string) by hoisting it to
     `video_label: {"name": "str"}` at the rule level. Existing adlabels on
-    videos_array entries (e.g., user-supplied via `videos[].label`) are preserved.
+    videos_array entries (e.g., user-supplied via `videos[].label`) are preserved,
+    and the rule's video_label reuses that existing adlabel name so the rule points
+    at the asset the caller labeled (Meta rejects the creative with error_subcode
+    2446173 "Target rule label ... doesn't refer to any of the asset labels" if
+    the rule references a label that isn't on any asset).
 
     Rules that do NOT contain placement_groups are passed through unchanged.
     """
     if not rules or not any("placement_groups" in r for r in rules):
         return rules, videos_array
+
+    existing_vid_to_label: Dict[str, str] = {}
+    for v in videos_array:
+        vid_id = str(v.get("video_id", ""))
+        adlabels = v.get("adlabels")
+        if vid_id and vid_id not in existing_vid_to_label and isinstance(adlabels, list) and adlabels:
+            first = adlabels[0]
+            if isinstance(first, dict) and isinstance(first.get("name"), str):
+                existing_vid_to_label[vid_id] = first["name"]
 
     vid_to_label: Dict[str, str] = {}
     label_counter = 0
@@ -266,16 +279,22 @@ def _translate_video_customization_rules(
         translated_rule: Dict[str, Any] = {"customization_spec": meta_cspec}
 
         # Assign video_label at the rule level. Precedence:
-        #   1) customization_spec.video_ids: [id] — map id → generated label
+        #   1) customization_spec.video_ids: [id] — map id → label. Reuse the
+        #      explicit adlabel already on the matching videos_array entry (from
+        #      videos[].label) so rule labels match asset labels; otherwise mint
+        #      a PBOARD_VID_N and stamp it on the video.
         #   2) customization_spec.video_label: "str" — coerce string to {"name": str}
         #   3) customization_spec.video_label: {"name": "str"} — pass through
         vid_ids = cspec_input.get("video_ids", [])
         raw_video_label = cspec_input.get("video_label")
         if vid_ids:
-            v = vid_ids[0]
+            v = str(vid_ids[0])
             if v not in vid_to_label:
-                vid_to_label[v] = f"PBOARD_VID_{label_counter}"
-                label_counter += 1
+                if v in existing_vid_to_label:
+                    vid_to_label[v] = existing_vid_to_label[v]
+                else:
+                    vid_to_label[v] = f"PBOARD_VID_{label_counter}"
+                    label_counter += 1
             translated_rule["video_label"] = {"name": vid_to_label[v]}
         elif isinstance(raw_video_label, str):
             translated_rule["video_label"] = {"name": raw_video_label}
@@ -284,9 +303,10 @@ def _translate_video_customization_rules(
 
         translated_rules.append(translated_rule)
 
-    # Add adlabels to videos_array for referenced video_ids. Preserve any adlabels
-    # the caller already set (via `videos[].label` in create_ad_creative), so explicit
-    # labels win over auto-generated ones.
+    # Stamp adlabels onto videos_array entries for video_ids that were referenced
+    # by rules. Only applies to videos without existing adlabels — explicit user
+    # labels (from videos[].label) win, and the rule's video_label was already
+    # aligned to that label above.
     updated_videos: List[Dict[str, Any]] = []
     for v in videos_array:
         vid_id = str(v.get("video_id", ""))
