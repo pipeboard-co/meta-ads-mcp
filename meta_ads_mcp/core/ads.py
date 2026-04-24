@@ -1581,7 +1581,14 @@ async def create_ad_creative(
         access_token: Meta API access token (optional - will use cached token if not provided)
         name: Creative name
         page_id: Facebook Page ID (string or int; coerced to string)
-        link_url: Destination URL for the ad (required unless using lead_gen_form_id or reminder_data)
+        link_url: Destination URL for the ad. Required unless using lead_gen_form_id or
+                 reminder_data — with one exception: if asset_customization_rules is also
+                 set, link_url is required even for Lead ads. Meta accepts the creative
+                 without link_urls but rejects the ad at create_ad time with error 1885800
+                 ("Asset Customization Ads require a link"). The URL is never shown to the
+                 user when lead_gen_form_id is set (the CTA opens the form), but Meta still
+                 demands one be present on the creative. Pass any valid URL in that case
+                 (e.g. the Facebook page URL or your site root).
         message: Single ad copy/text (cannot be used with messages)
         messages: List of primary text variants for multi-variant copy testing (cannot be used with message)
         headline: Single headline for simple ads (cannot be used with headlines)
