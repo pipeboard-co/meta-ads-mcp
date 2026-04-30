@@ -335,57 +335,51 @@ class TestDynamicCreatives:
             assert "descriptions" in creative_data["asset_feed_spec"]
             assert "dynamic_creative_spec" in creative_data
     
-    async def test_create_ad_creative_validation_max_headlines(self):
-        """Test validation for maximum number of headlines."""
-        
-        # Create list with more than 5 headlines (assuming 5 is the limit)
-        too_many_headlines = [f"Headline {i}" for i in range(6)]
-        
-        result = await create_ad_creative(
-            access_token="test_token",
-            account_id="act_123456789",
-            name="Test Creative",
-            image_hash="abc123",
-            page_id="987654321",
-            link_url="https://example.com",
-            headlines=too_many_headlines
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "maximum" in error_data["error"].lower() or "limit" in error_data["error"].lower()
-        else:
-            assert "error" in result_data
-            assert "maximum" in result_data["error"].lower() or "limit" in result_data["error"].lower()
-    
-    async def test_create_ad_creative_validation_max_descriptions(self):
-        """Test validation for maximum number of descriptions."""
-        
-        # Create list with more than 5 descriptions (assuming 5 is the limit)
-        too_many_descriptions = [f"Description {i}" for i in range(6)]
-        
-        result = await create_ad_creative(
-            access_token="test_token",
-            account_id="act_123456789",
-            name="Test Creative",
-            image_hash="abc123",
-            page_id="987654321",
-            link_url="https://example.com",
-            descriptions=too_many_descriptions
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "maximum" in error_data["error"].lower() or "limit" in error_data["error"].lower()
-        else:
-            assert "error" in result_data
-            assert "maximum" in result_data["error"].lower() or "limit" in result_data["error"].lower()
+    async def test_create_ad_creative_no_preflight_count_limit_on_headlines(self):
+        """create_ad_creative no longer rejects >5 headlines client-side.
+
+        Meta enforces its own limit; pre-flight guards block payloads that the
+        Meta UI accepts (verified live 2026-04-30 against act_1276764704512927).
+        Per feedback_no_preflight_validation: never strip/filter user-provided
+        params before sending to Meta.
+        """
+        many_headlines = [f"Headline {i}" for i in range(6)]
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "creative_many_h"}
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Test Creative",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                headlines=many_headlines,
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            creative_data = mock_api.call_args_list[0][0][2]
+            titles = creative_data["asset_feed_spec"]["titles"]
+            assert [t["text"] for t in titles] == many_headlines
+
+    async def test_create_ad_creative_no_preflight_count_limit_on_descriptions(self):
+        """create_ad_creative no longer rejects >5 descriptions client-side."""
+        many_descriptions = [f"Description {i}" for i in range(6)]
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "creative_many_d"}
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Test Creative",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                descriptions=many_descriptions,
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            creative_data = mock_api.call_args_list[0][0][2]
+            descs = creative_data["asset_feed_spec"]["descriptions"]
+            assert [d["text"] for d in descs] == many_descriptions
     
 
     
@@ -562,93 +556,72 @@ class TestDynamicCreatives:
             assert "error" in result_data
             assert "Cannot specify both 'description' and 'descriptions'" in result_data["error"]
 
-    async def test_update_ad_creative_validation_max_headlines(self):
-        """Test validation for maximum number of headlines in update."""
-        
-        # Create list with more than 5 headlines (limit)
-        too_many_headlines = [f"Headline {i}" for i in range(6)]
-        
-        result = await update_ad_creative(
-            access_token="test_token",
-            creative_id="123456789",
-            headlines=too_many_headlines
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "maximum 5 headlines" in error_data["error"].lower()
-        else:
-            assert "error" in result_data
-            assert "maximum 5 headlines" in result_data["error"].lower()
-    
-    async def test_update_ad_creative_validation_max_descriptions(self):
-        """Test validation for maximum number of descriptions in update."""
-        
-        # Create list with more than 5 descriptions (limit)
-        too_many_descriptions = [f"Description {i}" for i in range(6)]
-        
-        result = await update_ad_creative(
-            access_token="test_token",
-            creative_id="123456789",
-            descriptions=too_many_descriptions
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "maximum 5 descriptions" in error_data["error"].lower()
-        else:
-            assert "error" in result_data
-            assert "maximum 5 descriptions" in result_data["error"].lower()
-    
-    async def test_update_ad_creative_validation_headline_length(self):
-        """Test validation for headline character limit."""
-        
-        # Create headline longer than 40 characters
-        long_headline = "A" * 41
-        
-        result = await update_ad_creative(
-            access_token="test_token",
-            creative_id="123456789",
-            headlines=[long_headline]
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "40 character limit" in error_data["error"]
-        else:
-            assert "error" in result_data
-            assert "40 character limit" in result_data["error"]
-    
-    async def test_update_ad_creative_validation_description_length(self):
-        """Test validation for description character limit."""
-        
-        # Create description longer than 125 characters
+    async def test_update_ad_creative_no_preflight_count_limit_on_headlines(self):
+        """update_ad_creative no longer rejects >5 headlines client-side."""
+        many_headlines = [f"Headline {i}" for i in range(6)]
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "123456789"}
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                headlines=many_headlines,
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            update_data = mock_api.call_args_list[0][0][2]
+            titles = update_data["asset_feed_spec"]["titles"]
+            assert [t["text"] for t in titles] == many_headlines
+
+    async def test_update_ad_creative_no_preflight_count_limit_on_descriptions(self):
+        """update_ad_creative no longer rejects >5 descriptions client-side."""
+        many_descriptions = [f"Description {i}" for i in range(6)]
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "123456789"}
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                descriptions=many_descriptions,
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            update_data = mock_api.call_args_list[0][0][2]
+            descs = update_data["asset_feed_spec"]["descriptions"]
+            assert [d["text"] for d in descs] == many_descriptions
+
+    async def test_update_ad_creative_no_preflight_headline_length_limit(self):
+        """update_ad_creative no longer rejects 41+ char headlines client-side.
+
+        Verified live 2026-04-30 against act_1276764704512927 — Meta accepted
+        and stored a 41-char headline ("21% BTW cadeau op hordeuren en raamhorren")
+        verbatim. Pre-flight guards reject strings the Meta UI accepts.
+        """
+        long_headline = "21% BTW cadeau op hordeuren en raamhorren"  # 41 chars
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "123456789"}
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                headlines=[long_headline],
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            update_data = mock_api.call_args_list[0][0][2]
+            assert update_data["asset_feed_spec"]["titles"] == [{"text": long_headline}]
+
+    async def test_update_ad_creative_no_preflight_description_length_limit(self):
+        """update_ad_creative no longer rejects 126+ char descriptions client-side."""
         long_description = "A" * 126
-        
-        result = await update_ad_creative(
-            access_token="test_token",
-            creative_id="123456789",
-            descriptions=[long_description]
-        )
-        
-        result_data = json.loads(result)
-        # The error might be wrapped in a 'data' field
-        if "data" in result_data:
-            error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "125 character limit" in error_data["error"]
-        else:
-            assert "error" in result_data
-            assert "125 character limit" in result_data["error"]
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "123456789"}
+            result = await update_ad_creative(
+                access_token="test_token",
+                creative_id="123456789",
+                descriptions=[long_description],
+            )
+            result_data = json.loads(result)
+            assert result_data.get("success") is True
+            update_data = mock_api.call_args_list[0][0][2]
+            assert update_data["asset_feed_spec"]["descriptions"] == [{"text": long_description}]
     
     async def test_update_ad_creative_name_only(self):
         """Test updating just the creative name."""
@@ -859,3 +832,85 @@ class TestDynamicCreatives:
                 assert "details" in result_data
                 assert "update_data_sent" in result_data
  
+    async def test_create_ad_creative_headlines_dict_form_carries_adlabels(self):
+        """Tim/designated.nl 2026-04-30: headlines[] dict form with adlabels.
+
+        Multi-headline + asset_customization_rules requires per-title adlabels
+        + matching title_label on the rule. Without dict-form support, callers
+        get Meta error 1885878 (Multiple titles assets can not be applied to
+        rule) or 2446173 (Target rule label doesn't refer to any of the asset
+        labels). Verified live 2026-04-30 against act_1276764704512927 — the
+        full dict-form shape is accepted and stored verbatim.
+        """
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "creative_dict_titles"}
+            await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Multi-headline placement",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                headlines=[
+                    {"text": "Feed headline A", "adlabels": [{"name": "feed_title"}]},
+                    {"text": "Feed headline B", "adlabels": [{"name": "feed_title"}]},
+                    {"text": "Story headline A", "adlabels": [{"name": "story_title"}]},
+                ],
+            )
+            creative_data = mock_api.call_args_list[0][0][2]
+            titles = creative_data["asset_feed_spec"]["titles"]
+            assert titles == [
+                {"text": "Feed headline A", "adlabels": [{"name": "feed_title"}]},
+                {"text": "Feed headline B", "adlabels": [{"name": "feed_title"}]},
+                {"text": "Story headline A", "adlabels": [{"name": "story_title"}]},
+            ]
+
+    async def test_create_ad_creative_headlines_mixed_str_and_dict(self):
+        """headlines[] entries may be a mix of plain strings and dict objects."""
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "creative_mixed"}
+            await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Mixed",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                headlines=[
+                    "Plain headline 1",
+                    {"text": "Tagged headline", "adlabels": [{"name": "story_title"}]},
+                    "Plain headline 2",
+                ],
+            )
+            creative_data = mock_api.call_args_list[0][0][2]
+            assert creative_data["asset_feed_spec"]["titles"] == [
+                {"text": "Plain headline 1"},
+                {"text": "Tagged headline", "adlabels": [{"name": "story_title"}]},
+                {"text": "Plain headline 2"},
+            ]
+
+    async def test_create_ad_creative_descriptions_and_messages_dict_form(self):
+        """descriptions[] and messages[] mirror the same dual-shape support."""
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"id": "creative_dict_dm"}
+            await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Dict desc + body",
+                image_hash="abc123",
+                page_id="987654321",
+                link_url="https://example.com",
+                descriptions=[
+                    {"text": "Feed desc", "adlabels": [{"name": "feed_desc"}]},
+                ],
+                messages=[
+                    {"text": "Feed body", "adlabels": [{"name": "feed_body"}]},
+                ],
+            )
+            creative_data = mock_api.call_args_list[0][0][2]
+            assert creative_data["asset_feed_spec"]["descriptions"] == [
+                {"text": "Feed desc", "adlabels": [{"name": "feed_desc"}]}
+            ]
+            assert creative_data["asset_feed_spec"]["bodies"] == [
+                {"text": "Feed body", "adlabels": [{"name": "feed_body"}]}
+            ]

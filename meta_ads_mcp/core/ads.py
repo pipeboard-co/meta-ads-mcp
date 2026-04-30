@@ -1503,6 +1503,46 @@ async def compute_image_crops(
     return json.dumps(result, indent=2)
 
 
+def _normalize_text_variants(items: Optional[List[Any]]) -> Optional[List[Dict[str, Any]]]:
+    """Normalize headlines/descriptions/messages entries into asset_feed_spec text variants.
+
+    Each entry can be either a plain string or a dict like
+    ``{"text": "...", "adlabels": [{"name": "..."}]}`` — the dict form is
+    required when ``asset_customization_rules`` references this variant via
+    ``title_label`` / ``body_label`` / ``description_label``. Without per-entry
+    adlabels, Meta rejects multi-headline + placement-customization creatives
+    with error_subcode 1885878 ("Multiple titles assets can not be applied to
+    rule #1") or 2446173 ("Target rule label doesn't refer to any of the
+    asset labels"). Verified live 2026-04-30 against act_1276764704512927:
+    asset_feed_spec.titles with per-entry adlabels + asset_customization_rules
+    with title_label is accepted by Meta and stored verbatim.
+
+    Returns None if items is None/empty (caller decides whether to skip).
+    """
+    if not items:
+        return None
+    out: List[Dict[str, Any]] = []
+    for entry in items:
+        if isinstance(entry, str):
+            out.append({"text": entry})
+        elif isinstance(entry, dict):
+            text = entry.get("text")
+            if not isinstance(text, str):
+                # Pass through whatever shape Meta gets — let Meta reject it
+                # with its own error if invalid (no preflight validation rule).
+                out.append({k: v for k, v in entry.items()})
+                continue
+            variant: Dict[str, Any] = {"text": text}
+            adlabels = entry.get("adlabels")
+            if adlabels:
+                variant["adlabels"] = adlabels
+            out.append(variant)
+        else:
+            # Unexpected shape — pass through as-is, Meta will return a clear error.
+            out.append(entry)  # type: ignore[arg-type]
+    return out
+
+
 async def _fetch_video_thumbnail(vid_id: str, access_token: str) -> Optional[str]:
     """Fetch a thumbnail URL for a Meta video. Returns None on any failure.
 
@@ -1532,11 +1572,11 @@ async def create_ad_creative(
     page_id: Optional[Union[str, int]] = None,
     link_url: Optional[str] = None,
     message: Optional[str] = None,
-    messages: Optional[List[str]] = None,
+    messages: Optional[List[Union[str, Dict[str, Any]]]] = None,
     headline: Optional[str] = None,
-    headlines: Optional[List[str]] = None,
+    headlines: Optional[List[Union[str, Dict[str, Any]]]] = None,
     description: Optional[str] = None,
-    descriptions: Optional[List[str]] = None,
+    descriptions: Optional[List[Union[str, Dict[str, Any]]]] = None,
     image_hashes: Optional[List[str]] = None,
     video_id: Optional[Union[str, int]] = None,
     thumbnail_url: Optional[str] = None,
@@ -1590,11 +1630,18 @@ async def create_ad_creative(
                  demands one be present on the creative. Pass any valid URL in that case
                  (e.g. the Facebook page URL or your site root).
         message: Single ad copy/text (cannot be used with messages)
-        messages: List of primary text variants for multi-variant copy testing (cannot be used with message)
+        messages: List of primary text variants for multi-variant copy testing (cannot be used with message).
+                  Each entry can be a plain string, OR a dict {"text": "...", "adlabels": [{"name": "..."}]}
+                  when used with asset_customization_rules that reference body_label.
         headline: Single headline for simple ads (cannot be used with headlines)
-        headlines: List of headline variants for multi-variant copy testing (cannot be used with headline)
+        headlines: List of headline variants for multi-variant copy testing (cannot be used with headline).
+                  Each entry can be a plain string, OR a dict {"text": "...", "adlabels": [{"name": "..."}]}
+                  when used with asset_customization_rules that reference title_label.
+                  Meta enforces the actual length limit; do not pre-truncate.
         description: Single description for simple ads (cannot be used with descriptions)
-        descriptions: List of description variants for multi-variant copy testing (cannot be used with description)
+        descriptions: List of description variants for multi-variant copy testing (cannot be used with description).
+                  Each entry can be a plain string, OR a dict {"text": "...", "adlabels": [{"name": "..."}]}
+                  when used with asset_customization_rules that reference description_label.
         image_hashes: List of image hashes for FLEX creatives (up to 10, cannot be used with image_hash or video_id).
                      IMPORTANT: When optimization_type="DEGREES_OF_FREEDOM" (FLEX/Advantage+ mode),
                      only ONE image is served at delivery time regardless of how many hashes you provide.
@@ -1960,20 +2007,10 @@ async def create_ad_creative(
     if description and descriptions:
         return json.dumps({"error": "Cannot specify both 'description' and 'descriptions'. Use 'description' for single description or 'descriptions' for multiple."}, indent=2)
     
-    # Validate dynamic creative parameters (plural forms only)
-    if headlines:
-        if len(headlines) > 5:
-            return json.dumps({"error": "Maximum 5 headlines allowed for dynamic creatives"}, indent=2)
-        for i, h in enumerate(headlines):
-            if len(h) > 40:
-                return json.dumps({"error": f"Headline {i+1} exceeds 40 character limit"}, indent=2)
-
-    if descriptions:
-        if len(descriptions) > 5:
-            return json.dumps({"error": "Maximum 5 descriptions allowed for dynamic creatives"}, indent=2)
-        for i, d in enumerate(descriptions):
-            if len(d) > 125:
-                return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
+    # No client-side length / count guards on headlines / descriptions / messages.
+    # Meta enforces its own limits and returns clear errors; pre-flight guards reject
+    # strings the Meta UI accepts (e.g. 41-char headlines verified live 2026-04-30
+    # against act_1276764704512927 — Meta returned 200 and stored the title verbatim).
 
     # Prepare the API endpoint for creating a creative
     endpoint = f"{account_id}/adcreatives"
@@ -2203,23 +2240,23 @@ async def create_ad_creative(
             if images_array:
                 asset_feed_spec["images"] = images_array
 
-            # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
-            # Auto-promote singular headline to single-element array when in asset_feed_spec path
+            # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec.
+            # Each entry can be a plain string OR {"text": ..., "adlabels": [...]}, the latter
+            # required when asset_customization_rules references title_label.
             if headlines:
-                asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
+                asset_feed_spec["titles"] = _normalize_text_variants(headlines)
             elif headline:
                 asset_feed_spec["titles"] = [{"text": headline}]
 
-            # Handle descriptions
-            # Auto-promote singular description to single-element array when in asset_feed_spec path
+            # Handle descriptions (same dual-shape support).
             if descriptions:
-                asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
+                asset_feed_spec["descriptions"] = _normalize_text_variants(descriptions)
             elif description:
                 asset_feed_spec["descriptions"] = [{"text": description}]
 
-            # Handle bodies: messages (plural) or message (singular)
+            # Handle bodies: messages (plural, dual-shape) or message (singular).
             if messages:
-                asset_feed_spec["bodies"] = [{"text": m} for m in messages]
+                asset_feed_spec["bodies"] = _normalize_text_variants(messages)
             elif message:
                 asset_feed_spec["bodies"] = [{"text": message}]
 
@@ -2543,11 +2580,11 @@ async def update_ad_creative(
     access_token: Optional[str] = None,
     name: Optional[str] = None,
     message: Optional[str] = None,
-    messages: Optional[List[str]] = None,
+    messages: Optional[List[Union[str, Dict[str, Any]]]] = None,
     headline: Optional[str] = None,
-    headlines: Optional[List[str]] = None,
+    headlines: Optional[List[Union[str, Dict[str, Any]]]] = None,
     description: Optional[str] = None,
-    descriptions: Optional[List[str]] = None,
+    descriptions: Optional[List[Union[str, Dict[str, Any]]]] = None,
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
@@ -2609,20 +2646,8 @@ async def update_ad_creative(
     if optimization_type and optimization_type != "DEGREES_OF_FREEDOM":
         return json.dumps({"error": f"Invalid optimization_type '{optimization_type}'. Only 'DEGREES_OF_FREEDOM' is supported."}, indent=2)
 
-    # Validate dynamic creative parameters (plural forms only)
-    if headlines:
-        if len(headlines) > 5:
-            return json.dumps({"error": "Maximum 5 headlines allowed for dynamic creatives"}, indent=2)
-        for i, h in enumerate(headlines):
-            if len(h) > 40:
-                return json.dumps({"error": f"Headline {i+1} exceeds 40 character limit"}, indent=2)
-
-    if descriptions:
-        if len(descriptions) > 5:
-            return json.dumps({"error": "Maximum 5 descriptions allowed for dynamic creatives"}, indent=2)
-        for i, d in enumerate(descriptions):
-            if len(d) > 125:
-                return json.dumps({"error": f"Description {i+1} exceeds 125 character limit"}, indent=2)
+    # No client-side length / count guards on headlines / descriptions / messages —
+    # see the matching note in create_ad_creative; Meta enforces its own limits.
 
     # Prepare the update data
     update_data = {}
@@ -2651,23 +2676,21 @@ async def update_ad_creative(
         if optimization_type:
             asset_feed_spec["optimization_type"] = optimization_type
 
-        # Handle headlines - Meta API uses "titles" not "headlines" in asset_feed_spec
-        # Auto-promote singular headline to single-element array when in asset_feed_spec path
+        # Handle headlines/descriptions/bodies — each entry can be a plain string
+        # OR {"text": ..., "adlabels": [...]}, the latter required when
+        # asset_customization_rules references title_label/body_label/description_label.
         if headlines:
-            asset_feed_spec["titles"] = [{"text": headline_text} for headline_text in headlines]
+            asset_feed_spec["titles"] = _normalize_text_variants(headlines)
         elif headline:
             asset_feed_spec["titles"] = [{"text": headline}]
 
-        # Handle descriptions
-        # Auto-promote singular description to single-element array when in asset_feed_spec path
         if descriptions:
-            asset_feed_spec["descriptions"] = [{"text": description_text} for description_text in descriptions]
+            asset_feed_spec["descriptions"] = _normalize_text_variants(descriptions)
         elif description:
             asset_feed_spec["descriptions"] = [{"text": description}]
 
-        # Handle bodies: messages (plural) or message (singular)
         if messages:
-            asset_feed_spec["bodies"] = [{"text": m} for m in messages]
+            asset_feed_spec["bodies"] = _normalize_text_variants(messages)
         elif message:
             asset_feed_spec["bodies"] = [{"text": message}]
 
