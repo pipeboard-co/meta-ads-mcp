@@ -185,6 +185,7 @@ if ENABLE_DUPLICATION:
         new_description: Optional[str] = None,
         new_cta_type: Optional[str] = None,
         new_destination_url: Optional[str] = None,
+        new_creative_features_spec: Optional[Dict[str, Any]] = None,
         pb_token: Optional[str] = None
     ) -> str:
         """
@@ -200,7 +201,25 @@ if ENABLE_DUPLICATION:
             new_description: Override the description for the new creative
             new_cta_type: Override the call-to-action type for the new creative
             new_destination_url: Override the destination URL for the new creative
+            new_creative_features_spec: Override / merge into the duplicate's
+                degrees_of_freedom_spec.creative_features_spec. Use individual
+                feature keys (e.g. image_touchups, image_uncrop, text_optimizations,
+                video_auto_crop) with {"enroll_status": "OPT_IN" | "OPT_OUT"} values.
+                Merged on top of the source creative's surviving creative_features_spec
+                entries. NOTE: the legacy "standard_enhancements" key is rejected by
+                Meta on POST (error_subcode 3858504); pass individual feature keys
+                instead. The duplication response surfaces a warning when the source
+                had standard_enhancements so callers know what to set here.
         """
+        # JSON-string fallback for clients that pass dicts as strings
+        if isinstance(new_creative_features_spec, str):
+            try:
+                _parsed_cfs = json.loads(new_creative_features_spec)
+                if isinstance(_parsed_cfs, dict):
+                    new_creative_features_spec = _parsed_cfs
+            except (json.JSONDecodeError, TypeError):
+                pass
+
         return await _forward_duplication_request(
             "creative",
             creative_id,
@@ -212,6 +231,7 @@ if ENABLE_DUPLICATION:
                 "new_description": new_description,
                 "new_cta_type": new_cta_type,
                 "new_destination_url": new_destination_url,
+                "new_creative_features_spec": new_creative_features_spec,
                 "pb_token": pb_token
             }
         )
