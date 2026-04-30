@@ -2053,7 +2053,19 @@ async def create_ad_creative(
                 if link_url:
                     asset_feed_spec_osi["link_urls"] = [{"website_url": link_url}]
                 if call_to_action_type:
-                    asset_feed_spec_osi["call_to_action_types"] = [call_to_action_type]
+                    if lead_gen_form_id or phone_number:
+                        cta_osi_value: Dict[str, Any] = {}
+                        if link_url:
+                            cta_osi_value["link"] = link_url
+                        if lead_gen_form_id:
+                            cta_osi_value["lead_gen_form_id"] = lead_gen_form_id
+                        if phone_number:
+                            cta_osi_value["phone_number"] = phone_number
+                        asset_feed_spec_osi["call_to_actions"] = [
+                            {"type": call_to_action_type, "value": cta_osi_value}
+                        ]
+                    else:
+                        asset_feed_spec_osi["call_to_action_types"] = [call_to_action_type]
                 if asset_feed_spec_osi:
                     creative_data["asset_feed_spec"] = asset_feed_spec_osi
             elif call_to_action_type:
@@ -2213,7 +2225,19 @@ async def create_ad_creative(
 
             # CTA in asset_feed_spec only for non-DOF (DOF puts CTA in link_data)
             if call_to_action_type and not is_dof:
-                asset_feed_spec["call_to_action_types"] = [call_to_action_type]
+                if lead_gen_form_id or phone_number:
+                    cta_value: Dict[str, Any] = {}
+                    if link_url:
+                        cta_value["link"] = link_url
+                    if lead_gen_form_id:
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        cta_value["phone_number"] = phone_number
+                    asset_feed_spec["call_to_actions"] = [
+                        {"type": call_to_action_type, "value": cta_value}
+                    ]
+                else:
+                    asset_feed_spec["call_to_action_types"] = [call_to_action_type]
 
             # Add placement-specific asset customization rules if provided
             if asset_customization_rules:

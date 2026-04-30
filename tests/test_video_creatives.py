@@ -956,6 +956,120 @@ async def test_create_ad_creative_videos_with_placement_rules_sends_correct_payl
         assert story_rule["video_label"] == {"name": "PBOARD_VID_1"}
 
 
+@pytest.mark.asyncio
+async def test_lead_form_with_videos_and_rules_emits_call_to_actions_plural():
+    """Lead-form ads built via asset_feed_spec MUST emit `call_to_actions`
+    (plural object array) carrying value.lead_gen_form_id, not the string-only
+    `call_to_action_types`. Without the plural form, Meta accepts the creative
+    but silently drops the form id, and the downstream create_ad fails with
+    error_subcode 3390001 ("Missing Lead Form").
+
+    Live-verified 2026-04-30 against Sandbox A (act_1276764704512927) — POSTing
+    asset_feed_spec.call_to_actions plural with value.lead_gen_form_id and
+    value.link returned creative 1651066586172582 with the form preserved on
+    readback.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "1050252844829277",
+            "page_name": "Sandbox Page",
+        }
+
+        mock_api.side_effect = [
+            {"picture": "https://example.com/vidA-thumb.jpg"},
+            {"picture": "https://example.com/vidB-thumb.jpg"},
+            {"id": "creative_lead_form"},
+            {"id": "creative_lead_form", "name": "Lead Form Multi-Placement", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_1276764704512927",
+            videos=[
+                {"video_id": "979767987909906", "label": "feed_1x1"},
+                {"video_id": "1603514887420866", "label": "reels_9x16"},
+            ],
+            asset_customization_rules=[
+                {
+                    "customization_spec": {
+                        "publisher_platforms": ["facebook"],
+                        "facebook_positions": ["feed"],
+                    },
+                    "video_label": {"name": "feed_1x1"},
+                },
+                {
+                    "customization_spec": {
+                        "publisher_platforms": ["facebook"],
+                        "facebook_positions": ["story"],
+                    },
+                    "video_label": {"name": "reels_9x16"},
+                },
+            ],
+            name="Lead Form Multi-Placement",
+            link_url="https://www.example.com/lead",
+            call_to_action_type="SIGN_UP",
+            lead_gen_form_id="1022993823609804",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[2][0][2]
+        afs = creative_data["asset_feed_spec"]
+
+        # The plural shape is the ratchet — string-only call_to_action_types
+        # MUST NOT be emitted when a form id is present (would silently drop it).
+        assert "call_to_actions" in afs, (
+            f"Expected call_to_actions plural carrier; got afs keys={list(afs.keys())}"
+        )
+        assert "call_to_action_types" not in afs, (
+            "call_to_action_types (string-only) must not coexist with lead_gen_form_id "
+            "— it is the silent-drop carrier"
+        )
+
+        ctas = afs["call_to_actions"]
+        assert isinstance(ctas, list) and len(ctas) == 1
+        cta = ctas[0]
+        assert cta["type"] == "SIGN_UP"
+        assert cta["value"]["lead_gen_form_id"] == "1022993823609804"
+        assert cta["value"]["link"] == "https://www.example.com/lead"
+
+
+@pytest.mark.asyncio
+async def test_non_lead_cta_keeps_call_to_action_types_string_array():
+    """Regression guard: when there's no lead_gen_form_id and no phone_number,
+    the existing string-only call_to_action_types path stays untouched —
+    don't churn shapes for non-lead creatives.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "1050252844829277",
+            "page_name": "Sandbox Page",
+        }
+        mock_api.side_effect = [
+            {"picture": "https://example.com/thumb.jpg"},
+            {"id": "creative_plain"},
+            {"id": "creative_plain", "name": "Plain Video", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_1276764704512927",
+            videos=[{"video_id": "979767987909906"}],
+            name="Plain Video",
+            link_url="https://www.example.com/",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        afs = creative_data["asset_feed_spec"]
+        assert afs.get("call_to_action_types") == ["LEARN_MORE"]
+        assert "call_to_actions" not in afs
+
+
 # ---------------------------------------------------------------------------
 # Per-video thumbnail auto-fetch in the videos=[...] branch (PR-B)
 # ---------------------------------------------------------------------------
