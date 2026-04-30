@@ -1625,8 +1625,16 @@ async def create_ad_creative(
                             to serve different aspect ratios per placement (e.g., 1:1 Feed + 9:16 Reels).
                           Other values are passed through to Meta as-is.
         dynamic_creative_spec: Dynamic creative optimization settings
-        call_to_action_type: Call to action button type (e.g., 'LEARN_MORE', 'SIGN_UP', 'SHOP_NOW',
-                            'CALL_NOW'). When using CALL_NOW, also provide phone_number.
+        call_to_action_type: Call to action button type. Meta enum — free-form values
+                            (e.g. 'MAKE_RESERVATION', 'RESERVE', 'BOOK_TABLE') are rejected with
+                            code 100. Pick from the documented list. Common values:
+                              BOOK_NOW         — restaurants, salons, clinics, appointments (use this for
+                                                 reservations — there is no MAKE_RESERVATION enum)
+                              LEARN_MORE, SHOP_NOW, SIGN_UP, SUBSCRIBE, GET_QUOTE, CONTACT_US,
+                              DOWNLOAD, WATCH_MORE, GET_OFFER, APPLY_NOW, CALL_NOW, MESSAGE_PAGE,
+                              SEE_MENU, ORDER_NOW, BUY_NOW, WHATSAPP_MESSAGE, GET_DIRECTIONS,
+                              BUY_TICKETS, EVENT_RSVP, BOOK_TRAVEL.
+                            When using CALL_NOW, also provide phone_number.
         lead_gen_form_id: Lead generation form ID for lead generation campaigns. Required when using
                          lead generation CTAs like 'SIGN_UP', 'GET_OFFER', 'SUBSCRIBE', etc.
         instagram_actor_id: Instagram account ID for Instagram placements (must be a string
