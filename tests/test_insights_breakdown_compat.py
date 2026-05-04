@@ -74,3 +74,38 @@ async def test_compatible_breakdown_preserves_action_typed_fields(
     assert "actions" in fields
     assert "action_values" in fields
     assert "cost_per_action_type" in fields
+
+
+@pytest.mark.asyncio
+async def test_incompatible_breakdown_surfaces_dropped_fields_note(
+    mock_api_request, mock_auth_manager
+):
+    """When fields are dropped, the response carries a note + dropped_fields list."""
+    result = await get_insights(
+        account_id="act_test", level="ad", breakdown="media_asset_url"
+    )
+    payload = json.loads(result)
+
+    assert "note" in payload
+    assert "media_asset_url" in payload["note"]
+    assert "Dropped" in payload["note"]
+
+    assert "dropped_fields" in payload
+    assert set(payload["dropped_fields"]) == {
+        "actions",
+        "action_values",
+        "cost_per_action_type",
+        "conversions",
+    }
+
+
+@pytest.mark.asyncio
+async def test_compatible_breakdown_does_not_emit_note(
+    mock_api_request, mock_auth_manager
+):
+    """No drop happened, so no note/dropped_fields keys leak into the response."""
+    result = await get_insights(account_id="act_test", level="ad", breakdown="age")
+    payload = json.loads(result)
+
+    assert "note" not in payload
+    assert "dropped_fields" not in payload

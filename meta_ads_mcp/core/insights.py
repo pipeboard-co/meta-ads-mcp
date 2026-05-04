@@ -170,7 +170,10 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
     if "platform_position" in breakdown_set and "publisher_platform" not in breakdown_set:
         breakdown_values = ["publisher_platform", *breakdown_values]
         breakdown_set.add("publisher_platform")
-    if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
+    incompatible_breakdowns = sorted(breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE)
+    dropped_fields: list[str] = []
+    if incompatible_breakdowns:
+        dropped_fields = [f for f in fields if f in _ACTION_TYPED_FIELDS]
         fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
 
     params = {
@@ -207,6 +210,19 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         for row in data.get("data", []):
             if isinstance(row, dict):
                 _strip_redundant_actions(row)
+
+    # Surface dropped fields so callers know action-typed metrics are missing by
+    # design (incompatible with the requested breakdown), not by bug.
+    if dropped_fields and isinstance(data, dict):
+        breakdown_label = ", ".join(incompatible_breakdowns)
+        data["note"] = (
+            f"Dropped {', '.join(dropped_fields)} from the request because "
+            f"breakdown={breakdown_label} is incompatible with Meta's default "
+            f"action_breakdowns=[action_type]. Action-typed metrics (purchases, "
+            f"leads, cost-per-action) will not appear; spend, impressions, "
+            f"clicks, ctr, cpc, cpm, reach are returned per breakdown value."
+        )
+        data["dropped_fields"] = dropped_fields
 
     return json.dumps(data, indent=2)
 
