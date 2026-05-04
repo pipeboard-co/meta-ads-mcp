@@ -93,16 +93,15 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                    action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
                    response. Use publisher_platform alone if you need action data alongside placement.
                    Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset,
-                                  image_asset, link_url_asset, title_asset, video_asset,
+                                  image_asset, link_url_asset, title_asset, video_asset, media_type,
                                   creative_relaxation_asset_type, flexible_format_asset_type,
                                   gen_ai_asset_type
                    NOTE: Asset breakdowns (image_asset, video_asset, etc.) only return data for ads
                    running with Dynamic Creative; for non-DCO ads, expect empty rows.
                    media_asset_url, media_creator, media_destination_url, media_format,
-                   media_origin_url, media_text_content, and media_type are NOT supported by Meta's
-                   Insights API. Meta returns "(#100) Current combination of data breakdown columns
-                   (action_type, X) is invalid"; the underlying error is "nonexisting field". Use the
-                   asset breakdowns above instead.
+                   media_origin_url, and media_text_content are NOT supported by Meta's Insights API
+                   (Meta returns "(#100) Tried accessing nonexisting field"). Use the asset breakdowns
+                   above instead.
                    Campaign/Ad Attributes: breakdown_ad_objective, breakdown_reporting_ad_id, app_id, product_id
                    Conversion Tracking: coarse_conversion_value, conversion_destination, standard_event_content_type,
                                        signal_source_bucket, is_conversion_id_modeled, fidelity_type, redownload
