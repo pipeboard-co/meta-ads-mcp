@@ -34,17 +34,6 @@ _REDUNDANT_ACTION_PREFIXES = (
 # "(#100) Current combination of data breakdown columns (action_type, X) is invalid".
 _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE = frozenset({
     "platform_position",
-    # media_* creative-asset breakdowns return one row per (entity, asset) but
-    # Meta rejects them when paired with the default action_breakdowns=[action_type].
-    # Drop action-typed fields so the request returns asset-level placement data
-    # without metrics that depend on action_type.
-    "media_asset_url",
-    "media_creator",
-    "media_destination_url",
-    "media_format",
-    "media_origin_url",
-    "media_text_content",
-    "media_type",
 })
 
 _ACTION_TYPED_FIELDS = frozenset({
@@ -104,14 +93,16 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                    action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
                    response. Use publisher_platform alone if you need action data alongside placement.
                    Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset,
-                                  image_asset, link_url_asset, title_asset, video_asset, media_asset_url,
-                                  media_creator, media_destination_url, media_format, media_origin_url,
-                                  media_text_content, media_type, creative_relaxation_asset_type,
-                                  flexible_format_asset_type, gen_ai_asset_type
-                   NOTE: media_asset_url, media_creator, media_destination_url, media_format,
-                   media_origin_url, media_text_content, and media_type are also incompatible with
-                   the default action_breakdowns=[action_type]. This tool auto-drops the action-typed
-                   fields when any of them is passed so the request returns asset rows successfully.
+                                  image_asset, link_url_asset, title_asset, video_asset,
+                                  creative_relaxation_asset_type, flexible_format_asset_type,
+                                  gen_ai_asset_type
+                   NOTE: Asset breakdowns (image_asset, video_asset, etc.) only return data for ads
+                   running with Dynamic Creative; for non-DCO ads, expect empty rows.
+                   media_asset_url, media_creator, media_destination_url, media_format,
+                   media_origin_url, media_text_content, and media_type are NOT supported by Meta's
+                   Insights API. Meta returns "(#100) Current combination of data breakdown columns
+                   (action_type, X) is invalid"; the underlying error is "nonexisting field". Use the
+                   asset breakdowns above instead.
                    Campaign/Ad Attributes: breakdown_ad_objective, breakdown_reporting_ad_id, app_id, product_id
                    Conversion Tracking: coarse_conversion_value, conversion_destination, standard_event_content_type,
                                        signal_source_bucket, is_conversion_id_modeled, fidelity_type, redownload
@@ -170,10 +161,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
     if "platform_position" in breakdown_set and "publisher_platform" not in breakdown_set:
         breakdown_values = ["publisher_platform", *breakdown_values]
         breakdown_set.add("publisher_platform")
-    incompatible_breakdowns = sorted(breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE)
-    dropped_fields: list[str] = []
-    if incompatible_breakdowns:
-        dropped_fields = [f for f in fields if f in _ACTION_TYPED_FIELDS]
+    if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
         fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
 
     params = {
@@ -210,19 +198,6 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         for row in data.get("data", []):
             if isinstance(row, dict):
                 _strip_redundant_actions(row)
-
-    # Surface dropped fields so callers know action-typed metrics are missing by
-    # design (incompatible with the requested breakdown), not by bug.
-    if dropped_fields and isinstance(data, dict):
-        breakdown_label = ", ".join(incompatible_breakdowns)
-        data["note"] = (
-            f"Dropped {', '.join(dropped_fields)} from the request because "
-            f"breakdown={breakdown_label} is incompatible with Meta's default "
-            f"action_breakdowns=[action_type]. Action-typed metrics (purchases, "
-            f"leads, cost-per-action) will not appear; spend, impressions, "
-            f"clicks, ctr, cpc, cpm, reach are returned per breakdown value."
-        )
-        data["dropped_fields"] = dropped_fields
 
     return json.dumps(data, indent=2)
 
