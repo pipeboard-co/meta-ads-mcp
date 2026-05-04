@@ -34,6 +34,17 @@ _REDUNDANT_ACTION_PREFIXES = (
 # "(#100) Current combination of data breakdown columns (action_type, X) is invalid".
 _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE = frozenset({
     "platform_position",
+    # media_* creative-asset breakdowns return one row per (entity, asset) but
+    # Meta rejects them when paired with the default action_breakdowns=[action_type].
+    # Drop action-typed fields so the request returns asset-level placement data
+    # without metrics that depend on action_type.
+    "media_asset_url",
+    "media_creator",
+    "media_destination_url",
+    "media_format",
+    "media_origin_url",
+    "media_text_content",
+    "media_type",
 })
 
 _ACTION_TYPED_FIELDS = frozenset({
@@ -92,11 +103,15 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                    When you pass platform_position, this tool auto-adds publisher_platform and drops the
                    action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
                    response. Use publisher_platform alone if you need action data alongside placement.
-                   Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset, 
+                   Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset,
                                   image_asset, link_url_asset, title_asset, video_asset, media_asset_url,
                                   media_creator, media_destination_url, media_format, media_origin_url,
                                   media_text_content, media_type, creative_relaxation_asset_type,
                                   flexible_format_asset_type, gen_ai_asset_type
+                   NOTE: media_asset_url, media_creator, media_destination_url, media_format,
+                   media_origin_url, media_text_content, and media_type are also incompatible with
+                   the default action_breakdowns=[action_type]. This tool auto-drops the action-typed
+                   fields when any of them is passed so the request returns asset rows successfully.
                    Campaign/Ad Attributes: breakdown_ad_objective, breakdown_reporting_ad_id, app_id, product_id
                    Conversion Tracking: coarse_conversion_value, conversion_destination, standard_event_content_type,
                                        signal_source_bucket, is_conversion_id_modeled, fidelity_type, redownload
