@@ -67,15 +67,32 @@ async def get_ad_accounts(access_token: Optional[str] = None, user_id: str = "me
     return json.dumps(data, indent=2)
 
 
+_DEFAULT_ACCOUNT_INFO_FIELDS = (
+    "id,name,account_id,account_status,amount_spent,balance,currency,age,"
+    "business_city,business_country_code,timezone_name"
+)
+
+
 @mcp_server.tool()
 @meta_api_tool
-async def get_account_info(account_id: str, access_token: Optional[str] = None) -> str:
+async def get_account_info(account_id: str, access_token: Optional[str] = None,
+                           fields: str = "") -> str:
     """
     Get detailed information about a specific ad account.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         access_token: Meta API access token (optional - will use cached token if not provided)
+        fields: Optional comma-separated Graph API fields to return. When provided,
+                replaces the default field set. Useful for fetching extras like
+                funding_source_details, spend_cap, is_prepay_account, min_daily_budget,
+                disable_reason, capabilities. Default fields:
+                id, name, account_id, account_status, amount_spent, balance, currency,
+                age, business_city, business_country_code, timezone_name.
+                For prepaid accounts (is_prepay_account=true, common in Brazil), the
+                Business Manager "available balance" is the sum of funding_source_details
+                STORED_BALANCE entries plus coupons — the `balance` field alone is the
+                amount due to be billed, not the available pre-paid funds.
     """
     if not account_id:
         return {
@@ -85,13 +102,13 @@ async def get_account_info(account_id: str, access_token: Optional[str] = None) 
                 "example": "Use account_id='act_123456789' or account_id='123456789'"
             }
         }
-    
+
     account_id = ensure_act_prefix(account_id)
-    
+
     # Try to get the account info directly first
     endpoint = f"{account_id}"
     params = {
-        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code,timezone_name"
+        "fields": fields.strip() if fields and fields.strip() else _DEFAULT_ACCOUNT_INFO_FIELDS
     }
     
     data = await make_api_request(endpoint, access_token, params)

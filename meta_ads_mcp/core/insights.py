@@ -28,6 +28,22 @@ _REDUNDANT_ACTION_PREFIXES = (
 )
 
 
+# Breakdowns Meta rejects when combined with the default action_breakdowns
+# (which is [action_type]). Picking any of these auto-drops the action-typed
+# fields below so the request still succeeds. Meta error path is
+# "(#100) Current combination of data breakdown columns (action_type, X) is invalid".
+_BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE = frozenset({
+    "platform_position",
+})
+
+_ACTION_TYPED_FIELDS = frozenset({
+    "actions",
+    "action_values",
+    "cost_per_action_type",
+    "conversions",
+})
+
+
 def _strip_redundant_actions(row: dict) -> dict:
     """Remove redundant action-type entries from a single insight row."""
     for key in ("actions", "action_values", "cost_per_action_type"):
@@ -71,6 +87,11 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         breakdown: Optional breakdown dimension. Valid values include:
                    Demographic: age, gender, country, region, dma
                    Platform/Device: device_platform, platform_position, publisher_platform, impression_device
+                   NOTE: platform_position is a Meta-restricted breakdown — Meta requires it to be paired
+                   with publisher_platform and is incompatible with the default action_breakdowns=[action_type].
+                   When you pass platform_position, this tool auto-adds publisher_platform and drops the
+                   action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
+                   response. Use publisher_platform alone if you need action data alongside placement.
                    Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset, 
                                   image_asset, link_url_asset, title_asset, video_asset, media_asset_url,
                                   media_creator, media_destination_url, media_format, media_origin_url,
@@ -117,8 +138,28 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         return json.dumps({"error": "No object ID provided. Use object_id, account_id, campaign_id, adset_id, or ad_id."}, indent=2)
         
     endpoint = f"{object_id}/insights"
+    fields = [
+        "account_id", "account_name", "campaign_id", "campaign_name",
+        "adset_id", "adset_name", "ad_id", "ad_name",
+        "impressions", "clicks", "spend", "cpc", "cpm", "ctr", "reach",
+        "frequency", "actions", "action_values", "conversions",
+        "unique_clicks", "cost_per_action_type",
+    ]
+
+    # Meta rejects platform_position alone or with the default
+    # action_breakdowns=[action_type]: it must be paired with publisher_platform,
+    # and the action-typed fields must be dropped. Auto-fix both so the request
+    # succeeds with placement-level metrics.
+    breakdown_values = [b.strip() for b in breakdown.split(",") if b.strip()] if breakdown else []
+    breakdown_set = set(breakdown_values)
+    if "platform_position" in breakdown_set and "publisher_platform" not in breakdown_set:
+        breakdown_values = ["publisher_platform", *breakdown_values]
+        breakdown_set.add("publisher_platform")
+    if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
+        fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
+
     params = {
-        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type",
+        "fields": ",".join(fields),
         "level": level,
         "limit": limit
     }
@@ -134,8 +175,8 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         # Use preset date range
         params["date_preset"] = time_range
     
-    if breakdown:
-        params["breakdowns"] = breakdown
+    if breakdown_values:
+        params["breakdowns"] = ",".join(breakdown_values)
     
     if after:
         params["after"] = after
