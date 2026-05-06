@@ -69,9 +69,16 @@ async def test_simple_creative_uses_object_story_spec():
         assert link_data["image_hash"] == "test_hash_123"
         assert link_data["link"] == "https://adrocketx.ai/"
         assert link_data["message"] == "If you're spending 4+ hours per campaign..."
-        
-        # The issue: headline and description should be in link_data for simple creatives
-        # Not in asset_feed_spec
+
+        # Headline and description must be in link_data for simple image creatives
+        # (headline as "name", description as "description")
+        assert link_data["name"] == "Stop paying yourself $12.50/hour", (
+            "headline should appear as link_data.name for simple image creatives"
+        )
+        assert link_data["description"] == "AI builds campaigns in 3min. 156% higher conversions. Free beta.", (
+            "description should appear as link_data.description for simple image creatives"
+        )
+
         print("\nlink_data structure:")
         print(json.dumps(link_data, indent=2))
 

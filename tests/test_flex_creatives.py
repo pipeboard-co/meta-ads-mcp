@@ -52,7 +52,7 @@ class TestFlexCreatives:
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
 
     async def test_flex_creative_multiple_image_hashes(self):
-        """Multiple image_hashes produces correct images array in asset_feed_spec."""
+        """Multiple image_hashes with DOF: call proceeds but includes a warning in the response."""
         sample_creative_data = {
             "id": "123456789",
             "name": "Multi-Image FLEX",
@@ -75,6 +75,9 @@ class TestFlexCreatives:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
+            # Warning is present in the response
+            assert "warning" in result_data
+            assert "DEGREES_OF_FREEDOM" in result_data["warning"]
 
             call_args_list = mock_api.call_args_list
             first_call = call_args_list[0]
@@ -185,25 +188,29 @@ class TestFlexCreatives:
             assert "error" in result_data
             assert "Maximum 10 image hashes" in result_data["error"]
 
-    async def test_validation_invalid_optimization_type(self):
-        """Invalid optimization_type values are rejected."""
+    async def test_optimization_type_placement_accepted(self):
+        """PLACEMENT optimization_type is accepted (not blocked)."""
+        # optimization_type=PLACEMENT should be passed through to Meta API.
+        # It will fail on link_url validation since we do not provide it here,
+        # but it must NOT be rejected with "Invalid optimization_type".
         result = await create_ad_creative(
             access_token="test_token",
             account_id="act_123456789",
             name="Test",
             image_hash="abc123",
             page_id="987654321",
-            optimization_type="INVALID_VALUE"
+            optimization_type="PLACEMENT"
         )
 
         result_data = json.loads(result)
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "Invalid optimization_type" in error_data["error"]
+            # Should NOT have "Invalid optimization_type" error
+            if "error" in error_data:
+                assert "Invalid optimization_type" not in error_data["error"]
         else:
-            assert "error" in result_data
-            assert "Invalid optimization_type" in result_data["error"]
+            if "error" in result_data:
+                assert "Invalid optimization_type" not in result_data["error"]
 
     async def test_flex_creative_single_image_uses_asset_feed_spec(self):
         """FLEX creative with single image still uses asset_feed_spec when optimization_type is set."""

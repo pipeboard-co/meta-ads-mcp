@@ -29,14 +29,14 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency}",
+            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
             "limit": limit
         }
         # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
@@ -69,7 +69,7 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
     endpoint = f"{adset_id}"
     # Explicitly prioritize frequency_control_specs in the fields request
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative"
+        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,regional_regulated_categories,regional_regulation_identities"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -98,6 +98,7 @@ async def create_adset(
     bid_amount: Optional[int] = None,
     bid_strategy: Optional[str] = None,
     bid_constraints: Optional[Dict[str, Any]] = None,
+    bid_adjustments: Optional[Dict[str, Any]] = None,
     start_time: Optional[str] = None,
     end_time: Optional[str] = None,
     dsa_beneficiary: Optional[str] = None,
@@ -109,6 +110,7 @@ async def create_adset(
     multi_advertiser_ads: Optional[int] = None,
     regional_regulated_categories: Optional[List[str]] = None,
     regional_regulation_identities: Optional[Dict[str, Any]] = None,
+    attribution_spec: Optional[List[Dict[str, Any]]] = None,
     access_token: Optional[str] = None
 ) -> str:
     """
@@ -118,11 +120,30 @@ async def create_adset(
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         campaign_id: Meta Ads campaign ID this ad set belongs to
         name: Ad set name
-        optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'REACH', 'CONVERSIONS', 'APP_INSTALLS', 'VALUE')
+        optimization_goal: Conversion optimization goal. Valid values depend on the campaign objective and destination_type.
+                          OUTCOME_ENGAGEMENT + destination_type=WEBSITE: OFFSITE_CONVERSIONS, LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Post: POST_ENGAGEMENT, IMPRESSIONS, REACH.
+                          OUTCOME_ENGAGEMENT + On Video: THRUPLAY, TWO_SECOND_CONTINUOUS_VIDEO_VIEWS.
+                          OUTCOME_ENGAGEMENT + On Event: EVENT_RESPONSES, IMPRESSIONS, POST_ENGAGEMENT, REACH.
+                          OUTCOME_ENGAGEMENT + On Page: PAGE_LIKES.
+                          OUTCOME_ENGAGEMENT + Messaging (MESSENGER/WHATSAPP/INSTAGRAM_DIRECT): CONVERSATIONS, LINK_CLICKS.
+                          OUTCOME_TRAFFIC + WEBSITE: LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_AWARENESS: REACH, IMPRESSIONS, AD_RECALL_LIFT, THRUPLAY.
+                          OUTCOME_LEADS: LEAD_GENERATION, QUALITY_LEAD (forms), QUALITY_CALL (calls), OFFSITE_CONVERSIONS, LINK_CLICKS (website).
+                          OUTCOME_SALES: OFFSITE_CONVERSIONS, VALUE, CONVERSATIONS, LINK_CLICKS, IMPRESSIONS, REACH.
+                          OUTCOME_APP_PROMOTION: APP_INSTALLS, APP_INSTALLS_AND_OFFSITE_CONVERSIONS, VALUE.
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
         status: Initial ad set status (default: PAUSED)
-        daily_budget: Daily budget in account currency (in cents) as a string
-        lifetime_budget: Lifetime budget in account currency (in cents) as a string
+        daily_budget: Daily budget in account currency (in cents) as a string.
+                     CBO NOTE: Do NOT set this if the parent campaign already has a budget
+                     (Campaign Budget Optimization / CBO mode). Meta only allows budgets at one
+                     level: either the campaign OR the ad set, not both. If the campaign has a
+                     daily_budget or lifetime_budget, omit this field — the ad set will
+                     automatically use the campaign budget.
+        lifetime_budget: Lifetime budget in account currency (in cents) as a string.
+                        CBO NOTE: Do NOT set this if the parent campaign already has a budget
+                        (Campaign Budget Optimization / CBO mode). Omit this field when the
+                        campaign uses CBO — the ad set inherits the campaign budget automatically.
         targeting: Targeting specs (age, location, interests, etc).
                   targeting_automation.advantage_audience defaults to 0 if not set (Meta API v24+ requirement).
                   Set to 1 to enable Advantage+ Audience (requires age_max>=65). Use search_interests for interest IDs.
@@ -141,6 +162,14 @@ async def create_adset(
         bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
+        bid_adjustments: Bid multipliers per targeting dimension. Pass-through to Meta.
+                        Shape: {"user_groups": {"<dim>": {"<value>": <float>, "default": <float>}}}
+                        Dims: age, gender, user_os, device_platform, position_type,
+                              publisher_platform, user_bucket, home_location, locale, etc.
+                        Multipliers are floats, typically 0.0-1.0.
+                        Example: {"user_groups": {"user_os": {"iOS": 0.9, "Android": 0.7, "default": 1.0}}}
+                        NOTE: Writing bid_adjustments requires a Meta app capability that must be
+                              allowlisted. Apps without it get OAuthException (#3).
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
                    To schedule future delivery: set start_time to a future date and status=ACTIVE.
                    Meta will show effective_status as SCHEDULED and automatically begin delivery at start_time.
@@ -175,6 +204,12 @@ async def create_adset(
                                         - AUSTRALIA_FINSERV: australia_finserv_beneficiary, australia_finserv_payer
                                         - SINGAPORE_UNIVERSAL: singapore_universal_beneficiary, singapore_universal_payer
                                         Example: {"taiwan_universal_beneficiary": "<id>", "taiwan_universal_payer": "<id>"}
+        attribution_spec: Attribution window specification for the ad set. Controls how conversions are
+                         attributed to ads. Default is 7-day click if not specified.
+                         Example for 1-day click: [{"event_type": "CLICK_THROUGH", "window_days": 1}]
+                         Example for 1-day click + 1-day view: [{"event_type": "CLICK_THROUGH", "window_days": 1}, {"event_type": "VIEW_THROUGH", "window_days": 1}]
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     # Check required parameters
@@ -302,24 +337,45 @@ async def create_adset(
                 "example": '{"bid_strategy": "LOWEST_COST_WITH_MIN_ROAS", "bid_constraints": {"roas_average_floor": 20000}, "optimization_goal": "VALUE"}'
             }, indent=2)
 
-    # Pre-flight check: if no bid_amount provided, check whether the parent campaign's
-    # bid_strategy requires one. This prevents a confusing error from Meta's API when
-    # the campaign-level bid strategy forces child ad sets to provide bid_amount.
-    if bid_amount is None:
+    # Pre-flight check: fetch campaign data to catch common errors before hitting Meta's API.
+    # Triggered when the user provides a budget (CBO conflict check) or omits bid_amount
+    # (bid strategy compatibility check). A single API call covers both checks.
+    needs_campaign_check = (daily_budget is not None or lifetime_budget is not None or bid_amount is None)
+    if needs_campaign_check:
         try:
             campaign_data = await make_api_request(
-                campaign_id, access_token, {"fields": "bid_strategy,name"}
+                campaign_id, access_token, {"fields": "bid_strategy,name,daily_budget,lifetime_budget"}
             )
-            campaign_bid_strategy = campaign_data.get("bid_strategy")
-            if campaign_bid_strategy and campaign_bid_strategy in strategies_requiring_bid_amount:
-                campaign_name = campaign_data.get("name", campaign_id)
-                return json.dumps({
-                    "error": f"bid_amount is required because the parent campaign uses bid_strategy '{campaign_bid_strategy}'",
-                    "details": f"Campaign '{campaign_name}' ({campaign_id}) uses '{campaign_bid_strategy}', which requires all child ad sets to provide a bid_amount (in cents).",
-                    "workaround": "Either provide the bid_amount parameter, or change the campaign's bid_strategy to 'LOWEST_COST_WITHOUT_CAP'",
-                    "example_with_bid_amount": f'{{"bid_amount": 500}}  (= $5.00 bid cap)',
-                    "example_without_bid_amount": 'Change campaign bid strategy: update_campaign(campaign_id="' + campaign_id + '", bid_strategy="LOWEST_COST_WITHOUT_CAP")'
-                }, indent=2)
+            campaign_name = campaign_data.get("name", campaign_id)
+
+            # Check 1: CBO budget conflict.
+            # Meta does not allow budgets at both the campaign and ad set level.
+            # If the campaign already has a budget (CBO mode), reject ad-set-level budgets early.
+            if daily_budget is not None or lifetime_budget is not None:
+                campaign_daily_budget = campaign_data.get("daily_budget")
+                campaign_lifetime_budget = campaign_data.get("lifetime_budget")
+                if campaign_daily_budget or campaign_lifetime_budget:
+                    budget_type = "daily_budget" if campaign_daily_budget else "lifetime_budget"
+                    return json.dumps({
+                        "error": f"Budget conflict: campaign '{campaign_name}' ({campaign_id}) already has a {budget_type} set (Campaign Budget Optimization / CBO).",
+                        "details": "Meta does not allow budgets at both the campaign and ad set level. When a campaign uses CBO, its ad sets must not specify daily_budget or lifetime_budget.",
+                        "fix": "Remove daily_budget and lifetime_budget from your create_adset call. The ad set will automatically use the campaign budget.",
+                        "alternative": "To use ad set-level budgets (ABO), you would need to create a campaign without a campaign-level budget."
+                    }, indent=2)
+
+            # Check 2: Campaign bid strategy requires bid_amount.
+            # This prevents a confusing error from Meta's API when the campaign-level
+            # bid strategy forces child ad sets to provide bid_amount.
+            if bid_amount is None:
+                campaign_bid_strategy = campaign_data.get("bid_strategy")
+                if campaign_bid_strategy and campaign_bid_strategy in strategies_requiring_bid_amount:
+                    return json.dumps({
+                        "error": f"bid_amount is required because the parent campaign uses bid_strategy '{campaign_bid_strategy}'",
+                        "details": f"Campaign '{campaign_name}' ({campaign_id}) uses '{campaign_bid_strategy}', which requires all child ad sets to provide a bid_amount (in cents).",
+                        "workaround": "Either provide the bid_amount parameter, or change the campaign's bid_strategy to 'LOWEST_COST_WITHOUT_CAP'",
+                        "example_with_bid_amount": f'{{"bid_amount": 500}}  (= $5.00 bid cap)',
+                        "example_without_bid_amount": 'Change campaign bid strategy: update_campaign(campaign_id="' + campaign_id + '", bid_strategy="LOWEST_COST_WITHOUT_CAP")'
+                    }, indent=2)
         except Exception:
             pass  # If the pre-flight check fails, let the create request proceed normally
 
@@ -350,6 +406,9 @@ async def create_adset(
 
     if bid_constraints:
         params["bid_constraints"] = json.dumps(bid_constraints)
+
+    if bid_adjustments is not None:
+        params["bid_adjustments"] = json.dumps(bid_adjustments)
 
     if start_time:
         params["start_time"] = start_time
@@ -385,6 +444,9 @@ async def create_adset(
 
     if regional_regulation_identities is not None:
         params["regional_regulation_identities"] = json.dumps(regional_regulation_identities)
+
+    if attribution_spec is not None:
+        params["attribution_spec"] = json.dumps(attribution_spec)
 
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
@@ -426,6 +488,7 @@ async def create_adset(
 @meta_api_tool
 async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dict[str, Any]]] = None, bid_strategy: Optional[str] = None,
                         bid_amount: Optional[int] = None, bid_constraints: Optional[Dict[str, Any]] = None,
+                        bid_adjustments: Optional[Dict[str, Any]] = None,
                         name: Optional[str] = None,
                         status: Optional[str] = None, targeting: Optional[Dict[str, Any]] = None,
                         optimization_goal: Optional[str] = None, daily_budget: Optional[int] = None, lifetime_budget: Optional[int] = None,
@@ -437,6 +500,7 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
                         multi_advertiser_ads: Optional[int] = None,
                         regional_regulated_categories: Optional[List[str]] = None,
                         regional_regulation_identities: Optional[Dict[str, Any]] = None,
+                        attribution_spec: Optional[List[Dict[str, Any]]] = None,
                         access_token: Optional[str] = None) -> str:
     """
     Update an ad set with new settings including frequency caps and budgets.
@@ -457,6 +521,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         bid_constraints: Bid constraints dict. Required for LOWEST_COST_WITH_MIN_ROAS.
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
+        bid_adjustments: Bid multipliers per targeting dimension. Pass-through to Meta.
+                        Shape: {"user_groups": {"<dim>": {"<value>": <float>, "default": <float>}}}
+                        See create_adset for full docs and dim list.
+                        NOTE: Writing requires a Meta app capability that must be allowlisted.
         status: Update ad set status (ACTIVE, PAUSED, etc.)
         targeting: Complete targeting specifications (replaces existing targeting)
         optimization_goal: Conversion optimization goal (e.g., 'LINK_CLICKS', 'CONVERSIONS', 'VALUE')
@@ -482,6 +550,12 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
         regional_regulation_identities: Dict of verified identity IDs for regional transparency compliance.
                                         Required when regional_regulated_categories is set.
                                         Set individual keys to null to remove them.
+        attribution_spec: Attribution window specification for the ad set.
+                         WARNING: Meta no longer supports updating attribution_spec after ad set creation
+                         (error 1504040). To change attribution windows, create a new ad set instead.
+                         This parameter is kept for compatibility but will be rejected by Meta's API.
+                         Valid event_type values: CLICK_THROUGH, VIEW_THROUGH.
+                         Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
     if not adset_id:
@@ -544,7 +618,10 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if bid_constraints is not None:
         params['bid_constraints'] = json.dumps(bid_constraints)
-        
+
+    if bid_adjustments is not None:
+        params['bid_adjustments'] = json.dumps(bid_adjustments)
+
     if status is not None:
         params['status'] = status
         
@@ -588,6 +665,9 @@ async def update_adset(adset_id: str, frequency_control_specs: Optional[List[Dic
 
     if regional_regulation_identities is not None:
         params['regional_regulation_identities'] = json.dumps(regional_regulation_identities)
+
+    if attribution_spec is not None:
+        params['attribution_spec'] = json.dumps(attribution_spec)
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)

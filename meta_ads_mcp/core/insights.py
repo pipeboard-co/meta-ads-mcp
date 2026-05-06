@@ -28,6 +28,30 @@ _REDUNDANT_ACTION_PREFIXES = (
 )
 
 
+# Breakdowns Meta rejects when combined with the default action_breakdowns
+# (which is [action_type]). Picking any of these auto-drops the action-typed
+# fields below so the request still succeeds. Meta error path is
+# "(#100) Current combination of data breakdown columns (action_type, X) is invalid".
+_BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE = frozenset({
+    "platform_position",
+})
+
+# Breakdowns that collide with the default action_breakdowns=[action_type] but
+# are real Meta fields (so we explicitly clear action_breakdowns instead of
+# dropping the action-typed response fields). For non-DCO ads this returns
+# empty rows; for DCO ads it returns the breakdown dimension populated.
+_BREAKDOWNS_REQUIRING_EMPTY_ACTION_BREAKDOWNS = frozenset({
+    "media_type",
+})
+
+_ACTION_TYPED_FIELDS = frozenset({
+    "actions",
+    "action_values",
+    "cost_per_action_type",
+    "conversions",
+})
+
+
 def _strip_redundant_actions(row: dict) -> dict:
     """Remove redundant action-type entries from a single insight row."""
     for key in ("actions", "action_values", "cost_per_action_type"):
@@ -50,6 +74,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                       time_range: Union[str, Dict[str, str]] = "maximum", breakdown: str = "",
                       level: str = "ad", limit: int = 25, after: str = "",
                       action_attribution_windows: Optional[List[str]] = None,
+                      action_breakdowns: Optional[List[str]] = None,
                       compact: bool = False,
                       account_id: str = "", campaign_id: str = "",
                       adset_id: str = "", ad_id: str = "") -> str:
@@ -71,11 +96,25 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         breakdown: Optional breakdown dimension. Valid values include:
                    Demographic: age, gender, country, region, dma
                    Platform/Device: device_platform, platform_position, publisher_platform, impression_device
-                   Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset, 
-                                  image_asset, link_url_asset, title_asset, video_asset, media_asset_url,
-                                  media_creator, media_destination_url, media_format, media_origin_url,
-                                  media_text_content, media_type, creative_relaxation_asset_type,
-                                  flexible_format_asset_type, gen_ai_asset_type
+                   NOTE: platform_position is a Meta-restricted breakdown — Meta requires it to be paired
+                   with publisher_platform and is incompatible with the default action_breakdowns=[action_type].
+                   When you pass platform_position, this tool auto-adds publisher_platform and drops the
+                   action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
+                   response. Use publisher_platform alone if you need action data alongside placement.
+                   Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset,
+                                  image_asset, link_url_asset, title_asset, video_asset, media_type,
+                                  creative_relaxation_asset_type, flexible_format_asset_type,
+                                  gen_ai_asset_type
+                   NOTE: Asset breakdowns (image_asset, video_asset, etc.) only return data for ads
+                   running with Dynamic Creative; for non-DCO ads, expect empty rows.
+                   NOTE: media_type collides with the default action_breakdowns=[action_type], so
+                   this tool auto-overrides action_breakdowns to [] when you pass media_type.
+                   Action-typed metrics (actions, action_values, conversions) are still returned
+                   but are no longer sliced by action_type alongside media_type.
+                   media_asset_url, media_creator, media_destination_url, media_format,
+                   media_origin_url, and media_text_content are NOT supported by Meta's Insights API
+                   (Meta returns "(#100) Tried accessing nonexisting field"). Use the asset breakdowns
+                   above instead.
                    Campaign/Ad Attributes: breakdown_ad_objective, breakdown_reporting_ad_id, app_id, product_id
                    Conversion Tracking: coarse_conversion_value, conversion_destination, standard_event_content_type,
                                        signal_source_bucket, is_conversion_id_modeled, fidelity_type, redownload
@@ -96,6 +135,10 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
         action_attribution_windows: Optional list of attribution windows (e.g., ["1d_click", "7d_click", "1d_view"]).
                    When specified, actions include additional fields for each window. The 'value' field always shows 7d_click.
+        action_breakdowns: Optional list of action_breakdowns to apply to action-typed metrics. Pass [] to disable
+                   the default action_type slicing (required when combining action data with breakdowns that collide
+                   with action_type, e.g. media_type — auto-applied for media_type when not set).
+                   Meta supports values like action_type, action_target_id, action_destination, etc.
         compact: When True, strips redundant action-type duplicates from the response
                  (omni_*, onsite_web_*, offsite_conversion.fb_pixel_*, etc.) to reduce
                  payload size by ~60%. The canonical action types (purchase, add_to_cart,
@@ -117,8 +160,34 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         return json.dumps({"error": "No object ID provided. Use object_id, account_id, campaign_id, adset_id, or ad_id."}, indent=2)
         
     endpoint = f"{object_id}/insights"
+    fields = [
+        "account_id", "account_name", "campaign_id", "campaign_name",
+        "adset_id", "adset_name", "ad_id", "ad_name",
+        "impressions", "clicks", "spend", "cpc", "cpm", "ctr", "reach",
+        "frequency", "actions", "action_values", "conversions",
+        "unique_clicks", "cost_per_action_type",
+    ]
+
+    # Meta rejects platform_position alone or with the default
+    # action_breakdowns=[action_type]: it must be paired with publisher_platform,
+    # and the action-typed fields must be dropped. Auto-fix both so the request
+    # succeeds with placement-level metrics.
+    breakdown_values = [b.strip() for b in breakdown.split(",") if b.strip()] if breakdown else []
+    breakdown_set = set(breakdown_values)
+    if "platform_position" in breakdown_set and "publisher_platform" not in breakdown_set:
+        breakdown_values = ["publisher_platform", *breakdown_values]
+        breakdown_set.add("publisher_platform")
+    if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
+        fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
+    # media_type collides with action_breakdowns=[action_type] but is a real
+    # field — override action_breakdowns to empty so the request succeeds with
+    # the action-typed metrics intact.
+    override_action_breakdowns_empty = bool(
+        breakdown_set & _BREAKDOWNS_REQUIRING_EMPTY_ACTION_BREAKDOWNS
+    )
+
     params = {
-        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type",
+        "fields": ",".join(fields),
         "level": level,
         "limit": limit
     }
@@ -134,8 +203,15 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         # Use preset date range
         params["date_preset"] = time_range
     
-    if breakdown:
-        params["breakdowns"] = breakdown
+    if breakdown_values:
+        params["breakdowns"] = ",".join(breakdown_values)
+    # Caller-supplied action_breakdowns wins; otherwise auto-empty for media_type.
+    if action_breakdowns is not None:
+        params["action_breakdowns"] = (
+            "[" + ",".join(action_breakdowns) + "]" if action_breakdowns else "[]"
+        )
+    elif override_action_breakdowns_empty:
+        params["action_breakdowns"] = "[]"
     
     if after:
         params["after"] = after
