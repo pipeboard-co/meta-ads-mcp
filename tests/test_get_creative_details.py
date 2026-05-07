@@ -180,3 +180,41 @@ async def test_get_creative_details_api_error():
 
         data = parse_result(result)
         assert "error" in data
+
+
+@pytest.mark.asyncio
+async def test_get_creative_details_strips_standard_enhancements():
+    """Meta still emits the deprecated standard_enhancements key on GET; strip it
+    so the LLM does not copy it into a subsequent POST and trip error_subcode 3858504."""
+    mock_main_response = {
+        "id": "creative_se",
+        "name": "Has SE",
+        "status": "ACTIVE",
+        "creative_features_spec": {
+            "standard_enhancements": {"enroll_status": "OPT_IN"},
+            "image_touchups": {"enroll_status": "OPT_IN"},
+        },
+    }
+    mock_dcs_response = {}
+    mock_dof_response = {
+        "degrees_of_freedom_spec": {
+            "creative_features_spec": {
+                "standard_enhancements": {"enroll_status": "OPT_IN"},
+                "profile_card": {"enroll_status": "OPT_IN"},
+            }
+        }
+    }
+    mock_ps_response = {}
+
+    with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
+        mock_api.side_effect = [mock_main_response, mock_dcs_response, mock_dof_response, mock_ps_response]
+
+        result = await get_creative_details(
+            creative_id="creative_se", access_token="test_token"
+        )
+
+        data = parse_result(result)
+        assert "standard_enhancements" not in data["creative_features_spec"]
+        assert data["creative_features_spec"]["image_touchups"]["enroll_status"] == "OPT_IN"
+        assert "standard_enhancements" not in data["degrees_of_freedom_spec"]["creative_features_spec"]
+        assert data["degrees_of_freedom_spec"]["creative_features_spec"]["profile_card"]["enroll_status"] == "OPT_IN"
