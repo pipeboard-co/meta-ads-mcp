@@ -185,6 +185,26 @@ _ALL_ENHANCEMENT_KEYS: tuple[str, ...] = (
 )
 
 
+def _strip_deprecated_standard_enhancements(creative: Dict[str, Any]) -> None:
+    """Drop the deprecated standard_enhancements key from a creative dict in place.
+
+    Meta still emits `standard_enhancements` inside `creative_features_spec` on GET
+    responses but rejects it on POST with error_subcode 3858504. LLMs frequently copy
+    GET responses straight into the next mutation, so stripping it here prevents the
+    deprecated field from being re-introduced via the model.
+    """
+    if not isinstance(creative, dict):
+        return
+    cfs = creative.get("creative_features_spec")
+    if isinstance(cfs, dict):
+        cfs.pop("standard_enhancements", None)
+    dof = creative.get("degrees_of_freedom_spec")
+    if isinstance(dof, dict):
+        dof_cfs = dof.get("creative_features_spec")
+        if isinstance(dof_cfs, dict):
+            dof_cfs.pop("standard_enhancements", None)
+
+
 def _translate_video_customization_rules(
     rules: List[Dict[str, Any]],
     videos_array: List[Dict[str, Any]],
@@ -536,6 +556,8 @@ async def get_creative_details(creative_id: str, access_token: Optional[str] = N
             except Exception:
                 pass  # Non-critical
 
+    _strip_deprecated_standard_enhancements(data)
+
     return json.dumps(data, indent=2)
 
 
@@ -684,6 +706,9 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
                             creative["catalog_name"] = catalog["name"]
                 except Exception:
                     pass  # Non-critical
+
+        for creative in data['data']:
+            _strip_deprecated_standard_enhancements(creative)
 
     return json.dumps(data, indent=2)
 

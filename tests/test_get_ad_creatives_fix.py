@@ -125,17 +125,53 @@ class TestGetAdCreativesBugFix:
 
     async def test_get_ad_creatives_empty_data(self):
         """Test get_ad_creatives when API returns empty data."""
-        
+
         empty_data = {"data": []}
-        
+
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
             mock_api.return_value = empty_data
-            
+
             result = await get_ad_creatives(access_token="test_token", ad_id="120228922933270272")
             result_data = json.loads(result)
-            
+
             assert "data" in result_data
             assert len(result_data["data"]) == 0
+
+    async def test_get_ad_creatives_strips_standard_enhancements(self):
+        """The deprecated standard_enhancements key still surfaces on GET responses;
+        strip it so LLMs do not echo it into a subsequent POST (error_subcode 3858504)."""
+
+        creatives_with_se = {
+            "data": [
+                {
+                    "id": "creative_1",
+                    "name": "Has SE",
+                    "status": "ACTIVE",
+                    "creative_features_spec": {
+                        "standard_enhancements": {"enroll_status": "OPT_IN"},
+                        "image_touchups": {"enroll_status": "OPT_IN"},
+                    },
+                    "degrees_of_freedom_spec": {
+                        "creative_features_spec": {
+                            "standard_enhancements": {"enroll_status": "OPT_IN"},
+                            "profile_card": {"enroll_status": "OPT_IN"},
+                        }
+                    },
+                }
+            ]
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = creatives_with_se
+
+            result = await get_ad_creatives(access_token="test_token", ad_id="120228922933270272")
+            result_data = json.loads(result)
+            creative = result_data["data"][0]
+
+            assert "standard_enhancements" not in creative["creative_features_spec"]
+            assert creative["creative_features_spec"]["image_touchups"]["enroll_status"] == "OPT_IN"
+            assert "standard_enhancements" not in creative["degrees_of_freedom_spec"]["creative_features_spec"]
+            assert creative["degrees_of_freedom_spec"]["creative_features_spec"]["profile_card"]["enroll_status"] == "OPT_IN"
 
 
 def test_ad_creative_images_is_dict():
