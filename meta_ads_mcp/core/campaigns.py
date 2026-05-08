@@ -132,7 +132,13 @@ async def create_campaign(
     use_adset_level_budgets: bool = False
 ) -> str:
     """
-    Create a new campaign in a Meta Ads account.
+    Create a new Facebook or Instagram ad campaign in a Meta Ads account. Use this to start
+    a new campaign with an ODAX objective (OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS,
+    OUTCOME_TRAFFIC, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION), pick CBO (campaign budget
+    optimization) or ABO (ad-set-level budgets), and set bid strategy, spend cap, and special
+    ad categories. This is the first step of the campaign group → ad set → ad hierarchy on
+    Meta. Returns the new campaign id. Also known as: create campaign, new campaign, make
+    campaign, campaign group, ABO campaign, CBO campaign.
 
     Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
 
