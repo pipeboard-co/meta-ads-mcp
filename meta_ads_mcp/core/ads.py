@@ -463,21 +463,21 @@ async def get_ads(account_id: str, access_token: Optional[str] = None, limit: in
     if adset_id:
         endpoint = f"{adset_id}/ads"
         params = {
-            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "fields": "id,name,adset_id,campaign_id,status,effective_status,issues_info,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
             "limit": limit
         }
     # Use campaign-specific endpoint if campaign_id is provided
     elif campaign_id:
         endpoint = f"{campaign_id}/ads"
         params = {
-            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "fields": "id,name,adset_id,campaign_id,status,effective_status,issues_info,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
             "limit": limit
         }
     else:
         # Default to account-level endpoint if no specific filters
         endpoint = f"{account_id}/ads"
         params = {
-            "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
+            "fields": "id,name,adset_id,campaign_id,status,effective_status,issues_info,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs",
             "limit": limit
         }
 
@@ -501,7 +501,7 @@ async def get_ad_details(ad_id: str, access_token: Optional[str] = None) -> str:
         
     endpoint = f"{ad_id}"
     params = {
-        "fields": "id,name,adset_id,campaign_id,status,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs,preview_shareable_link"
+        "fields": "id,name,adset_id,campaign_id,status,effective_status,issues_info,creative,created_time,updated_time,bid_amount,conversion_domain,tracking_specs,preview_shareable_link"
     }
     
     data = await make_api_request(endpoint, access_token, params)
