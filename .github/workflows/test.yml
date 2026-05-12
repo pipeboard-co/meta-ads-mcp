@@ -49,8 +49,13 @@ jobs:
       with:
         python-version: "3.10"
         
-    - name: Check version bump
+    - name: Check pyproject.toml and server.json versions match
       run: |
-        # This is a simple check - you might want to make it more sophisticated
-        echo "Current version in pyproject.toml:"
-        grep "version = " pyproject.toml 
+        PY_VERSION=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+        JSON_VERSION=$(python -c "import json; print(json.load(open('server.json'))['version'])")
+        echo "pyproject.toml version: $PY_VERSION"
+        echo "server.json version:    $JSON_VERSION"
+        if [ "$PY_VERSION" != "$JSON_VERSION" ]; then
+          echo "::error::pyproject.toml ($PY_VERSION) and server.json ($JSON_VERSION) must match. Bump both."
+          exit 1
+        fi 
