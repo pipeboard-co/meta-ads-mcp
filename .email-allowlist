@@ -13,3 +13,4 @@ info@pipeboard.co
 # pytest decorator false-positive: @pytest.mark.asyncio matches the email regex
 # because the diff +@pytest.mark.asyncio has + in the character class
 pytest.mark.asyncio
+pytest.fixture
