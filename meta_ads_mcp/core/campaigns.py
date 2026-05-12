@@ -276,11 +276,19 @@ async def update_campaign(
     campaign_budget_optimization: Optional[bool] = None,
     objective: Optional[str] = None,  # Add objective if it's updatable
     use_adset_level_budgets: Optional[bool] = None,  # Add other updatable fields as needed based on API docs
+    adset_budgets: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
 
     Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
+
+    Migrating CBO (Advantage Campaign Budget) → ABO (ad set level budgets):
+        Pass `adset_budgets` with one entry per ad set in the campaign. Meta atomically
+        removes the campaign-level budget and assigns budgets at the ad set level in a
+        single call. This is Meta's documented mechanism — the legacy
+        `use_adset_level_budgets=true` flag attempts to clear `daily_budget`/`lifetime_budget`
+        but Meta silently ignores the empty values, so the migration does not persist.
 
     Args:
         campaign_id: Meta Ads campaign ID
@@ -288,16 +296,22 @@ async def update_campaign(
         name: New campaign name
         status: New campaign status (e.g., 'ACTIVE', 'PAUSED')
         special_ad_categories: List of special ad categories if applicable
-        daily_budget: New daily budget in account currency (in cents) as a string. 
-                     Set to empty string "" to remove the daily budget.
-        lifetime_budget: New lifetime budget in account currency (in cents) as a string.
-                        Set to empty string "" to remove the lifetime budget.
+        daily_budget: New daily budget in account currency (in cents).
+        lifetime_budget: New lifetime budget in account currency (in cents).
         bid_strategy: New bid strategy
         bid_cap: New bid cap in account currency (in cents) as a string
         spend_cap: New spending limit for the campaign in account currency (in cents) as a string
         campaign_budget_optimization: Enable/disable campaign budget optimization
         objective: New campaign objective (Note: May not always be updatable)
-        use_adset_level_budgets: If True, removes campaign-level budgets to switch to ad set level budgets
+        use_adset_level_budgets: Deprecated for CBO → ABO migration — use `adset_budgets`
+            instead. Kept for backwards compatibility; sends empty `daily_budget`/
+            `lifetime_budget` which Meta silently ignores in most cases.
+        adset_budgets: List of `{"adset_id": "...", "daily_budget": <cents>}` objects.
+            Use to migrate from CBO to ABO: Meta removes the campaign-level Advantage
+            budget and assigns the provided daily budgets at the ad set level in one
+            atomic call. Example:
+                [{"adset_id": "1234", "daily_budget": 5000},
+                 {"adset_id": "5678", "daily_budget": 7000}]
     """
     if not campaign_id:
         return json.dumps({"error": "No campaign ID provided"}, indent=2)
@@ -364,6 +378,12 @@ async def update_campaign(
     if objective is not None:
         params["objective"] = objective # Caution: Objective changes might reset learning or be restricted
 
+    # adset_budgets migrates CBO → ABO atomically: Meta removes the campaign-level
+    # budget and assigns the per-ad-set daily budgets in one call.
+    # make_api_request JSON-encodes lists for POST form data.
+    if adset_budgets is not None:
+        params["adset_budgets"] = adset_budgets
+
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
 
@@ -372,10 +392,21 @@ async def update_campaign(
         data = await make_api_request(endpoint, access_token, params, method="POST")
         
         # Add a note about budget strategy if switching to ad set level budgets
-        if use_adset_level_budgets is not None and use_adset_level_budgets:
+        if adset_budgets is not None:
             data["budget_strategy"] = "ad_set_level"
-            data["note"] = "Campaign updated to use ad set level budgets. Set budgets when creating ad sets within this campaign."
-        
+            data["note"] = (
+                "Campaign migrated to ad set level budgets via adset_budgets. "
+                "The campaign-level Advantage budget has been removed and the provided "
+                "daily budgets have been assigned to each ad set."
+            )
+        elif use_adset_level_budgets is not None and use_adset_level_budgets:
+            data["budget_strategy"] = "ad_set_level"
+            data["note"] = (
+                "use_adset_level_budgets=true sent empty daily_budget/lifetime_budget "
+                "values; Meta typically ignores these. To reliably migrate CBO → ABO, "
+                "call update_campaign with adset_budgets=[{adset_id, daily_budget}, ...]."
+            )
+
         return json.dumps(data, indent=2)
     except Exception as e:
         error_msg = str(e)
