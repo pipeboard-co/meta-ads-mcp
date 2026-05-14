@@ -1,4 +1,9 @@
-"""Test that create_ad_creative passes phone_number for CALL_NOW CTAs."""
+"""Test that create_ad_creative serializes phone_number into call_to_action.value.link.
+
+Meta v24 rejects a literal "phone_number" key inside call_to_action.value with
+code 100 ("Invalid keys phone_number were found in param call_to_action[value]").
+The supported shape is call_to_action.value.link = "tel:<E.164 number>".
+"""
 
 import pytest
 import json
@@ -7,8 +12,8 @@ from meta_ads_mcp.core.ads import create_ad_creative
 
 
 @pytest.mark.asyncio
-async def test_simple_image_call_now_includes_phone_number():
-    """Simple image creative with CALL_NOW should include phone_number in CTA value."""
+async def test_simple_image_call_now_serializes_phone_number_as_tel_link():
+    """Simple image creative with CALL_NOW should serialize phone_number into call_to_action.value.link as tel:<number>."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -47,12 +52,15 @@ async def test_simple_image_call_now_includes_phone_number():
         cta = link_data["call_to_action"]
         assert cta["type"] == "CALL_NOW"
         assert "value" in cta
-        assert cta["value"]["phone_number"] == "+18005551234"
+        # Meta v24: tel: link is the only supported shape.
+        assert cta["value"]["link"] == "tel:+18005551234"
+        # The deprecated literal "phone_number" key must NOT be sent.
+        assert "phone_number" not in cta["value"]
 
 
 @pytest.mark.asyncio
-async def test_simple_image_without_phone_number_has_no_phone_in_cta():
-    """Simple image creative with LEARN_MORE should NOT include phone_number."""
+async def test_simple_image_without_phone_number_has_no_tel_link_in_cta():
+    """Simple image creative with LEARN_MORE should NOT include a tel: link in cta.value."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -85,15 +93,19 @@ async def test_simple_image_without_phone_number_has_no_phone_in_cta():
         link_data = creative_data["object_story_spec"]["link_data"]
         cta = link_data["call_to_action"]
         assert cta["type"] == "LEARN_MORE"
-        # No phone_number should be in value (value might not exist at all, or
-        # if it does, should not have phone_number)
+        # No phone-related fields should be in value. The deprecated
+        # "phone_number" key must never appear, and the link (if set) must
+        # not be a tel: URI when no phone_number was passed.
         if "value" in cta:
             assert "phone_number" not in cta["value"]
+            link_value = cta["value"].get("link")
+            if link_value is not None:
+                assert not link_value.startswith("tel:")
 
 
 @pytest.mark.asyncio
-async def test_dof_image_call_now_includes_phone_number():
-    """DOF (DEGREES_OF_FREEDOM) image creative with CALL_NOW should include phone_number."""
+async def test_dof_image_call_now_serializes_phone_number_as_tel_link():
+    """DOF (DEGREES_OF_FREEDOM) image creative with CALL_NOW should serialize phone_number as call_to_action.value.link = tel:<number>."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -132,12 +144,13 @@ async def test_dof_image_call_now_includes_phone_number():
 
         cta = link_data["call_to_action"]
         assert cta["type"] == "CALL_NOW"
-        assert cta["value"]["phone_number"] == "+18005551234"
+        assert cta["value"]["link"] == "tel:+18005551234"
+        assert "phone_number" not in cta["value"]
 
 
 @pytest.mark.asyncio
-async def test_simple_video_call_now_includes_phone_number():
-    """Simple video creative with CALL_NOW should include phone_number in CTA value."""
+async def test_simple_video_call_now_serializes_phone_number_as_tel_link():
+    """Simple video creative with CALL_NOW should serialize phone_number as call_to_action.value.link = tel:<number>."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -180,4 +193,5 @@ async def test_simple_video_call_now_includes_phone_number():
 
         cta = video_data["call_to_action"]
         assert cta["type"] == "CALL_NOW"
-        assert cta["value"]["phone_number"] == "+18005551234"
+        assert cta["value"]["link"] == "tel:+18005551234"
+        assert "phone_number" not in cta["value"]
