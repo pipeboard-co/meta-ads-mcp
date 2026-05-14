@@ -1726,9 +1726,11 @@ async def create_ad_creative(
         asset_customization_rules: List of placement-specific asset overrides for asset_feed_spec.
         phone_number: Phone number for CALL_NOW call-to-action ads (click-to-call).
                      Required when call_to_action_type is CALL_NOW. Use E.164 format
-                     (e.g., "+18005551234"). The number is passed to Meta in
-                     call_to_action.value.phone_number. Common use case: geo-routed
-                     call ads with different phone numbers per ad set.
+                     (e.g., "+18005551234"). The number is sent to Meta as
+                     call_to_action.value.link = "tel:<phone_number>" (Meta v24
+                     rejects a literal "phone_number" key with code 100). Common
+                     use case: geo-routed call ads with different phone numbers
+                     per ad set.
         creative_features_spec: Advantage+ Creative feature opt-ins/opt-outs. Controls individual
                    creative enhancements like image_touchups, text_optimizations, inline_comment,
                    add_text_overlay, music, 3d_animation, etc. Each feature is a dict with
@@ -2122,7 +2124,14 @@ async def create_ad_creative(
                         if lead_gen_form_id:
                             cta_osi_value["lead_gen_form_id"] = lead_gen_form_id
                         if phone_number:
-                            cta_osi_value["phone_number"] = phone_number
+                            # CALL_NOW CTA: Meta v24 rejects a literal "phone_number"
+                            # key inside call_to_action.value with code 100
+                            # ("Invalid keys phone_number were found in param
+                            # call_to_action[value]"). The supported shape is
+                            # call_to_action.value.link = "tel:+<E.164 number>",
+                            # which overrides any website link_url already set
+                            # above (the headline still drives a tap-to-call).
+                            cta_osi_value["link"] = f"tel:{phone_number}"
                         asset_feed_spec_osi["call_to_actions"] = [
                             {"type": call_to_action_type, "value": cta_osi_value}
                         ]
@@ -2139,7 +2148,10 @@ async def create_ad_creative(
                 if lead_gen_form_id:
                     cta_osi_value["lead_gen_form_id"] = lead_gen_form_id
                 if phone_number:
-                    cta_osi_value["phone_number"] = phone_number
+                    # CALL_NOW: see note above — the supported shape is
+                    # call_to_action.value.link = "tel:+<E.164 number>",
+                    # not a "phone_number" key.
+                    cta_osi_value["link"] = f"tel:{phone_number}"
                 if cta_osi_value:
                     cta_osi["value"] = cta_osi_value
                 creative_data["call_to_action"] = cta_osi
@@ -2302,7 +2314,10 @@ async def create_ad_creative(
                     if lead_gen_form_id:
                         cta_value["lead_gen_form_id"] = lead_gen_form_id
                     if phone_number:
-                        cta_value["phone_number"] = phone_number
+                        # CALL_NOW: Meta v24 supports only
+                        # call_to_action.value.link = "tel:+<E.164 number>"; a
+                        # literal "phone_number" key is rejected with code 100.
+                        cta_value["link"] = f"tel:{phone_number}"
                     asset_feed_spec["call_to_actions"] = [
                         {"type": call_to_action_type, "value": cta_value}
                     ]
@@ -2361,7 +2376,9 @@ async def create_ad_creative(
                     if lead_gen_form_id:
                         cta_value["lead_gen_form_id"] = lead_gen_form_id
                     if phone_number:
-                        cta_value["phone_number"] = phone_number
+                        # CALL_NOW: Meta v24 supports only
+                        # call_to_action.value.link = "tel:+<E.164 number>".
+                        cta_value["link"] = f"tel:{phone_number}"
                     if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
                         cta_value["event_id"] = event_id
                     if cta_value:
@@ -2403,7 +2420,9 @@ async def create_ad_creative(
                 if lead_gen_form_id:
                     cta_value["lead_gen_form_id"] = lead_gen_form_id
                 if phone_number:
-                    cta_value["phone_number"] = phone_number
+                    # CALL_NOW: Meta v24 supports only
+                    # call_to_action.value.link = "tel:+<E.164 number>".
+                    cta_value["link"] = f"tel:{phone_number}"
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
                 if cta_type:
                     cta_data = {"type": cta_type}
@@ -2467,7 +2486,12 @@ async def create_ad_creative(
                     if lead_gen_form_id:
                         cta_value["lead_gen_form_id"] = lead_gen_form_id
                     if phone_number:
-                        cta_value["phone_number"] = phone_number
+                        # CALL_NOW: Meta v24 supports only
+                        # call_to_action.value.link = "tel:+<E.164 number>";
+                        # the literal "phone_number" key is rejected with
+                        # code 100 ("Invalid keys phone_number were found in
+                        # param call_to_action[value]").
+                        cta_value["link"] = f"tel:{phone_number}"
                     if event_id and call_to_action_type in ("EVENT_RSVP", "BUY_TICKETS"):
                         cta_value["event_id"] = event_id
                     if cta_value:
