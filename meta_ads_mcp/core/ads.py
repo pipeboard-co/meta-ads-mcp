@@ -2145,7 +2145,15 @@ async def create_ad_creative(
                 creative_data["call_to_action"] = cta_osi
 
             if instagram_actor_id:
-                creative_data["instagram_actor_id"] = instagram_actor_id
+                # Meta deprecated instagram_actor_id at POST /act_ID/adcreatives in
+                # Jan 2026 — sending it returns code 100 "Param instagram_actor_id
+                # must be a valid Instagram account id" verbatim. The replacement
+                # is the top-level instagram_user_id field on the AdCreative.
+                # For object_story_spec creatives the migration is handled below
+                # (instagram_user_id is nested inside object_story_spec); the
+                # object_story_id path has no object_story_spec, so the field
+                # lives at the top level.
+                creative_data["instagram_user_id"] = instagram_actor_id
 
         elif use_asset_feed:
             # Build the media array from the provided source
@@ -2511,9 +2519,13 @@ async def create_ad_creative(
         # Make API request to create the creative
         data = await make_api_request(endpoint, access_token, creative_data, method="POST")
 
-        # Check for instagram_actor_id / instagram_user_id permission errors.
-        # This happens when the user's Meta access token lacks the instagram_basic
-        # permission. Re-connecting the Facebook account refreshes the token.
+        # Check for "Param instagram_actor_id must be a valid Instagram account id"
+        # error. This historically meant Meta could not validate the ID. Today (post
+        # Jan 2026) it is *also* what Meta returns when the deprecated
+        # instagram_actor_id field reaches their API, regardless of the ID being
+        # correct. We now translate instagram_actor_id -> instagram_user_id in
+        # every code path, so reaching this branch usually means the ID itself is
+        # not valid for this ad account (e.g. not connected, wrong type).
         if instagram_actor_id and "error" in data:
             err_details = data.get("error", {}).get("details", {})
             inner_msg = ""
@@ -2523,15 +2535,21 @@ async def create_ad_creative(
                     inner_msg = inner_err.get("message", "")
             if "valid Instagram account id" in inner_msg or "instagram_actor_id" in inner_msg.lower():
                 return json.dumps({
-                    "error": "Instagram account not authorized for advertising",
+                    "error": "Instagram account ID not accepted by Meta",
                     "explanation": (
-                        "The Meta API rejected the Instagram account ID. This usually means "
-                        "your Facebook access token is missing the 'instagram_basic' permission, "
-                        "which is required to use Instagram placements in ad creatives."
+                        "Meta rejected the Instagram account ID. The deprecated "
+                        "'instagram_actor_id' field has been translated to "
+                        "'instagram_user_id' in this request, so this most likely "
+                        "means the ID itself is not valid for this ad account — "
+                        "the Instagram account may not be linked to the Facebook "
+                        "page used by the creative, or the ID may belong to a "
+                        "different account."
                     ),
                     "fix": (
-                        "Reconnect your Facebook account at https://pipeboard.co/connections "
-                        "to refresh your access token with the required permissions."
+                        "Run get_instagram_accounts to list the Instagram accounts "
+                        "linked to this ad account and try one of those IDs, or "
+                        "verify in Meta Business Suite that the Instagram account "
+                        "is connected to the Facebook page used by the creative."
                     ),
                     "instagram_actor_id": instagram_actor_id,
                     "meta_error": inner_msg
