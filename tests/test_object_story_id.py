@@ -178,6 +178,114 @@ async def test_create_ad_creative_object_story_id_with_asset_customization():
 
 
 @pytest.mark.asyncio
+async def test_create_ad_creative_object_story_id_translates_instagram_actor_id():
+    """object_story_id + instagram_actor_id must translate to top-level
+    instagram_user_id (Meta deprecated instagram_actor_id at POST
+    /act_ID/adcreatives in Jan 2026; sending the old name returns error 100).
+    """
+    with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
+        mock_api.side_effect = [
+            {"id": "creative_osi_ig"},
+            {"id": "creative_osi_ig", "name": "OSI + IG", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_123456",
+            object_story_id="124965744226834_3888007311337206",
+            instagram_actor_id="17841476585143410",
+            call_to_action_type="SHOP_NOW",
+            link_url="https://example.com/",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[0][0][2]
+
+        # Deprecated field name must NOT appear anywhere on the request.
+        assert "instagram_actor_id" not in creative_data
+        # New field name must appear at the top level (object_story_id path has
+        # no object_story_spec to nest it under).
+        assert creative_data["instagram_user_id"] == "17841476585143410"
+        # object_story_id still passed through unchanged.
+        assert creative_data["object_story_id"] == "124965744226834_3888007311337206"
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_object_story_id_with_asset_customization_translates_instagram_actor_id():
+    """object_story_id + asset_customization_rules + instagram_actor_id —
+    even when asset_feed_spec is built, the deprecated field must still be
+    translated to instagram_user_id at the top level.
+    """
+    with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
+        mock_api.side_effect = [
+            {"id": "creative_osi_ig_acr"},
+            {"id": "creative_osi_ig_acr", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_123456",
+            object_story_id="124965744226834_3888007311337206",
+            asset_customization_rules=[
+                {
+                    "placement_groups": ["STORY"],
+                    "customization_spec": {"video_ids": ["890310874031162"]},
+                }
+            ],
+            instagram_actor_id="17841476585143410",
+            call_to_action_type="SHOP_NOW",
+            link_url="https://example.com/",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[0][0][2]
+        assert "instagram_actor_id" not in creative_data
+        assert creative_data["instagram_user_id"] == "17841476585143410"
+        assert "asset_feed_spec" in creative_data
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_object_story_id_invalid_instagram_error_no_longer_blames_scope():
+    """When Meta returns 'Param instagram_actor_id must be a valid Instagram
+    account id' for the object_story_id path, the error enhancement must not
+    falsely claim the token is missing the instagram_basic permission.
+    """
+    with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
+        mock_api.return_value = {
+            "error": {
+                "details": {
+                    "error": {
+                        "code": 100,
+                        "message": "Param instagram_actor_id must be a valid Instagram account id",
+                    }
+                }
+            }
+        }
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            object_story_id="124965744226834_3888007311337206",
+            instagram_actor_id="17841476585143410",
+            call_to_action_type="SHOP_NOW",
+            link_url="https://example.com/",
+            access_token="test_token",
+        )
+
+        # The meta_api_tool decorator wraps error responses without a "details"
+        # key as {"data": "<json_string>"} — unwrap both shapes.
+        parsed = json.loads(result)
+        if "data" in parsed and isinstance(parsed["data"], str):
+            parsed = json.loads(parsed["data"])
+        # The misleading instagram_basic explanation must be gone.
+        explanation = parsed.get("explanation", "")
+        assert "instagram_basic" not in explanation
+        # And the fix advice must no longer tell the user to reconnect their
+        # Facebook account — that does not actually resolve this Meta error.
+        fix = parsed.get("fix", "")
+        assert "Reconnect" not in fix
+        # The new guidance should point to get_instagram_accounts.
+        assert "get_instagram_accounts" in fix
+
+
+@pytest.mark.asyncio
 async def test_create_ad_creative_object_story_id_no_media_required():
     """object_story_id bypasses the image_hash/video_id requirement."""
     with patch("meta_ads_mcp.core.ads.make_api_request") as mock_api:
