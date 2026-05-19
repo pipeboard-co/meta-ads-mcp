@@ -120,12 +120,13 @@ async def test_video_creative_with_thumbnail():
 
 @pytest.mark.asyncio
 async def test_video_creative_with_instagram_actor_id():
-    """Test that video_id + instagram_actor_id routes through asset_feed_spec.
+    """video_id + instagram_actor_id (no plural params) must route through the simple
+    object_story_spec.video_data path so the creative is NOT a dynamic creative.
 
-    Meta returns error 1443048 ("object_story_spec ill formed") when instagram_user_id is
-    in object_story_spec but ad_formats=["SINGLE_VIDEO"] is absent from asset_feed_spec.
-    The fix: video_id + instagram_actor_id always triggers asset_feed_spec so that
-    ad_formats=["SINGLE_VIDEO"] is automatically included in the API call.
+    CTWA campaigns (OUTCOME_SALES / OUTCOME_ENGAGEMENT with destination=WHATSAPP)
+    reject dynamic creatives with error_subcode 1885392 ("O objetivo da campanha
+    nao e aceito pelo criativo dinamico"). The canonical shape per Meta docs is
+    `object_story_spec.video_data` + `instagram_user_id` as a sibling of video_data.
     """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
@@ -154,27 +155,83 @@ async def test_video_creative_with_instagram_actor_id():
 
         creative_data = mock_api.call_args_list[1][0][2]
 
-        # Must use asset_feed_spec path (not simple video_data-only path) so that
-        # ad_formats=["SINGLE_VIDEO"] is present alongside instagram_user_id.
-        assert "asset_feed_spec" in creative_data, (
-            "video_id + instagram_actor_id must route through asset_feed_spec "
-            "to include ad_formats — otherwise Meta returns error 1443048"
+        # Must NOT use asset_feed_spec — that would make the creative a dynamic
+        # creative and CTWA campaigns reject those.
+        assert "asset_feed_spec" not in creative_data, (
+            "video_id + instagram_actor_id must NOT route through asset_feed_spec; "
+            "CTWA campaigns reject dynamic creatives (error_subcode 1885392)"
         )
-        afs = creative_data["asset_feed_spec"]
-        assert afs["ad_formats"] == ["SINGLE_VIDEO"], (
-            "ad_formats must be SINGLE_VIDEO for video creatives with instagram_actor_id"
-        )
-        assert "videos" in afs
-        assert afs["videos"][0]["video_id"] == "vid_333444"
 
-        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
-        # instagram_user_id stays in object_story_spec (instagram_actor_id deprecated Jan 2026).
         assert "object_story_spec" in creative_data
         oss = creative_data["object_story_spec"]
-        assert "video_data" not in oss
-        assert "link_data" not in oss
+        assert oss["page_id"] == "123456789"
+        # Meta deprecated instagram_actor_id in Jan 2026; we map it to instagram_user_id
+        # inside object_story_spec (sibling of video_data).
+        assert oss["instagram_user_id"] == "ig_555666"
         assert "instagram_actor_id" not in oss
-        assert oss == {"page_id": "123456789", "instagram_user_id": "ig_555666"}
+        # video_data carries the video and its thumbnail.
+        assert "video_data" in oss
+        video_data = oss["video_data"]
+        assert video_data["video_id"] == "vid_333444"
+        assert video_data["image_url"] == "https://example.com/auto-thumb.jpg"
+        # link_url is conveyed through call_to_action.value.link in video_data.
+        assert "link_data" not in oss
+
+
+@pytest.mark.asyncio
+async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
+    """Regression for the CTWA video bug: video_id + instagram_actor_id +
+    WHATSAPP_MESSAGE CTA + disable_all_enhancements + optimization_type=REGULAR
+    must NOT produce a dynamic creative, AND the WHATSAPP_MESSAGE CTA must NOT
+    carry a value (no link). Meta v24 rejects any parameter in the
+    WHATSAPP_MESSAGE call_to_action value with error_subcode 1815630."""
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            {"id": "creative_ctwa_1"},
+            {"id": "creative_ctwa_1", "name": "CTWA Video", "status": "ACTIVE"}
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456789",
+            video_id="vid_ctwa_1",
+            name="CTWA Video Creative",
+            link_url="https://wa.me/15551234567",
+            message="Message us on WhatsApp",
+            headline="Contact us",
+            instagram_actor_id="ig_ctwa_1",
+            call_to_action_type="WHATSAPP_MESSAGE",
+            disable_all_enhancements=True,
+            access_token="test_token"
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # The crux of the fix.
+        assert "asset_feed_spec" not in creative_data
+        oss = creative_data["object_story_spec"]
+        assert oss["page_id"] == "123456789"
+        assert oss["instagram_user_id"] == "ig_ctwa_1"
+        assert oss["video_data"]["video_id"] == "vid_ctwa_1"
+        assert oss["video_data"]["title"] == "Contact us"
+        assert oss["video_data"]["message"] == "Message us on WhatsApp"
+        assert oss["video_data"]["call_to_action"]["type"] == "WHATSAPP_MESSAGE"
+        # WHATSAPP_MESSAGE must NOT carry a value — link_url is intentionally
+        # dropped here. Meta derives the WhatsApp destination from the Page and
+        # rejects any extra CTA parameter with error_subcode 1815630.
+        assert "value" not in oss["video_data"]["call_to_action"]
+        # disable_all_enhancements still adds the opt-out spec at the top level.
+        assert "degrees_of_freedom_spec" in creative_data
+        assert creative_data["degrees_of_freedom_spec"]["creative_features_spec"]
 
 
 @pytest.mark.asyncio
@@ -435,11 +492,16 @@ async def test_image_creative_still_works():
 
 
 @pytest.mark.asyncio
-async def test_video_creative_with_description():
-    """Test that video_id + description routes through asset_feed_spec (not video_data).
+async def test_video_creative_with_description_drops_description_and_warns():
+    """video_id + description (single, no plural params) stays on the simple
+    object_story_spec.video_data path and drops `description` with a warning.
 
-    Meta API v24 rejects 'description' inside video_data. To support descriptions
-    for video ads, we route to asset_feed_spec when video_id + description is given.
+    Meta's video_data schema does not have a description field for a single
+    video, and routing through asset_feed_spec to honor description silently
+    turns the creative into a dynamic creative — which CTWA campaigns reject
+    (error_subcode 1885392). Dropping the unrenderable field with a clear
+    warning preserves the simple path; callers who actually need a description
+    can pass `descriptions=[...]` (plural) to opt explicitly into asset_feed_spec.
     """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
@@ -476,35 +538,32 @@ async def test_video_creative_with_description():
 
         creative_data = mock_api.call_args_list[1][0][2]
 
-        # Should use asset_feed_spec (not simple video_data path), because
-        # video_data does not support description
-        assert "asset_feed_spec" in creative_data, (
-            "video + description should use asset_feed_spec so description is sent to Meta"
-        )
-
-        afs = creative_data["asset_feed_spec"]
-
-        # Description should be in asset_feed_spec.descriptions
-        assert "descriptions" in afs, "description should appear in asset_feed_spec.descriptions"
-        assert afs["descriptions"] == [{"text": "The text below the headline in feed placements"}]
-
-        # Other fields should also be present
-        assert afs["bodies"] == [{"text": "Primary text for the ad"}]
-        assert afs["titles"] == [{"text": "Watch Now"}]
-        assert "videos" in afs
-        assert afs["videos"][0]["video_id"] == "vid_desc_test"
-
-        # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
-        # description is carried by asset_feed_spec.descriptions (asserted above).
+        # Simple path — no asset_feed_spec.
+        assert "asset_feed_spec" not in creative_data
         oss = creative_data["object_story_spec"]
-        assert "video_data" not in oss
-        assert "link_data" not in oss
-        assert oss == {"page_id": "123456789"}
+        video_data = oss["video_data"]
+        assert video_data["video_id"] == "vid_desc_test"
+        assert video_data["title"] == "Watch Now"
+        assert video_data["message"] == "Primary text for the ad"
+        # description is NOT carried — Meta's video_data has no such field.
+        assert "description" not in video_data
+        assert video_data["call_to_action"]["type"] == "LEARN_MORE"
+
+        # Response should warn the caller that description was dropped.
+        parsed = json.loads(result)
+        warning_field = parsed.get("warning")
+        # warning may be a single string or a list when several apply.
+        warnings_list = warning_field if isinstance(warning_field, list) else [warning_field]
+        assert any(
+            w and "description" in w and "dropped" in w
+            for w in warnings_list
+        ), f"Expected a 'description was dropped' warning, got: {warning_field!r}"
 
 
 @pytest.mark.asyncio
-async def test_video_creative_description_only():
-    """Test that video_id + description alone (no other plural params) still works."""
+async def test_video_creative_description_only_drops_description():
+    """video_id + description alone also stays on the simple path; description
+    is dropped with a warning."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -537,18 +596,62 @@ async def test_video_creative_description_only():
 
         creative_data = mock_api.call_args_list[1][0][2]
 
-        assert "asset_feed_spec" in creative_data
-        afs = creative_data["asset_feed_spec"]
-        assert afs["descriptions"] == [{"text": "Only description, no other plural params"}]
-        assert "videos" in afs
+        assert "asset_feed_spec" not in creative_data
+        oss = creative_data["object_story_spec"]
+        assert "description" not in oss["video_data"]
+
+        parsed = json.loads(result)
+        warning_field = parsed.get("warning")
+        warnings_list = warning_field if isinstance(warning_field, list) else [warning_field]
+        assert any(
+            w and "description" in w and "dropped" in w
+            for w in warnings_list
+        ), f"Expected a 'description was dropped' warning, got: {warning_field!r}"
 
 
 @pytest.mark.asyncio
-async def test_video_creative_instagram_actor_id_with_explicit_ad_formats():
-    """Test that explicitly passing ad_formats with instagram_actor_id + video_id also works.
+async def test_video_creative_with_descriptions_plural_routes_to_asset_feed_spec():
+    """Callers who actually need a description on a video creative can use the
+    plural form to opt explicitly into asset_feed_spec. The plural form has
+    always meant "I want a dynamic creative" so this path stays unchanged."""
 
-    The caller can still explicitly pass ad_formats=["SINGLE_VIDEO"]; it should be
-    respected (not overridden) when both instagram_actor_id and video_id are present.
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            {"id": "creative_vid_descs"},
+            {"id": "creative_vid_descs", "name": "Video Plural Desc", "status": "ACTIVE"}
+        ]
+
+        await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_plural",
+            name="Video Plural Desc",
+            link_url="https://example.com/",
+            descriptions=["The description below the headline"],
+            access_token="test_token"
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        assert "asset_feed_spec" in creative_data
+        afs = creative_data["asset_feed_spec"]
+        assert afs["descriptions"] == [{"text": "The description below the headline"}]
+        assert "videos" in afs
+        assert afs["videos"][0]["video_id"] == "vid_plural"
+
+
+@pytest.mark.asyncio
+async def test_video_creative_instagram_actor_id_with_optimization_type_uses_asset_feed_spec():
+    """Callers who actually want the dynamic-creative path with an Instagram
+    identity can pass `optimization_type` explicitly. instagram_user_id stays
+    nested in object_story_spec; videos[] + ad_formats live in asset_feed_spec.
     """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
@@ -564,29 +667,30 @@ async def test_video_creative_instagram_actor_id_with_explicit_ad_formats():
             # 1) Auto-fetch video thumbnail
             {"picture": "https://example.com/auto-thumb.jpg"},
             # 2) POST create creative
-            {"id": "creative_vid_ig_fmt"},
+            {"id": "creative_vid_ig_dof"},
             # 3) GET creative details
-            {"id": "creative_vid_ig_fmt", "name": "Video IG Explicit Fmt", "status": "ACTIVE"}
+            {"id": "creative_vid_ig_dof", "name": "Video IG DOF", "status": "ACTIVE"}
         ]
 
         result = await create_ad_creative(
             account_id="act_123456",
-            video_id="vid_explicit_fmt",
-            name="Video IG Explicit Format",
+            video_id="vid_explicit_dof",
+            name="Video IG DOF",
             link_url="https://example.com/",
             instagram_actor_id="ig_777888",
-            ad_formats=["SINGLE_VIDEO"],
+            optimization_type="DEGREES_OF_FREEDOM",
+            messages=["Variant 1", "Variant 2"],
             access_token="test_token"
         )
 
         creative_data = mock_api.call_args_list[1][0][2]
 
-        # Must route through asset_feed_spec with explicit ad_formats respected
+        # optimization_type opts the caller into asset_feed_spec.
         assert "asset_feed_spec" in creative_data
         afs = creative_data["asset_feed_spec"]
-        assert afs["ad_formats"] == ["SINGLE_VIDEO"]
         assert "videos" in afs
-        assert afs["videos"][0]["video_id"] == "vid_explicit_fmt"
+        assert afs["videos"][0]["video_id"] == "vid_explicit_dof"
+        # instagram_user_id stays inside object_story_spec.
         assert creative_data["object_story_spec"]["instagram_user_id"] == "ig_777888"
 
 

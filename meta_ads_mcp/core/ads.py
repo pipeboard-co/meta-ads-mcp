@@ -2066,18 +2066,51 @@ async def create_ad_creative(
 
         # Determine whether to use asset_feed_spec path:
         # - plural parameters (headlines/descriptions/messages/image_hashes), OR
-        # - optimization_type is set (FLEX creatives always use asset_feed_spec), OR
-        # - asset_customization_rules requires asset_feed_spec, OR
-        # - video_id + description: Meta's video_data rejects "description" directly,
-        #   so route through asset_feed_spec which supports descriptions for video ads
-        # - video_id + instagram_actor_id: Meta requires ad_formats=["SINGLE_VIDEO"] in
-        #   asset_feed_spec alongside instagram_user_id in object_story_spec — error 1443048
-        #   ("object_story_spec ill formed") occurs when asset_feed_spec is absent. Routing
-        #   through asset_feed_spec ensures ad_formats is automatically included.
+        # - optimization_type is set to one of the dynamic-creative modes
+        #   (DEGREES_OF_FREEDOM, PLACEMENT, ASSET_CUSTOMIZATION, LANGUAGE), OR
+        # - asset_customization_rules requires asset_feed_spec.
+        #
+        # NOTE: `optimization_type="REGULAR"` is a Meta-documented asset_feed_spec
+        # value meaning "no extra optimization on top of the spec", but callers
+        # also use it as a signal that they do NOT want a dynamic creative. With
+        # only single-variant inputs (one message, one headline, one video) the
+        # caller's intent is the plain `object_story_spec.video_data` shape, so
+        # we treat REGULAR as a no-op for routing and let the simple path render
+        # the creative. The value is dropped on the wire (we never send
+        # asset_feed_spec.optimization_type=REGULAR for a single-video creative).
+        #
+        # We do NOT route a single video + instagram_actor_id through asset_feed_spec.
+        # Per Meta's docs the canonical shape for a video creative with an Instagram
+        # identity is `object_story_spec.video_data` + `instagram_user_id` sibling, no
+        # asset_feed_spec. Routing every single-video creative through asset_feed_spec
+        # silently produces a "dynamic creative" that CTWA campaigns (OUTCOME_SALES /
+        # OUTCOME_ENGAGEMENT with destination=WHATSAPP) reject with
+        # `error_subcode 1885392` ("O objetivo da campanha nao e aceito pelo criativo
+        # dinamico"). The single-video path keeps the creative regular so it serves in
+        # CTWA, lead-gen, traffic, and engagement campaigns alike.
+        #
+        # `description` is also no longer a routing trigger. Meta's `video_data` schema
+        # does not carry a `description` field for a single-video creative, so when a
+        # caller passes `description` alongside a single video we drop it and surface a
+        # warning in the response (the caller's intent — video + IG + WhatsApp CTA — is
+        # what matters, not an unrenderable field). To attach descriptions to a video
+        # creative, pass `descriptions=[...]` (plural) or `optimization_type` to opt
+        # explicitly into the dynamic-creative path.
+        #
+        # Normalize REGULAR -> None so the rest of the function does not echo it
+        # into asset_feed_spec.optimization_type when asset_feed_spec is built for
+        # another reason (e.g. plural params).
+        if optimization_type == "REGULAR":
+            optimization_type = None
         use_asset_feed = bool(
             headlines or descriptions or messages or image_hashes or videos or images
-            or optimization_type or asset_customization_rules or (video_id and description)
-            or (video_id and instagram_actor_id)
+            or optimization_type or asset_customization_rules
+        )
+
+        # Track whether `description` was provided but cannot be rendered in the
+        # simple video_data path so we can warn the caller after the API call.
+        single_video_description_dropped = bool(
+            video_id and description and not use_asset_feed
         )
 
         # Track if this is a video creative
@@ -2414,16 +2447,27 @@ async def create_ad_creative(
                 # Build call_to_action with the destination URL.
                 # For video creatives, link_url MUST go in call_to_action.value.link
                 # (not as a top-level field in video_data).
-                cta_value = {}
-                if link_url:
-                    cta_value["link"] = link_url
-                if lead_gen_form_id:
-                    cta_value["lead_gen_form_id"] = lead_gen_form_id
-                if phone_number:
-                    # CALL_NOW: Meta v24 supports only
-                    # call_to_action.value.link = "tel:+<E.164 number>".
-                    cta_value["link"] = f"tel:{phone_number}"
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
+                cta_value = {}
+                if cta_type == "WHATSAPP_MESSAGE":
+                    # Click-to-WhatsApp: Meta derives the destination from the
+                    # Page's linked WhatsApp number, so the CTA carries no value.
+                    # Passing ANY extra parameter here (callers commonly send a
+                    # wa.me URL via link_url) makes Meta v24 reject the creative
+                    # with code 105 / error_subcode 1815630 ("Too many parameters
+                    # in Call To Action — Please remove parameter 'link' from the
+                    # value of WHATSAPP_MESSAGE call to action type"). The correct
+                    # shape is just {"type": "WHATSAPP_MESSAGE"} with no value.
+                    pass
+                else:
+                    if link_url:
+                        cta_value["link"] = link_url
+                    if lead_gen_form_id:
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        # CALL_NOW: Meta v24 supports only
+                        # call_to_action.value.link = "tel:+<E.164 number>".
+                        cta_value["link"] = f"tel:{phone_number}"
                 if cta_type:
                     cta_data = {"type": cta_type}
                     if cta_value:
@@ -2625,6 +2669,16 @@ async def create_ad_creative(
                     "discarded. Attach the creative to an ad set with "
                     "is_dynamic_creative=true, or use image_crops on a single "
                     "image_hash for per-placement cropping."
+                )
+            if single_video_description_dropped:
+                warnings_.append(
+                    "`description` was dropped because Meta's video_data schema does "
+                    "not carry a description field for a single-video creative. The "
+                    "creative was created with message + headline only. To attach a "
+                    "description to a video creative, pass `descriptions=[...]` "
+                    "(plural) or `optimization_type` — both route through "
+                    "asset_feed_spec, which is incompatible with CTWA campaigns "
+                    "(OUTCOME_SALES/OUTCOME_ENGAGEMENT with destination=WHATSAPP)."
                 )
             if warnings_:
                 result["warning"] = warnings_[0] if len(warnings_) == 1 else warnings_
