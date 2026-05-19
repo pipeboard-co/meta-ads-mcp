@@ -191,8 +191,8 @@ async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
 
         mock_discover.return_value = {
             "success": True,
-            "page_id": "1501595173468443",
-            "page_name": "Cazatto Test Page"
+            "page_id": "123456789",
+            "page_name": "Test Page"
         }
 
         mock_api.side_effect = [
@@ -202,13 +202,13 @@ async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
         ]
 
         result = await create_ad_creative(
-            account_id="act_641428479246969",
-            video_id="998824926259778",
+            account_id="act_123456789",
+            video_id="vid_ctwa_1",
             name="CTWA Video Creative",
             link_url="https://wa.me/15551234567",
-            message="Veja o catalogo completo no WhatsApp",
-            headline="Fale conosco",
-            instagram_actor_id="17841407293295514",
+            message="Message us on WhatsApp",
+            headline="Contact us",
+            instagram_actor_id="ig_ctwa_1",
             call_to_action_type="WHATSAPP_MESSAGE",
             disable_all_enhancements=True,
             access_token="test_token"
@@ -219,11 +219,11 @@ async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
         # The crux of the fix.
         assert "asset_feed_spec" not in creative_data
         oss = creative_data["object_story_spec"]
-        assert oss["page_id"] == "1501595173468443"
-        assert oss["instagram_user_id"] == "17841407293295514"
-        assert oss["video_data"]["video_id"] == "998824926259778"
-        assert oss["video_data"]["title"] == "Fale conosco"
-        assert oss["video_data"]["message"] == "Veja o catalogo completo no WhatsApp"
+        assert oss["page_id"] == "123456789"
+        assert oss["instagram_user_id"] == "ig_ctwa_1"
+        assert oss["video_data"]["video_id"] == "vid_ctwa_1"
+        assert oss["video_data"]["title"] == "Contact us"
+        assert oss["video_data"]["message"] == "Message us on WhatsApp"
         assert oss["video_data"]["call_to_action"]["type"] == "WHATSAPP_MESSAGE"
         # WHATSAPP_MESSAGE must NOT carry a value — link_url is intentionally
         # dropped here. Meta derives the WhatsApp destination from the Page and
