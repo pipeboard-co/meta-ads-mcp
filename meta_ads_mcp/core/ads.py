@@ -2447,16 +2447,27 @@ async def create_ad_creative(
                 # Build call_to_action with the destination URL.
                 # For video creatives, link_url MUST go in call_to_action.value.link
                 # (not as a top-level field in video_data).
-                cta_value = {}
-                if link_url:
-                    cta_value["link"] = link_url
-                if lead_gen_form_id:
-                    cta_value["lead_gen_form_id"] = lead_gen_form_id
-                if phone_number:
-                    # CALL_NOW: Meta v24 supports only
-                    # call_to_action.value.link = "tel:+<E.164 number>".
-                    cta_value["link"] = f"tel:{phone_number}"
                 cta_type = call_to_action_type or ("LEARN_MORE" if link_url else None)
+                cta_value = {}
+                if cta_type == "WHATSAPP_MESSAGE":
+                    # Click-to-WhatsApp: Meta derives the destination from the
+                    # Page's linked WhatsApp number, so the CTA carries no value.
+                    # Passing ANY extra parameter here (callers commonly send a
+                    # wa.me URL via link_url) makes Meta v24 reject the creative
+                    # with code 105 / error_subcode 1815630 ("Too many parameters
+                    # in Call To Action — Please remove parameter 'link' from the
+                    # value of WHATSAPP_MESSAGE call to action type"). The correct
+                    # shape is just {"type": "WHATSAPP_MESSAGE"} with no value.
+                    pass
+                else:
+                    if link_url:
+                        cta_value["link"] = link_url
+                    if lead_gen_form_id:
+                        cta_value["lead_gen_form_id"] = lead_gen_form_id
+                    if phone_number:
+                        # CALL_NOW: Meta v24 supports only
+                        # call_to_action.value.link = "tel:+<E.164 number>".
+                        cta_value["link"] = f"tel:{phone_number}"
                 if cta_type:
                     cta_data = {"type": cta_type}
                     if cta_value:

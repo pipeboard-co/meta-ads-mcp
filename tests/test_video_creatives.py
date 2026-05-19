@@ -180,9 +180,11 @@ async def test_video_creative_with_instagram_actor_id():
 
 @pytest.mark.asyncio
 async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
-    """Regression for the CTWA video bug (2026-05-16): video_id +
-    instagram_actor_id + WHATSAPP_MESSAGE CTA + disable_all_enhancements +
-    optimization_type=REGULAR must NOT produce a dynamic creative."""
+    """Regression for the CTWA video bug: video_id + instagram_actor_id +
+    WHATSAPP_MESSAGE CTA + disable_all_enhancements + optimization_type=REGULAR
+    must NOT produce a dynamic creative, AND the WHATSAPP_MESSAGE CTA must NOT
+    carry a value (no link). Meta v24 rejects any parameter in the
+    WHATSAPP_MESSAGE call_to_action value with error_subcode 1815630."""
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
          patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
@@ -223,7 +225,10 @@ async def test_video_creative_with_instagram_actor_id_and_ctwa_cta():
         assert oss["video_data"]["title"] == "Fale conosco"
         assert oss["video_data"]["message"] == "Veja o catalogo completo no WhatsApp"
         assert oss["video_data"]["call_to_action"]["type"] == "WHATSAPP_MESSAGE"
-        assert oss["video_data"]["call_to_action"]["value"]["link"] == "https://wa.me/15551234567"
+        # WHATSAPP_MESSAGE must NOT carry a value — link_url is intentionally
+        # dropped here. Meta derives the WhatsApp destination from the Page and
+        # rejects any extra CTA parameter with error_subcode 1815630.
+        assert "value" not in oss["video_data"]["call_to_action"]
         # disable_all_enhancements still adds the opt-out spec at the top level.
         assert "degrees_of_freedom_spec" in creative_data
         assert creative_data["degrees_of_freedom_spec"]["creative_features_spec"]
