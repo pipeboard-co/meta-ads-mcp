@@ -337,10 +337,6 @@ def main():
         mcp_server.settings.port = args.port
         mcp_server.settings.stateless_http = True
         mcp_server.settings.json_response = not args.sse_response
-        # Mount streamable HTTP at /mcp/ (with trailing slash) so requests
-        # forwarded by an upstream proxy at .../mcp/ are served directly
-        # instead of receiving a 307 redirect to /mcp (the SDK default).
-        mcp_server.settings.streamable_http_path = "/mcp/"
         # Disable DNS rebinding protection. The SDK auto-enables it when the
         # server binds to a loopback host (127.0.0.1 / localhost / ::1) and
         # ships a port-wildcard allowlist (127.0.0.1:*). An upstream nginx
@@ -385,7 +381,7 @@ def main():
         try:
             logger.info("Starting FastMCP server with Streamable HTTP transport")
             print(f"✅ Server configured successfully")
-            print(f"   URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}/")
+            print(f"   URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}")
             print(f"   Mode: {'Stateless' if mcp_server.settings.stateless_http else 'Stateful'}")
             print(f"   Format: {'JSON' if mcp_server.settings.json_response else 'SSE'}")
             mcp_server.run(transport="streamable-http")
