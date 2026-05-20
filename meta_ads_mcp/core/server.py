@@ -337,7 +337,11 @@ def main():
         mcp_server.settings.port = args.port
         mcp_server.settings.stateless_http = True
         mcp_server.settings.json_response = not args.sse_response
-        
+        # Mount streamable HTTP at /mcp/ (with trailing slash) so requests
+        # forwarded by an upstream proxy at .../mcp/ are served directly
+        # instead of receiving a 307 redirect to /mcp (the SDK default).
+        mcp_server.settings.streamable_http_path = "/mcp/"
+
         # Import all tool modules to ensure they are registered
         logger.info("Ensuring all tools are registered for HTTP transport")
         from . import accounts, campaigns, adsets, ads, insights, authentication
