@@ -244,30 +244,52 @@ def setup_fastmcp_http_auth(mcp_server):
 # --- AuthInjectionMiddleware definition ---
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import Response
 import json # Ensure json is imported if not already at the top
 
 class AuthInjectionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         logger.debug(f"HTTP Auth Middleware: Processing request to {request.url.path}")
         logger.debug(f"HTTP Auth Middleware: Request headers: {list(request.headers.keys())}")
-        
+
         # Extract both types of tokens for dual-header authentication
         auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
         pipeboard_token = FastMCPAuthIntegration.extract_pipeboard_token_from_headers(dict(request.headers))
-        
+
+        if not auth_token and not pipeboard_token:
+            # Reject unauthenticated requests. Without this, the request would fall
+            # through to tool handlers which transparently use the META_ACCESS_TOKEN
+            # env var, allowing any network-reachable caller to invoke tools and
+            # exfiltrate the operator's credential via Graph API error responses.
+            # See GHSA-9gw6-46qc-99vr.
+            logger.warning(
+                "HTTP Auth Middleware: rejecting request to %s — no Authorization "
+                "Bearer or X-PIPEBOARD-API-TOKEN header present", request.url.path,
+            )
+            return Response(
+                content=json.dumps({
+                    "error": "Unauthorized",
+                    "message": (
+                        "Authentication required. Provide an Authorization: Bearer "
+                        "<token> header (Meta access token) or an X-PIPEBOARD-API-TOKEN "
+                        "header. See STREAMABLE_HTTP_SETUP.md."
+                    ),
+                }),
+                status_code=401,
+                media_type="application/json",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         if auth_token:
             logger.debug(f"HTTP Auth Middleware: Extracted auth token: {auth_token[:10]}...")
             logger.debug("Injecting auth token into request context")
             FastMCPAuthIntegration.set_auth_token(auth_token)
-        
+
         if pipeboard_token:
             logger.debug(f"HTTP Auth Middleware: Extracted Pipeboard token: {pipeboard_token[:10]}...")
             logger.debug("Injecting Pipeboard token into request context")
             FastMCPAuthIntegration.set_pipeboard_token(pipeboard_token)
-        
-        if not auth_token and not pipeboard_token:
-            logger.warning("HTTP Auth Middleware: No authentication tokens found in headers")
-        
+
         try:
             response = await call_next(request)
             return response
