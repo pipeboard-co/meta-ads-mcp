@@ -341,6 +341,15 @@ def main():
         # forwarded by an upstream proxy at .../mcp/ are served directly
         # instead of receiving a 307 redirect to /mcp (the SDK default).
         mcp_server.settings.streamable_http_path = "/mcp/"
+        # Disable DNS rebinding protection. The SDK auto-enables it when the
+        # server binds to a loopback host (127.0.0.1 / localhost / ::1) and
+        # ships a port-wildcard allowlist (127.0.0.1:*). An upstream nginx
+        # with `proxy_set_header Host $host;` strips the port from the Host
+        # header before forwarding, so the allowlist does not match and every
+        # request is rejected with HTTP 421 (the 1.0.106 production
+        # regression). The protection is irrelevant for a loopback-only
+        # service that no external client can reach.
+        mcp_server.settings.transport_security.enable_dns_rebinding_protection = False
 
         # Import all tool modules to ensure they are registered
         logger.info("Ensuring all tools are registered for HTTP transport")
