@@ -1629,13 +1629,19 @@ async def create_ad_creative(
     """
     Create a new ad creative using an uploaded image hash, video ID, or an existing post.
 
-    Supports five creative modes:
+    Supports six creative modes:
     - **Existing post**: Provide object_story_id (format: {page_id}_{post_id}) to promote an existing
       organic or published post. No image_hash or video_id required. Optionally combine with
       asset_customization_rules to attach a 9:16 video for Story/Reels placements.
     - **Simple image/video**: Single image_hash or video_id with object_story_spec
     - **Multi-variant copy**: Use plural text params (messages[], headlines[], descriptions[]) to test
       multiple text variants with a single image/video. No optimization_type or is_dynamic_creative needed.
+    - **Placement Asset Customization (dual-aspect, non-DC)**: Serve different aspect ratios per placement
+      on a STANDARD ad set without is_dynamic_creative and without the one-ad-per-ad-set cap. Set
+      optimization_type="PLACEMENT" and pass videos=[{video_id, label}, ...] (or images=[{image_hash,
+      label}, ...]) together with asset_customization_rules whose customization_spec references those
+      labels via video_label/image_label. Every label in the rules MUST appear on a videos[]/images[]
+      entry, or Meta returns error_subcode=1487390 ("Adcreative Create Failed").
     - **Dynamic Creative**: Multiple variants with dynamic_creative_spec (requires is_dynamic_creative on ad set)
     - **FLEX/DOF (Advantage+)**: Set optimization_type="DEGREES_OF_FREEDOM" for Meta to auto-optimize
       across all asset combinations without requiring is_dynamic_creative on the ad set
