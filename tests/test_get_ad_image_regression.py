@@ -21,7 +21,7 @@ and ensure high-quality images are returned instead of thumbnails.
 import pytest
 import json
 from unittest.mock import AsyncMock, patch, MagicMock
-from meta_ads_mcp.core.ads import get_ad_image
+from meta_ads_mcp.core.ads import get_ad_image, get_image_by_hash
 
 
 @pytest.mark.asyncio
@@ -155,13 +155,80 @@ class TestGetAdImageRegressionFix:
     
     async def test_get_ad_image_no_ad_id(self):
         """Test get_ad_image with no ad_id provided."""
-        
+
         result = await get_ad_image(access_token="test_token", ad_id=None)
-        
+
         # Should return error string, not throw JSON parsing error
         assert isinstance(result, str)
         assert "Error: No ad ID provided" in result
-    
+
+    async def test_get_image_by_hash_happy_path(self):
+        """get_image_by_hash hits adimages directly and skips the ad/creative chain."""
+
+        mock_image_data = {
+            "data": [{
+                "hash": "deadbeef00000000000000000000abcd",
+                "url": "https://example.com/uploaded.jpg",
+                "width": 1200,
+                "height": 628,
+            }]
+        }
+
+        mock_pil_image = MagicMock()
+        mock_pil_image.mode = "RGB"
+        mock_pil_image.convert.return_value = mock_pil_image
+        mock_byte_stream = MagicMock()
+        mock_byte_stream.getvalue.return_value = b"fake_jpeg_data"
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api, \
+             patch('meta_ads_mcp.core.ads.download_image', new_callable=AsyncMock) as mock_download, \
+             patch('meta_ads_mcp.core.ads.PILImage.open') as mock_pil_open, \
+             patch('meta_ads_mcp.core.ads.io.BytesIO') as mock_bytesio:
+
+            mock_api.return_value = mock_image_data
+            mock_download.return_value = b"fake_image_bytes"
+            mock_pil_open.return_value = mock_pil_image
+            mock_bytesio.return_value = mock_byte_stream
+
+            result = await get_image_by_hash(
+                access_token="test_token",
+                account_id="act_111111111111111",
+                image_hash="deadbeef00000000000000000000abcd",
+            )
+
+            assert mock_api.call_count == 1
+            endpoint, _, params = mock_api.call_args[0]
+            assert endpoint == "act_111111111111111/adimages"
+            assert params["hashes"] == '["deadbeef00000000000000000000abcd"]'
+            assert result is not None
+
+    async def test_get_image_by_hash_accepts_account_without_act_prefix(self):
+        """Bare numeric account_id is normalized to act_XXX before hitting Graph."""
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = {"data": []}  # triggers "no image found" branch
+
+            result = await get_image_by_hash(
+                access_token="test_token",
+                account_id="111111111111111",
+                image_hash="abc123",
+            )
+
+            endpoint = mock_api.call_args[0][0]
+            assert endpoint == "act_111111111111111/adimages"
+            assert isinstance(result, str)
+            assert "No image found for hash abc123" in result
+
+    async def test_get_image_by_hash_missing_account_id(self):
+        result = await get_image_by_hash(access_token="test_token", account_id="", image_hash="abc")
+        assert isinstance(result, str)
+        assert "No account ID provided" in result
+
+    async def test_get_image_by_hash_missing_hash(self):
+        result = await get_image_by_hash(access_token="test_token", account_id="act_123", image_hash="")
+        assert isinstance(result, str)
+        assert "No image hash provided" in result
+
     async def test_get_ad_image_parameter_order_regression(self):
         """Regression test: ensure get_ad_creatives is called with correct parameter order."""
         
