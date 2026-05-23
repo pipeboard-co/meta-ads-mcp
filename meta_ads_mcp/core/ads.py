@@ -717,12 +717,15 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
 @meta_api_tool
 async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
     """
-    Get, download, and visualize a Meta ad image in one step. Useful to see the image in the LLM.
-    
+    Get, download, and visualize the image attached to an existing Meta ad.
+
+    Takes a Meta ad ID and returns the image the ad is currently serving.
+    If all you have is an image hash (no ad), use get_image_by_hash instead.
+
     Args:
         ad_id: Meta Ads ad ID
         access_token: Meta API access token (optional - will use cached token if not provided)
-    
+
     Returns:
         The ad image ready for direct visual analysis
     """
@@ -859,58 +862,89 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
                 return f"Error processing image from direct URL: {str(e)}"
     
     print(f"Found image hashes: {image_hashes}")
-    
-    # Now fetch image data using adimages endpoint with specific format
+
+    return await _fetch_image_by_hash(account_id, image_hashes[0], access_token)
+
+
+@mcp_server.tool()
+@meta_api_tool
+async def get_image_by_hash(
+    account_id: str,
+    image_hash: str,
+    access_token: Optional[str] = None,
+) -> Image:
+    """
+    Get, download, and visualize a Meta ad image by its hash.
+
+    Use this when you have an image_hash without an ad — e.g. the hash
+    returned by upload_ad_image / bulk_upload_ad_images, or one referenced
+    in a creative (object_story_spec.link_data.image_hash, asset_feed_spec
+    images[].hash, etc.). To view the image of an existing ad, prefer
+    get_ad_image(ad_id).
+
+    Args:
+        account_id: Meta Ads account ID (act_XXXXXXXXX or bare numeric — both accepted)
+        image_hash: Meta image hash
+        access_token: Meta API access token (optional - will use cached token if not provided)
+
+    Returns:
+        The image ready for direct visual analysis
+    """
+    if not account_id:
+        return "Error: No account ID provided"
+    if not image_hash:
+        return "Error: No image hash provided"
+    normalized_account = ensure_act_prefix(account_id).removeprefix("act_")
+    return await _fetch_image_by_hash(normalized_account, image_hash, access_token)
+
+
+async def _fetch_image_by_hash(
+    account_id: str,
+    image_hash: str,
+    access_token: Optional[str],
+) -> Union[Image, str]:
+    """Fetch a single image from act_{account_id}/adimages by hash and return it as a PIL Image.
+
+    account_id is the bare numeric part (without the "act_" prefix). Returns
+    an "Error: ..." string on failure so the @meta_api_tool wrapper can
+    serialize it.
+    """
     image_endpoint = f"act_{account_id}/adimages"
-    
-    # Format the hashes parameter exactly as in our successful curl test
-    hashes_str = f'["{image_hashes[0]}"]'  # Format first hash only, as JSON string array
-    
+    hashes_str = f'["{image_hash}"]'
     image_params = {
         "fields": "hash,url,width,height,name,status",
-        "hashes": hashes_str
+        "hashes": hashes_str,
     }
-    
+
     print(f"Requesting image data with params: {image_params}")
     image_data = await make_api_request(image_endpoint, access_token, image_params)
-    
+
     if "error" in image_data:
         return f"Error: Failed to get image data - {json.dumps(image_data)}"
-    
+
     if "data" not in image_data or not image_data["data"]:
-        return "Error: No image data returned from API"
-    
-    # Get the first image URL
-    first_image = image_data["data"][0]
-    image_url = first_image.get("url")
-    
+        return (
+            f"Error: No image found for hash {image_hash} in account "
+            f"act_{account_id}. Confirm the hash and that the account matches "
+            "the one used to upload (image hashes are scoped per ad account)."
+        )
+
+    image_url = image_data["data"][0].get("url")
     if not image_url:
         return "Error: No valid image URL found"
-    
+
     print(f"Downloading image from URL: {image_url}")
-    
-    # Download the image
     image_bytes = await download_image(image_url)
-    
     if not image_bytes:
         return "Error: Failed to download image"
-    
+
     try:
-        # Convert bytes to PIL Image
         img = PILImage.open(io.BytesIO(image_bytes))
-        
-        # Convert to RGB if needed
         if img.mode != "RGB":
             img = img.convert("RGB")
-            
-        # Create a byte stream of the image data
         byte_arr = io.BytesIO()
         img.save(byte_arr, format="JPEG")
-        img_bytes = byte_arr.getvalue()
-        
-        # Return as an Image object that LLM can directly analyze
-        return Image(data=img_bytes, format="jpeg")
-        
+        return Image(data=byte_arr.getvalue(), format="jpeg")
     except Exception as e:
         return f"Error processing image: {str(e)}"
 
@@ -1250,16 +1284,21 @@ async def upload_ad_image(
 ) -> str:
     """
     Upload an image to use in Meta Ads creatives.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         access_token: Meta API access token (optional - will use cached token if not provided)
         file: Data URL or raw base64 string of the image (e.g., "data:image/png;base64,iVBORw0KG...")
         image_url: Direct URL to an image to fetch and upload
         name: Optional name for the image (default: filename)
-    
+
     Returns:
-        JSON response with image details including hash for creative creation
+        JSON object with:
+          - image_hash: Pass this to create_ad_creative when building the ad,
+            or to get_image_by_hash to view the image later.
+          - images: List of {hash, url, width, height, name}. The url is a
+            Meta CDN link you can fetch directly to view the image — no need
+            to call any other tool right after upload.
     """
     # Check required parameters
     if not account_id:
