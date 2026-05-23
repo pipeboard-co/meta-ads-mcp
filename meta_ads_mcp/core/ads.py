@@ -717,12 +717,17 @@ async def get_ad_creatives(ad_id: str, access_token: Optional[str] = None) -> st
 @meta_api_tool
 async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
     """
-    Get, download, and visualize a Meta ad image in one step. Useful to see the image in the LLM.
-    
+    Get, download, and visualize the image attached to an existing Meta ad.
+
+    NOT for previewing a just-uploaded asset by its hash. upload_ad_image
+    and bulk_upload_ad_images already return a Meta CDN url in their
+    response (images[].url) — fetch that directly. There is no
+    get-image-by-hash tool, and this one rejects image_hash as an input.
+
     Args:
         ad_id: Meta Ads ad ID
         access_token: Meta API access token (optional - will use cached token if not provided)
-    
+
     Returns:
         The ad image ready for direct visual analysis
     """
@@ -1250,16 +1255,22 @@ async def upload_ad_image(
 ) -> str:
     """
     Upload an image to use in Meta Ads creatives.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         access_token: Meta API access token (optional - will use cached token if not provided)
         file: Data URL or raw base64 string of the image (e.g., "data:image/png;base64,iVBORw0KG...")
         image_url: Direct URL to an image to fetch and upload
         name: Optional name for the image (default: filename)
-    
+
     Returns:
-        JSON response with image details including hash for creative creation
+        JSON object with:
+          - image_hash: Pass this to create_ad_creative when building the ad.
+          - images: List of {hash, url, width, height, name}. The url is a
+            Meta CDN link — fetch it directly to view the image. There is no
+            separate "get image by hash" tool; the URL here is the canonical
+            way to view a just-uploaded asset before any ad references it.
+            (get_ad_image only works once the image is attached to an ad.)
     """
     # Check required parameters
     if not account_id:
