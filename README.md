@@ -1,6 +1,8 @@
 # Meta Ads MCP
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for interacting with Meta Ads. Analyze, manage and optimize Meta advertising campaigns through an AI interface. Use an LLM to retrieve performance data, visualize ad creatives, and provide strategic insights for your ads on Facebook, Instagram, and other Meta platforms.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants run your Meta Ads end to end — launch campaigns, upload creatives, update budgets, and dig into performance through natural conversation. Works across Facebook, Instagram, and other Meta surfaces.
+
+Part of the [Pipeboard](https://pipeboard.co) family of ad connectors — sibling remote MCP servers cover **Google Ads**, **TikTok Ads**, **Snap Ads**, and **Reddit Ads** with the same setup (see [Also Available](#also-available-google-ads-tiktok-ads-snap-ads-and-reddit-ads) below).
 
 > **Note:** This is an independent open-source project that uses Meta's public APIs. If you're looking for an officially approved Meta app, check out [Pipeboard](https://pipeboard.co). Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
@@ -30,14 +32,14 @@ mcp-name: co.pipeboard/meta-ads-mcp
 
 ## Getting started with Remote MCP (Recommended)
 
-The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. Our cloud service uses streamable HTTP transport for reliable, scalable access to Meta Ads data. No technical setup required - just connect and start analyzing your ad campaigns with AI!
+The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. Our cloud service uses streamable HTTP transport for reliable, scalable access to your Meta Ads account. No technical setup required — just connect and start launching, updating, and analyzing campaigns with AI!
 
 ### For Claude Pro/Max Users
 
 1. Go to [claude.ai/settings/integrations](https://claude.ai/settings/integrations) (requires Claude Pro or Max)
 2. Click "Add Integration" and enter:
    - **Name**: "Pipeboard Meta Ads" (or any name you prefer)
-   - **Integration URL**: `https://mcp.pipeboard.co/meta-ads-mcp`
+   - **Integration URL**: `https://meta-ads.mcp.pipeboard.co/`
 3. Click "Connect" next to the integration and follow the prompts to:
    - Login to Pipeboard
    - Connect your Facebook Ads account
@@ -49,7 +51,7 @@ That's it! You can now ask Claude to analyze your Meta ad campaigns, get perform
 For direct token-based authentication without the interactive flow, use this URL format when adding the integration:
 
 ```
-https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
+https://meta-ads.mcp.pipeboard.co/?token=YOUR_PIPEBOARD_TOKEN
 ```
 
 Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
@@ -63,7 +65,7 @@ Add the following to your `~/.cursor/mcp.json`. Once you enable the remote MCP, 
 {
   "mcpServers": {
     "meta-ads-remote": {
-      "url": "https://mcp.pipeboard.co/meta-ads-mcp"
+      "url": "https://meta-ads.mcp.pipeboard.co/"
     }
   }
 }
@@ -77,7 +79,7 @@ If you prefer to authenticate without the interactive login flow, you can includ
 {
   "mcpServers": {
     "meta-ads-remote": {
-      "url": "https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN"
+      "url": "https://meta-ads.mcp.pipeboard.co/?token=YOUR_PIPEBOARD_TOKEN"
     }
   }
 }
@@ -87,7 +89,7 @@ Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
 
 ### For Other MCP Clients
 
-Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
+Use the Remote MCP URL: `https://meta-ads.mcp.pipeboard.co/`
 
 **[📖 Get detailed setup instructions for your AI client here](https://pipeboard.co)**
 
@@ -96,22 +98,24 @@ Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
 For MCP clients that support token-based authentication, you can append your Pipeboard API token to the URL:
 
 ```
-https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
+https://meta-ads.mcp.pipeboard.co/?token=YOUR_PIPEBOARD_TOKEN
 ```
 
 This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
 
-### Also Available: Google Ads and TikTok Ads
+### Also Available: Google Ads, TikTok Ads, Snap Ads, and Reddit Ads
 
-Pipeboard also offers remote MCP servers for **Google Ads** and **TikTok Ads**, set up the same way:
+Pipeboard offers remote MCP servers for every major ad platform — all set up the same way and all built for the full launch/manage/analyze loop:
 
 | Platform | Remote MCP URL |
 |---|---|
-| Meta Ads | `https://mcp.pipeboard.co/meta-ads-mcp` |
-| Google Ads | `https://mcp.pipeboard.co/google-ads-mcp` |
-| TikTok Ads | `https://mcp.pipeboard.co/tiktok-ads-mcp` |
+| Meta Ads | `https://meta-ads.mcp.pipeboard.co/` |
+| Google Ads | `https://google-ads.mcp.pipeboard.co/` |
+| TikTok Ads | `https://tiktok-ads.mcp.pipeboard.co/` |
+| Snap Ads | `https://snap-ads.mcp.pipeboard.co/` |
+| Reddit Ads | `https://reddit-ads.mcp.pipeboard.co/` |
 
-Connect your ad accounts at [pipeboard.co](https://pipeboard.co) and use any of them with Claude, Cursor, or any MCP client.
+Connect your ad accounts at [pipeboard.co](https://pipeboard.co) and use any of them with Claude, Cursor, or any MCP-compatible assistant.
 
 ## Pipeboard CLI (Alternative to MCP)
 
@@ -147,14 +151,15 @@ Meta Ads MCP also supports a local streamable HTTP transport, allowing you to ru
 
 ## Features
 
-- **AI-Powered Campaign Analysis**: Let your favorite LLM analyze your campaigns and provide actionable insights on performance
+- **Campaign Management**: Launch campaigns, ad sets, and ads, update budgets, pause and resume, and apply targeting changes — all from a conversation, with explicit confirmation on every write
+- **Creative Operations**: Upload images, build creatives, and update copy, headlines, descriptions, and CTAs without leaving your AI client
+- **Dynamic Creative Testing**: One API for both simple ads (single headline/description) and full A/B testing (multiple headlines/descriptions)
+- **AI-Powered Campaign Analysis**: Let your favorite LLM analyze performance and surface actionable insights
 - **Strategic Recommendations**: Receive data-backed suggestions for optimizing ad spend, targeting, and creative content
-- **Automated Monitoring**: Ask any MCP-compatible LLM to track performance metrics and alert you about significant changes
 - **Budget Optimization**: Get recommendations for reallocating budget to better-performing ad sets
 - **Creative Improvement**: Receive feedback on ad copy, imagery, and calls-to-action
-- **Dynamic Creative Testing**: Easy API for both simple ads (single headline/description) and advanced A/B testing (multiple headlines/descriptions)
-- **Campaign Management**: Request changes to campaigns, ad sets, and ads (all changes require explicit confirmation)
-- **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad platforms
+- **Automated Monitoring**: Ask any MCP-compatible LLM to track performance metrics and alert you about significant changes
+- **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad surfaces
 - **Universal LLM Support**: Compatible with any MCP client including Claude Desktop, Cursor, Cherry Studio, and more
 - **Enhanced Search**: Generic search function includes page searching when queries mention "page" or "pages"
 - **Simple Authentication**: Easy setup with secure OAuth authentication
