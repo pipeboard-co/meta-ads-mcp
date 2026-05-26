@@ -2,7 +2,7 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants run your Meta Ads end to end — launch campaigns, upload creatives, update budgets, and dig into performance through natural conversation. Works across Facebook, Instagram, and other Meta surfaces.
 
-Part of the [Pipeboard](https://pipeboard.co) family of ad connectors — sibling remote MCP servers cover **Google Ads**, **TikTok Ads**, **Snap Ads**, and **Reddit Ads** with the same setup (see [Also Available](#also-available-google-ads-tiktok-ads-snap-ads-and-reddit-ads) below).
+This is the **Meta Ads node** of the [Pipeboard](https://pipeboard.co) MCP family — five remote MCP servers (Meta, Google, TikTok, Snap, Reddit) plus a unified [Pipeboard CLI](https://github.com/pipeboard-co/pipeboard-cli), **230+ tools** in total, one auth, one safety model. If you are comparing single-platform MCPs, you are looking at one node of a network — see [The Pipeboard MCP Family](#the-pipeboard-mcp-family) below.
 
 > **Note:** This is an independent open-source project that uses Meta's public APIs. If you're looking for an officially approved Meta app, check out [Pipeboard](https://pipeboard.co). Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
@@ -19,6 +19,7 @@ mcp-name: co.pipeboard/meta-ads-mcp
 
 ## Table of Contents
 
+- [The Pipeboard MCP Family](#the-pipeboard-mcp-family)
 - [🚀 Getting started with Remote MCP (Recommended for Marketers)](#getting-started-with-remote-mcp-recommended)
 - [Pipeboard CLI (Alternative to MCP)](#pipeboard-cli-alternative-to-mcp)
 - [Local Installation (Technical Users Only)](#local-installation-technical-users-only)
@@ -29,6 +30,46 @@ mcp-name: co.pipeboard/meta-ads-mcp
 - [Privacy and Security](#privacy-and-security)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
+
+## The Pipeboard MCP Family
+
+Pipeboard ships a remote [MCP server](https://modelcontextprotocol.io/) for every major ad platform — plus a single-binary [CLI](https://github.com/pipeboard-co/pipeboard-cli) that wraps all of them. **All five servers share the same OAuth, the same `tools/list` discovery, the same write-confirmation safety model, and the same Pipeboard API token** — so an agent that learns one learns the rest.
+
+### Remote MCP servers
+
+| Platform | Remote MCP URL | Surface |
+|---|---|---|
+| **Meta Ads MCP** (Facebook + Instagram) | `https://meta-ads.mcp.pipeboard.co/` | **42 tools** — campaigns, ad sets, ads, creatives (incl. dynamic creative testing), image upload, insights, interest / behavior / demographic / geo targeting, page management |
+| **Google Ads MCP** | `https://google-ads.mcp.pipeboard.co/` | **59 tools** — campaigns, ad groups, responsive search ads, Performance Max, keywords, GAQL queries, extensions (sitelinks, callouts, structured snippets), audiences, asset uploads, generic mutate |
+| **TikTok Ads MCP** | `https://tiktok-ads.mcp.pipeboard.co/` | **59 tools** — campaigns, ad groups, ads, identities, image and video upload, audience and creative management, insights |
+| **Snap Ads MCP** | `https://snap-ads.mcp.pipeboard.co/` | **37 tools** — ad accounts, campaigns, ad squads, ads, creatives, media upload, insights |
+| **Reddit Ads MCP** | `https://reddit-ads.mcp.pipeboard.co/` | **33 tools** — accounts, campaigns, ad groups, ads, performance reports |
+
+**That is 230+ tools across five ad platforms behind one auth.** Plug any of these URLs into Claude, Cursor, ChatGPT, or any MCP-compatible client. Connect your ad accounts once at [pipeboard.co](https://pipeboard.co) and every client gets access.
+
+### Pipeboard CLI — the same tools, in your shell
+
+[**Pipeboard CLI**](https://github.com/pipeboard-co/pipeboard-cli) is a single Go binary that exposes every MCP tool above as a typed shell command — built for AI coding agents (Claude Code, Cline, OpenClaw, Codex) and automation scripts that prefer subprocess calls over JSON-RPC:
+
+```bash
+brew install pipeboard-co/tap/pipeboard
+export PIPEBOARD_API_TOKEN=<your-token>
+
+pipeboard meta-ads get-campaigns   --account-id act_123
+pipeboard google-ads execute-gaql-query   --customer-id 1234567890 --query "..."
+pipeboard tiktok-ads get-campaigns --advertiser-id 7605685552884596737
+```
+
+Sub-50ms startup, no MCP handshake per call, all five platforms in one binary. Full docs in the [pipeboard-cli repo](https://github.com/pipeboard-co/pipeboard-cli).
+
+### Why a family instead of one MCP per repo?
+
+- **One account, every platform** — auth once at [pipeboard.co](https://pipeboard.co); manage Meta + Google + TikTok + Snap + Reddit from the same agent session
+- **Cross-platform questions get cross-platform answers** — "which channel had the cheapest signups last week?" actually works
+- **Same safety contract everywhere** — writes are explicit, new campaigns start paused where the platform supports it, and confirmation prompts look identical across all five servers
+- **One token, one rate-limit ceiling, one place to revoke** — no juggling separate OAuth flows or per-vendor installs
+
+Single-platform MCP benchmarks miss the point. The value is the network, not the node.
 
 ## Getting started with Remote MCP (Recommended)
 
@@ -103,45 +144,13 @@ https://meta-ads.mcp.pipeboard.co/?token=YOUR_PIPEBOARD_TOKEN
 
 This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
 
-### Also Available: Google Ads, TikTok Ads, Snap Ads, and Reddit Ads
+### Other platforms
 
-Pipeboard offers remote MCP servers for every major ad platform — all set up the same way and all built for the full launch/manage/analyze loop:
-
-| Platform | Remote MCP URL |
-|---|---|
-| Meta Ads | `https://meta-ads.mcp.pipeboard.co/` |
-| Google Ads | `https://google-ads.mcp.pipeboard.co/` |
-| TikTok Ads | `https://tiktok-ads.mcp.pipeboard.co/` |
-| Snap Ads | `https://snap-ads.mcp.pipeboard.co/` |
-| Reddit Ads | `https://reddit-ads.mcp.pipeboard.co/` |
-
-Connect your ad accounts at [pipeboard.co](https://pipeboard.co) and use any of them with Claude, Cursor, or any MCP-compatible assistant.
+Meta Ads is one of five remote MCP servers in the family — see [The Pipeboard MCP Family](#the-pipeboard-mcp-family) for Google Ads, TikTok Ads, Snap Ads, and Reddit Ads, all set up the same way.
 
 ## Pipeboard CLI (Alternative to MCP)
 
-[**Pipeboard CLI**](https://github.com/pipeboard-co/pipeboard-cli) is a command-line tool that gives you access to all Pipeboard ad platforms — Meta Ads, Google Ads, and TikTok Ads — from a single binary. It is built for AI coding agents (Claude Code, Cline, OpenClaw) and automation scripts that prefer shell commands over MCP.
-
-**Why use the CLI instead of MCP:**
-
-- **All platforms in one tool** — Meta, Google, and TikTok Ads without configuring separate MCP servers
-- **More commands** — includes Pipeboard's full set of tools, which is larger than the open-source local MCP
-- **Faster for agents** — sub-50ms startup, no JSON-RPC overhead. Agents just shell out to `pipeboard`
-- **Single binary, zero dependencies** — `brew install pipeboard-co/tap/pipeboard` and you are done
-
-```bash
-# Install
-brew install pipeboard-co/tap/pipeboard
-
-# Authenticate
-export PIPEBOARD_API_TOKEN=<your-token>  # get one at pipeboard.co/settings
-
-# Use it
-pipeboard meta-ads get-campaigns --account-id act_123
-pipeboard google-ads get-campaigns --customer-id 1234567890
-pipeboard meta-ads get-insights --object-id act_123 --date-preset last_30d
-```
-
-No servers to run — the CLI talks to Pipeboard's cloud, same as the remote MCP. See the [pipeboard-cli repo](https://github.com/pipeboard-co/pipeboard-cli) for full documentation.
+If your agent prefers shell commands over JSON-RPC, the [Pipeboard CLI](https://github.com/pipeboard-co/pipeboard-cli) exposes every tool in the family as a typed subcommand — see [the family section above](#pipeboard-cli--the-same-tools-in-your-shell) for the quick install and the [pipeboard-cli repo](https://github.com/pipeboard-co/pipeboard-cli) for full docs.
 
 ## Local Installation (Advanced Technical Users Only)
 
