@@ -1370,10 +1370,10 @@ async def test_videos_array_auto_fetches_missing_thumbnails():
         # First positional arg is the video_id (endpoint path).
         ids_fetched = {thumb_call_a.args[0], thumb_call_b.args[0]}
         assert ids_fetched == {"a", "b"}
-        # Both thumbnail GETs should request picture,thumbnails.
+        # Both thumbnail GETs should request picture,thumbnails,status.
         for c in (thumb_call_a, thumb_call_b):
             params = c.args[2]
-            assert params.get("fields") == "picture,thumbnails"
+            assert params.get("fields") == "picture,thumbnails,status"
 
         # POST is the 3rd call. asset_feed_spec.videos must carry the fetched URIs.
         creative_data = mock_api.call_args_list[2][0][2]
@@ -1448,14 +1448,196 @@ async def test_video_thumbnail_fetch_prefers_thumbnails_uri_over_picture():
                     {"uri": "https://example.com/another-thumb.jpg"},
                 ]
             },
+            "status": {"video_status": "ready"},
         }
 
         result = await _fetch_video_thumbnail("vid_123", "test_token")
 
         assert result == "https://example.com/preferred-thumb.jpg"
-        # Sanity: it should have asked for both fields.
+        # Sanity: it should have asked for the relevant fields.
         params = mock_api.call_args.args[2]
-        assert params.get("fields") == "picture,thumbnails"
+        assert params.get("fields") == "picture,thumbnails,status"
+
+
+@pytest.mark.asyncio
+async def test_video_thumbnail_fetch_with_status_returns_processing_signal():
+    """When a video is still processing AND only `picture` is set (the generic
+    processing placeholder), the with-status helper must NOT return the
+    placeholder URL — it must signal "processing" so the caller can fail fast
+    instead of permanently storing the placeholder on the creative.
+    """
+    from meta_ads_mcp.core.ads import _fetch_video_thumbnail_with_status
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+        mock_api.return_value = {
+            "picture": "https://example.com/processing-placeholder.jpg",
+            "thumbnails": {"data": []},
+            "status": {"video_status": "processing"},
+        }
+
+        url, status = await _fetch_video_thumbnail_with_status("vid_p1", "tok")
+
+        assert url is None, "Placeholder must not be returned during processing"
+        assert status == "processing"
+
+
+@pytest.mark.asyncio
+async def test_video_thumbnail_fetch_with_status_picture_ok_when_ready():
+    """When the video is `ready` but `thumbnails` is empty, falling back to
+    `picture` is fine — that's a real frame at that point.
+    """
+    from meta_ads_mcp.core.ads import _fetch_video_thumbnail_with_status
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+        mock_api.return_value = {
+            "picture": "https://example.com/real-frame.jpg",
+            "thumbnails": {"data": []},
+            "status": {"video_status": "ready"},
+        }
+
+        url, status = await _fetch_video_thumbnail_with_status("vid_r1", "tok")
+
+        assert url == "https://example.com/real-frame.jpg"
+        assert status == "ready"
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_errors_when_video_still_processing():
+    """create_ad_creative with a freshly uploaded video_id (still transcoding)
+    and no explicit thumbnail_url must return a clear "still processing" error
+    instead of silently storing Meta's processing placeholder on the creative.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        # Single call: the auto-fetch returns the processing-state shape.
+        # No POST/GET should follow because we bail out with an error.
+        mock_api.side_effect = [
+            {
+                "picture": "https://example.com/processing-placeholder.jpg",
+                "thumbnails": {"data": []},
+                "status": {"video_status": "processing"},
+            },
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_processing",
+            name="Processing Video Ad",
+            link_url="https://example.com/",
+            message="hi",
+            headline="hi",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        # Only the auto-fetch happened — no creative POST.
+        assert mock_api.call_count == 1
+        parsed = parse_error_result(result)
+        assert "error" in parsed
+        assert "still being processed" in parsed["error"]
+        assert parsed.get("video_status") == "processing"
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_videos_array_errors_on_processing():
+    """videos=[] path must also bail with an actionable error when any video
+    is still being transcoded.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        mock_api.side_effect = [
+            # First video is still processing (parallel fetch — order matches
+            # the videos[] iteration).
+            {
+                "picture": "https://example.com/proc-placeholder.jpg",
+                "thumbnails": {"data": []},
+                "status": {"video_status": "processing"},
+            },
+            # Second video is ready with a real thumbnail.
+            {
+                "picture": "https://example.com/real-pic.jpg",
+                "thumbnails": {"data": [{"uri": "https://example.com/real-frame.jpg"}]},
+                "status": {"video_status": "ready"},
+            },
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            videos=[
+                {"video_id": "vid_processing", "label": "feed"},
+                {"video_id": "vid_ready", "label": "story"},
+            ],
+            name="Mixed Processing Status",
+            link_url="https://example.com/",
+            message="hi",
+            headline="hi",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        # No creative POST should be made because at least one video isn't ready.
+        assert mock_api.call_count == 2
+        parsed = parse_error_result(result)
+        assert "error" in parsed
+        assert "still being processed" in parsed["error"]
+        ids = parsed.get("video_ids_still_processing") or []
+        assert "vid_processing" in ids
+        assert "vid_ready" not in ids
+
+
+@pytest.mark.asyncio
+async def test_create_ad_creative_explicit_thumbnail_skips_status_check():
+    """If the caller passes thumbnail_url explicitly, we must NOT auto-fetch
+    and must NOT block on video processing status — the caller is asserting
+    a known-good thumbnail.
+    """
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        # No auto-fetch should fire. Only POST + GET.
+        mock_api.side_effect = [
+            {"id": "creative_explicit_thumb"},
+            {"id": "creative_explicit_thumb", "name": "Explicit Thumb", "status": "ACTIVE"},
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_processing",
+            thumbnail_url="https://example.com/caller-thumb.jpg",
+            name="Caller Thumb",
+            link_url="https://example.com/",
+            message="hi",
+            headline="hi",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        # No auto-fetch round trip.
+        assert mock_api.call_count == 2
+        creative_data = mock_api.call_args_list[0][0][2]
+        # Thumbnail used in object_story_spec.video_data.
+        oss = creative_data.get("object_story_spec", {})
+        assert oss.get("video_data", {}).get("image_url") == "https://example.com/caller-thumb.jpg"
 
 
 @pytest.mark.asyncio
