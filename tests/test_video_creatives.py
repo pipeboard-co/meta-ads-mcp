@@ -332,11 +332,146 @@ async def test_video_creative_with_dof_optimization():
 
         # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
         # Thumbnail (was video_data.image_url) is now on asset_feed_spec.videos[].
+        # DOF + video also requires a link_data.link anchor on object_story_spec
+        # to satisfy Meta v24 (otherwise error_subcode 2061015).
         oss = creative_data["object_story_spec"]
         assert "video_data" not in oss
-        assert "link_data" not in oss
-        assert oss == {"page_id": "123456789"}
+        assert oss == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/"},
+        }
         assert afs["videos"][0]["thumbnail_url"] == "https://example.com/auto-thumb.jpg"
+
+
+@pytest.mark.asyncio
+async def test_video_creative_with_dof_includes_link_and_cta_in_asset_feed_spec():
+    """Regression for DOF + video + multi-text: link_urls + call_to_action_types
+    must land in asset_feed_spec AND object_story_spec must carry a
+    link_data.link anchor.
+
+    For DOF + video, Meta v24 requires both:
+      - asset_feed_spec carries link_urls + call_to_action_types (a
+        video_data anchor inside object_story_spec trips error 1443048).
+      - object_story_spec carries `link_data: {link: <url>}` (a bare
+        `{page_id}` trips error_subcode 2061015 "link field required").
+    A video_data anchor would trip 1443226 ("thumbnail required") instead.
+    Verified empirically against the v24 sandbox 2026-05-27.
+
+    Before the fix, the DOF branch produced bare object_story_spec and
+    omitted link_urls + call_to_action_types from asset_feed_spec, making
+    DOF + video + multi-text creatives unreachable through the MCP tool.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page"
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_vid_dof_cta"},
+            # 3) GET creative details
+            {"id": "creative_vid_dof_cta", "name": "DOF Video", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_dof_cta",
+            name="DOF Video Creative",
+            link_url="https://example.com/landing",
+            optimization_type="DEGREES_OF_FREEDOM",
+            messages=["Body A", "Body B"],
+            headlines=["Headline A", "Headline B"],
+            descriptions=["Desc A", "Desc B"],
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        afs = creative_data["asset_feed_spec"]
+
+        # DOF + video: AFS must carry the link and CTA — these were the missing
+        # fields that caused error_subcode 2061015.
+        assert afs["link_urls"] == [{"website_url": "https://example.com/landing"}]
+        assert afs["call_to_action_types"] == ["LEARN_MORE"]
+
+        # AFS also keeps the DOF optimization signal and the video itself.
+        assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
+        assert afs["ad_formats"] == ["SINGLE_VIDEO"]
+        assert afs["videos"] == [
+            {"video_id": "vid_dof_cta", "thumbnail_url": "https://example.com/auto-thumb.jpg"}
+        ]
+
+        # Multi-text variants flow through unchanged.
+        assert afs["bodies"] == [{"text": "Body A"}, {"text": "Body B"}]
+        assert afs["titles"] == [{"text": "Headline A"}, {"text": "Headline B"}]
+        assert afs["descriptions"] == [{"text": "Desc A"}, {"text": "Desc B"}]
+
+        # object_story_spec must carry the link_data.link anchor (Meta v24
+        # rejects a bare {page_id} with error_subcode 2061015 "link field
+        # required"). A video_data anchor would trip 1443226 instead.
+        oss = creative_data["object_story_spec"]
+        assert oss == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/landing"},
+        }
+
+
+@pytest.mark.asyncio
+async def test_video_creative_with_dof_and_call_now_cta_uses_call_to_actions_plural():
+    """DOF + video + CALL_NOW: phone_number must travel as
+    call_to_actions: [{type, value: {link: 'tel:...'}}] in asset_feed_spec
+    (the singular call_to_action_types drops the phone payload).
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        mock_api.side_effect = [
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            {"id": "creative_vid_dof_call_now"},
+            {"id": "creative_vid_dof_call_now", "name": "DOF Video CALL_NOW", "status": "ACTIVE"},
+        ]
+
+        await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_dof_phone",
+            name="DOF Video CALL_NOW",
+            link_url="https://example.com/",
+            optimization_type="DEGREES_OF_FREEDOM",
+            messages=["Body"],
+            call_to_action_type="CALL_NOW",
+            phone_number="+15551234567",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+        afs = creative_data["asset_feed_spec"]
+
+        # CALL_NOW with phone_number must land in the plural call_to_actions
+        # binding with tel: link inside value — not call_to_action_types.
+        assert afs["call_to_actions"] == [
+            {"type": "CALL_NOW", "value": {"link": "tel:+15551234567"}}
+        ]
+        assert "call_to_action_types" not in afs
+
+        # DOF + video object_story_spec needs the link_data.link anchor.
+        assert creative_data["object_story_spec"] == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/"},
+        }
 
 
 @pytest.mark.asyncio

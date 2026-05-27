@@ -2324,9 +2324,11 @@ async def create_ad_creative(
                     )
 
             # ------------------------------------------------------------------
-            # Build asset_feed_spec base: DOF vs non-DOF use different patterns.
+            # Build asset_feed_spec base: DOF vs non-DOF use different patterns,
+            # and DOF + video is a third case (link/CTA must be in asset_feed_spec,
+            # not object_story_spec.video_data).
             #
-            # DOF (DEGREES_OF_FREEDOM / FLEX / Advantage+):
+            # DOF (DEGREES_OF_FREEDOM / FLEX / Advantage+) + image:
             #   asset_feed_spec has ONLY: media, optimization_type, text variants.
             #   URL, ad_formats, and CTA go in object_story_spec.link_data.
             #   This matches the working Next.js duplication pattern — Meta's
@@ -2335,25 +2337,35 @@ async def create_ad_creative(
             #   Including those fields causes Meta to silently ignore
             #   asset_feed_spec for multi-image creatives.
             #
+            # DOF + video:
+            #   object_story_spec must be bare {page_id} (Meta v24 rejects
+            #   video_data anchor inside object_story_spec with error 1443048).
+            #   So link_urls, ad_formats, and call_to_action_types MUST live
+            #   in asset_feed_spec — otherwise Meta returns error_subcode
+            #   2061015 ("The link field is required"). Treated like the
+            #   non-DOF path below.
+            #
             # Non-DOF (regular Dynamic Creative):
             #   asset_feed_spec includes link_urls, ad_formats, call_to_action_types
             #   as before (this path is verified working).
             # ------------------------------------------------------------------
             is_dof = optimization_type == "DEGREES_OF_FREEDOM"
-            if is_dof:
-                # DOF: asset_feed_spec has ONLY media, optimization_type, text variants.
-                # URL, ad_formats, and CTA go in object_story_spec.link_data.
+            if is_dof and not is_video:
+                # DOF + image: asset_feed_spec has ONLY media, optimization_type,
+                # text variants. URL, ad_formats, and CTA go in object_story_spec.link_data.
                 asset_feed_spec = {"optimization_type": optimization_type}
                 # Only include ad_formats if explicitly provided by the caller
                 if ad_formats:
                     asset_feed_spec["ad_formats"] = ad_formats
             else:
-                # Non-DOF (including PLACEMENT): link_urls and ad_formats in asset_feed_spec.
+                # Non-DOF (any media) OR DOF + video: link_urls, ad_formats, and
+                # CTA live in asset_feed_spec, object_story_spec stays bare.
                 resolved_ad_formats = ad_formats or (["SINGLE_VIDEO"] if is_video else ["SINGLE_IMAGE"])
-                asset_feed_spec = {
-                    "link_urls": [{"website_url": link_url}],
-                    "ad_formats": resolved_ad_formats,
-                }
+                asset_feed_spec = {"ad_formats": resolved_ad_formats}
+                # Lead-gen flows can omit a website link_url (lead_gen_form_id
+                # provides the destination), so guard link_urls on link_url.
+                if link_url:
+                    asset_feed_spec["link_urls"] = [{"website_url": link_url}]
                 if optimization_type:
                     asset_feed_spec["optimization_type"] = optimization_type
 
@@ -2383,8 +2395,11 @@ async def create_ad_creative(
             elif message:
                 asset_feed_spec["bodies"] = [{"text": message}]
 
-            # CTA in asset_feed_spec only for non-DOF (DOF puts CTA in link_data)
-            if call_to_action_type and not is_dof:
+            # CTA in asset_feed_spec for:
+            #   - any non-DOF path (regular Dynamic Creative)
+            #   - DOF + video (object_story_spec is bare, so CTA must live here)
+            # DOF + image puts CTA in object_story_spec.link_data instead.
+            if call_to_action_type and (not is_dof or is_video):
                 if lead_gen_form_id or phone_number:
                     cta_value: Dict[str, Any] = {}
                     if link_url:
@@ -2411,24 +2426,42 @@ async def create_ad_creative(
             # ------------------------------------------------------------------
             # Build object_story_spec for asset_feed_spec creatives.
             #
-            # When asset_feed_spec.videos[] carries the video, object_story_spec
-            # MUST contain only page_id (plus instagram_user_id, appended later).
-            # Adding a video_data anchor here triggers Meta API v24 error 1443048
-            # ("object_story_spec ill formed"). Per Meta's official docs, the
-            # canonical shape for asset_feed_spec.videos[] is bare page_id —
-            # the video, thumbnail, link URL, and CTA all live in
-            # asset_feed_spec.
+            # Three sub-cases:
+            #
+            # - Non-DOF (regular Dynamic Creative, PLACEMENT, etc.) — bare
+            #   {page_id}. Everything (link, CTA, media) lives in
+            #   asset_feed_spec. Verified working on v24.
+            #
+            # - DOF + video — object_story_spec MUST carry a `link_data.link`
+            #   anchor. Meta v24 rejects bare {page_id} for DOF + video with
+            #   error_subcode 2061015 ("The link field is required";
+            #   blame_field_specs=[["link"]]). A video_data anchor would trip
+            #   1443048 ("object_story_spec ill formed") instead, so we use a
+            #   minimal link_data: {link: <url>}. The video/thumbnail/text
+            #   variants stay in asset_feed_spec — this is verified via the
+            #   sandbox account (creative ids 3081153525608342, 1026522600054410
+            #   created 2026-05-27).
+            #
+            # - DOF + image — handled in the `else` branch below: full
+            #   link_data anchor with image_hash, link, CTA, etc.
+            #
             # Ref: https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
             # ------------------------------------------------------------------
-            if video_id or not is_dof:
-                # video_id branch: asset_feed_spec.videos already carries the
-                # video + thumbnail; link_urls + call_to_action_types carry
-                # the destination + CTA. object_story_spec must be bare.
-                # Non-DOF image (PLACEMENT etc.) branch: same shape — URLs,
-                # images, CTA live exclusively in asset_feed_spec.
+            if is_video or not is_dof:
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                 }
+                if is_dof and is_video:
+                    # Anchor link for Meta v24 DOF + video. Use link_url when
+                    # provided; fall back to the Meta lead-gen placeholder so
+                    # lead_gen_form_id flows still produce a non-empty anchor.
+                    anchor_link = link_url or (
+                        "http://fb.me/" if lead_gen_form_id else None
+                    )
+                    if anchor_link:
+                        creative_data["object_story_spec"]["link_data"] = {
+                            "link": anchor_link,
+                        }
             else:
                 # DOF image: link_data serves as the "anchor" creative template.
                 link_data = {}
