@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any, List, Union
+from typing import Optional, Dict, Any, List, Tuple, Union
 import io
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image
@@ -954,7 +954,15 @@ async def _fetch_image_by_hash(
 async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = "", access_token: Optional[str] = None) -> str:
     """
     Get video details and source URL for a Meta ad video creative. Returns the video source URL
-    (direct download link), thumbnail URL, and metadata (title, description, duration).
+    (direct download link), thumbnail URL, processing status, and metadata (title, description,
+    duration).
+
+    Also useful for polling after bulk_upload_ad_videos: ``video_status`` is
+    ``"processing"`` while Meta is still transcoding and ``"ready"`` when the
+    real video frames (and a usable thumbnail) are available. Calling
+    create_ad_creative before status is "ready" returns an error because the
+    only thumbnail Meta returns during processing is a generic placeholder
+    that would be permanently stored on the creative.
 
     Provide either ad_id (to auto-extract the video from the ad creative) or video_id directly.
     Providing account_id is strongly recommended — it enables the advideos edge which works
@@ -999,7 +1007,7 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = ""
                 "hint": "This ad may be an image ad. Use get_ad_image instead."
             }, indent=2)
 
-    video_fields = "source,title,description,length,picture,thumbnails,created_time"
+    video_fields = "source,title,description,length,picture,thumbnails,status,created_time"
 
     # Strategy 1: Try fetching via the ad account's advideos edge.
     # Direct GET /{video_id} fails for BM-shared tokens (error 100/33) and
@@ -1038,10 +1046,34 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = ""
     if "error" in video_data:
         return json.dumps({"error": f"Could not get video {video_id}", "details": video_data}, indent=2)
 
+    # Mirror the selection logic used by create_ad_creative's auto-fetch: the
+    # `thumbnails.data[0].uri` entry is the real frame Meta extracted, while
+    # `picture` can be the generic processing-state placeholder. Prefer the
+    # frame-derived URL when available so callers passing this thumbnail_url
+    # back into update_ad_creative / create_ad_creative get a real preview.
+    thumbs = (
+        video_data.get("thumbnails", {}).get("data", [])
+        if isinstance(video_data.get("thumbnails"), dict)
+        else []
+    )
+    thumbnail_url: Optional[str] = None
+    if thumbs and isinstance(thumbs[0], dict) and thumbs[0].get("uri"):
+        thumbnail_url = thumbs[0]["uri"]
+    else:
+        thumbnail_url = video_data.get("picture")
+
+    status_obj = video_data.get("status")
+    video_status: Optional[str] = None
+    if isinstance(status_obj, dict):
+        vs = status_obj.get("video_status")
+        if isinstance(vs, str):
+            video_status = vs
+
     result = {
         "video_id": video_id,
         "source_url": video_data.get("source"),
-        "thumbnail_url": video_data.get("picture"),
+        "thumbnail_url": thumbnail_url,
+        "video_status": video_status,
         "title": video_data.get("title"),
         "description": video_data.get("description"),
         "duration_seconds": video_data.get("length"),
@@ -1053,6 +1085,14 @@ async def get_ad_video(ad_id: str = "", video_id: str = "", account_id: str = ""
 
     if not result["source_url"]:
         result["warning"] = "No source URL returned. The video may have been deleted or you may lack permissions."
+
+    if video_status == "processing":
+        # Make the processing state easy to spot — callers using this tool to
+        # poll readiness before create_ad_creative want a fast signal.
+        result["warning_processing"] = (
+            "Video is still being processed by Meta. The thumbnail_url above "
+            "may be a generic placeholder until processing completes."
+        )
 
     return json.dumps(result, indent=2)
 
@@ -1607,23 +1647,64 @@ def _normalize_text_variants(items: Optional[List[Any]]) -> Optional[List[Dict[s
     return out
 
 
-async def _fetch_video_thumbnail(vid_id: str, access_token: str) -> Optional[str]:
-    """Fetch a thumbnail URL for a Meta video. Returns None on any failure.
+async def _fetch_video_thumbnail_with_status(
+    vid_id: str, access_token: str
+) -> Tuple[Optional[str], Optional[str]]:
+    """Fetch a thumbnail URL for a Meta video and the video's processing status.
 
-    Prefers the pre-generated `thumbnails.data[0].uri` over `picture` because
-    `picture` can sometimes be a small placeholder while the thumbnails entry
-    is the actual generated frame Meta uses for video previews.
+    Returns ``(thumbnail_url, video_status)``:
+      - ``thumbnail_url`` is the best frame-derived URL we can find. Prefers
+        ``thumbnails.data[0].uri`` over ``picture`` because ``picture`` can be
+        Meta's generic processing-state placeholder while ``thumbnails`` is
+        empty (transcoding still in progress). When the video is still
+        processing AND no ``thumbnails`` entries exist, we return ``None`` for
+        the URL so the caller can either retry or surface a clear error
+        instead of persisting the placeholder onto the creative.
+      - ``video_status`` is Meta's ``status.video_status`` (``"processing"``,
+        ``"ready"``, ``"expired"``, ``"error"``) or ``None`` if Meta did not
+        return it.
+
+    Any exception is swallowed and reported as ``(None, None)`` — callers
+    treat that as "no thumbnail available", same as before.
     """
     try:
-        info = await make_api_request(vid_id, access_token, {"fields": "picture,thumbnails"})
-        if isinstance(info, dict):
-            thumbs = info.get("thumbnails", {}).get("data", [])
-            if thumbs and thumbs[0].get("uri"):
-                return thumbs[0]["uri"]
-            return info.get("picture") or None
+        info = await make_api_request(
+            vid_id, access_token, {"fields": "picture,thumbnails,status"}
+        )
+        if not isinstance(info, dict):
+            return (None, None)
+        status_obj = info.get("status")
+        video_status: Optional[str] = None
+        if isinstance(status_obj, dict):
+            vs = status_obj.get("video_status")
+            if isinstance(vs, str):
+                video_status = vs
+        thumbs = info.get("thumbnails", {}).get("data", []) if isinstance(info.get("thumbnails"), dict) else []
+        if thumbs and isinstance(thumbs[0], dict) and thumbs[0].get("uri"):
+            return (thumbs[0]["uri"], video_status)
+        # No thumbnails entry. `picture` is only trustworthy when the video
+        # is actually ready — otherwise Meta returns its own placeholder URL
+        # for the processing state, which would silently ship as the creative
+        # thumbnail and never get refreshed.
+        picture = info.get("picture")
+        if picture and (video_status is None or video_status == "ready"):
+            return (picture, video_status)
+        return (None, video_status)
     except Exception as e:
         logger.warning(f"Failed to auto-fetch thumbnail for video {vid_id}: {e}")
-    return None
+        return (None, None)
+
+
+async def _fetch_video_thumbnail(vid_id: str, access_token: str) -> Optional[str]:
+    """Backwards-compatible wrapper around :func:`_fetch_video_thumbnail_with_status`.
+
+    Kept for callers that only need the URL and treat ``None`` as "no
+    thumbnail available". New code should prefer the ``_with_status`` variant
+    so it can distinguish "video still processing" from "no thumbnail at all"
+    and surface a clear error to the user.
+    """
+    url, _status = await _fetch_video_thumbnail_with_status(vid_id, access_token)
+    return url
 
 
 @mcp_server.tool()
@@ -1727,7 +1808,18 @@ async def create_ad_creative(
                   that include instagram_actor_id are routed through asset_feed_spec so that
                   ad_formats=["SINGLE_VIDEO"] is always included in the API request.
         thumbnail_url: Thumbnail image URL for video creatives. Recommended when using video_id.
-                      Meta will auto-generate a thumbnail if not provided.
+                      Meta will auto-generate a thumbnail if not provided — Pipeboard
+                      will fetch the best available frame from the uploaded video.
+                      IMPORTANT: when the video was just uploaded via
+                      bulk_upload_ad_videos, Meta needs a few seconds to transcode
+                      it. If create_ad_creative is called before transcoding
+                      completes, the only thumbnail Meta returns is a generic
+                      processing-state placeholder, which would be permanently
+                      stored on the creative. In that case create_ad_creative
+                      returns an error with video_status: "processing" — wait
+                      a few seconds (poll with get_ad_video until video_status
+                      is "ready") and retry, or pass thumbnail_url explicitly
+                      (any public image URL works).
         optimization_type: Optional. Valid values:
                           - "DEGREES_OF_FREEDOM": FLEX (Advantage+) creatives where Meta auto-optimizes
                             across all asset combinations. At least one multi-variant asset field required.
@@ -2168,10 +2260,31 @@ async def create_ad_creative(
         # ("Could not auto-fetch thumbnail for video None"). Per-video thumbnail
         # fetching for the videos[] loop is handled separately downstream.
         if video_id and not thumbnail_url:
-            fetched = await _fetch_video_thumbnail(video_id, access_token)
+            fetched, video_status = await _fetch_video_thumbnail_with_status(
+                video_id, access_token
+            )
             if fetched:
                 thumbnail_url = fetched
                 logger.info(f"Auto-fetched video thumbnail: {thumbnail_url[:80]}...")
+            elif video_status == "processing":
+                # Meta is still transcoding the video. `picture` at this point is
+                # a generic processing placeholder, not a real video frame — if
+                # we ship it the creative is permanently stuck with that
+                # placeholder even after Meta finishes processing. Fail fast with
+                # an actionable error so the caller can retry (typically takes a
+                # few seconds for short videos) or pass thumbnail_url explicitly.
+                return json.dumps({
+                    "error": (
+                        f"Video {video_id} is still being processed by Meta — no "
+                        "frame-derived thumbnail is available yet. The creative "
+                        "would otherwise be stored with a generic placeholder."
+                    ),
+                    "video_status": video_status,
+                    "suggestions": [
+                        "Wait a few seconds for Meta to finish processing (use get_ad_video to check status), then retry create_ad_creative.",
+                        "Or pass thumbnail_url explicitly (any public image URL is accepted).",
+                    ],
+                }, indent=2)
             else:
                 logger.warning(f"Could not auto-fetch thumbnail for video {video_id}")
 
@@ -2258,10 +2371,15 @@ async def create_ad_creative(
                 # field of object_story_spec"). Parallel fetch via asyncio.gather to
                 # avoid N sequential round trips for N videos.
                 thumb_coros = [
-                    _fetch_video_thumbnail(str(v["video_id"]), access_token)
+                    _fetch_video_thumbnail_with_status(str(v["video_id"]), access_token)
                     for v in videos if not v.get("thumbnail_url")
                 ]
                 fetched_iter = iter(await asyncio.gather(*thumb_coros) if thumb_coros else [])
+                # Collect videos that are still transcoding so we can return one
+                # actionable error covering all of them — beats Meta's generic
+                # 1443226 ("specify image_hash or image_url") response and
+                # avoids persisting the placeholder picture on the creative.
+                still_processing: List[str] = []
                 videos_array = []
                 for v in videos:
                     vid_id = str(v["video_id"])
@@ -2269,13 +2387,17 @@ async def create_ad_creative(
                     if v.get("thumbnail_url"):
                         entry["thumbnail_url"] = v["thumbnail_url"]
                     else:
-                        fetched_thumb = next(fetched_iter, None)
+                        fetched_thumb, fetched_status = next(fetched_iter, (None, None))
                         if fetched_thumb:
                             entry["thumbnail_url"] = fetched_thumb
                             logger.info(
                                 f"Auto-fetched thumbnail for video {vid_id}: "
                                 f"{str(fetched_thumb)[:80]}..."
                             )
+                        elif fetched_status == "processing":
+                            still_processing.append(vid_id)
+                            # Skip emitting this entry — we'll bail out below.
+                            continue
                         else:
                             # Proceed without a thumbnail; Meta will return its own
                             # actionable error (1443226) if it actually requires one.
@@ -2288,6 +2410,21 @@ async def create_ad_creative(
                     elif v.get("adlabels"):
                         entry["adlabels"] = v["adlabels"]
                     videos_array.append(entry)
+
+                if still_processing:
+                    return json.dumps({
+                        "error": (
+                            "One or more videos are still being processed by "
+                            "Meta — no frame-derived thumbnails are available "
+                            "yet. The creative would otherwise be stored with "
+                            "generic processing placeholders."
+                        ),
+                        "video_ids_still_processing": still_processing,
+                        "suggestions": [
+                            "Wait a few seconds for Meta to finish processing (use get_ad_video to check status), then retry create_ad_creative.",
+                            "Or pass thumbnail_url explicitly inside each videos[] entry (any public image URL is accepted).",
+                        ],
+                    }, indent=2)
             elif video_id:
                 # Single video in asset_feed_spec uses "videos" key
                 videos_array = [{"video_id": video_id}]

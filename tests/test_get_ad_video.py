@@ -118,7 +118,7 @@ class TestGetAdVideo:
             # Without ad_id, only the direct node call is made
             mock_api.assert_called_once_with(
                 "5555", "test_token",
-                {"fields": "source,title,description,length,picture,thumbnails,created_time"}
+                {"fields": "source,title,description,length,picture,thumbnails,status,created_time"}
             )
 
     async def test_get_ad_video_no_video_in_creative(self):
@@ -192,6 +192,57 @@ class TestGetAdVideo:
             mock_api.assert_called_once()
             call_args = mock_api.call_args
             assert "act_999888/advideos" in call_args[0][0]
+
+    async def test_get_ad_video_prefers_thumbnails_uri_over_picture(self):
+        """When the video object exposes both `picture` and a non-empty `thumbnails`
+        list, the response must surface the pre-generated frame URI (the real
+        frame) instead of the small `picture` placeholder.
+        """
+        mock_video_details = {
+            "source": "https://video-xx.fbcdn.net/v/preferred.mp4",
+            "picture": "https://example.com/small-placeholder.jpg",
+            "thumbnails": {
+                "data": [
+                    {"uri": "https://example.com/real-frame.jpg"},
+                    {"uri": "https://example.com/other.jpg"},
+                ]
+            },
+            "status": {"video_status": "ready"},
+            "length": 12.0,
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = mock_video_details
+
+            result = await get_ad_video(access_token="test_token", video_id="vid_pref")
+            data = json.loads(result)
+
+            assert data["thumbnail_url"] == "https://example.com/real-frame.jpg"
+            assert data["video_status"] == "ready"
+            assert "warning_processing" not in data
+
+    async def test_get_ad_video_reports_processing_status(self):
+        """When the video is still transcoding, the response must surface the
+        processing status and a warning so callers know not to use the
+        thumbnail_url yet (it would be Meta's placeholder).
+        """
+        mock_video_details = {
+            "source": None,
+            "picture": "https://example.com/processing-placeholder.jpg",
+            "thumbnails": {"data": []},
+            "status": {"video_status": "processing"},
+            "length": None,
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = mock_video_details
+
+            result = await get_ad_video(access_token="test_token", video_id="vid_proc")
+            data = json.loads(result)
+
+            assert data["video_status"] == "processing"
+            assert "warning_processing" in data
+            assert "still being processed" in data["warning_processing"]
 
     async def test_get_ad_video_account_id_lookup_fails(self):
         """When account_id lookup fails, skip advideos edge and go direct."""
