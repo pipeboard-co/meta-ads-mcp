@@ -2426,26 +2426,42 @@ async def create_ad_creative(
             # ------------------------------------------------------------------
             # Build object_story_spec for asset_feed_spec creatives.
             #
-            # When asset_feed_spec.videos[] carries the video, object_story_spec
-            # MUST contain only page_id (plus instagram_user_id, appended later).
-            # Adding a video_data anchor here triggers Meta API v24 error 1443048
-            # ("object_story_spec ill formed"). Per Meta's official docs, the
-            # canonical shape for asset_feed_spec.videos[] is bare page_id —
-            # the video, thumbnail, link URL, and CTA all live in
-            # asset_feed_spec.
+            # Three sub-cases:
+            #
+            # - Non-DOF (regular Dynamic Creative, PLACEMENT, etc.) — bare
+            #   {page_id}. Everything (link, CTA, media) lives in
+            #   asset_feed_spec. Verified working on v24.
+            #
+            # - DOF + video — object_story_spec MUST carry a `link_data.link`
+            #   anchor. Meta v24 rejects bare {page_id} for DOF + video with
+            #   error_subcode 2061015 ("The link field is required";
+            #   blame_field_specs=[["link"]]). A video_data anchor would trip
+            #   1443048 ("object_story_spec ill formed") instead, so we use a
+            #   minimal link_data: {link: <url>}. The video/thumbnail/text
+            #   variants stay in asset_feed_spec — this is verified via the
+            #   sandbox account (creative ids 3081153525608342, 1026522600054410
+            #   created 2026-05-27).
+            #
+            # - DOF + image — handled in the `else` branch below: full
+            #   link_data anchor with image_hash, link, CTA, etc.
+            #
             # Ref: https://developers.facebook.com/docs/marketing-api/dynamic-creative/dynamic-creative-optimization
             # ------------------------------------------------------------------
             if is_video or not is_dof:
-                # Video branch (single video_id OR videos[]): asset_feed_spec.videos
-                # already carries the video + thumbnail; link_urls +
-                # call_to_action_types carry the destination + CTA. Including a
-                # video_data anchor here triggers Meta API v24 error 1443048
-                # ("object_story_spec ill formed"), so object_story_spec stays bare.
-                # Non-DOF image (PLACEMENT etc.) branch: same shape — URLs,
-                # images, CTA live exclusively in asset_feed_spec.
                 creative_data["object_story_spec"] = {
                     "page_id": page_id,
                 }
+                if is_dof and is_video:
+                    # Anchor link for Meta v24 DOF + video. Use link_url when
+                    # provided; fall back to the Meta lead-gen placeholder so
+                    # lead_gen_form_id flows still produce a non-empty anchor.
+                    anchor_link = link_url or (
+                        "http://fb.me/" if lead_gen_form_id else None
+                    )
+                    if anchor_link:
+                        creative_data["object_story_spec"]["link_data"] = {
+                            "link": anchor_link,
+                        }
             else:
                 # DOF image: link_data serves as the "anchor" creative template.
                 link_data = {}

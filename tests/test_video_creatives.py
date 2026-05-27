@@ -332,27 +332,34 @@ async def test_video_creative_with_dof_optimization():
 
         # PR-C: video metadata moved from object_story_spec.video_data to asset_feed_spec.
         # Thumbnail (was video_data.image_url) is now on asset_feed_spec.videos[].
+        # DOF + video also requires a link_data.link anchor on object_story_spec
+        # to satisfy Meta v24 (otherwise error_subcode 2061015).
         oss = creative_data["object_story_spec"]
         assert "video_data" not in oss
-        assert "link_data" not in oss
-        assert oss == {"page_id": "123456789"}
+        assert oss == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/"},
+        }
         assert afs["videos"][0]["thumbnail_url"] == "https://example.com/auto-thumb.jpg"
 
 
 @pytest.mark.asyncio
 async def test_video_creative_with_dof_includes_link_and_cta_in_asset_feed_spec():
     """Regression for DOF + video + multi-text: link_urls + call_to_action_types
-    must land in asset_feed_spec.
+    must land in asset_feed_spec AND object_story_spec must carry a
+    link_data.link anchor.
 
-    For DOF + video, object_story_spec must be bare {page_id} (Meta v24 rejects a
-    video_data anchor inside object_story_spec with error 1443048). That means
-    link_urls and the CTA must live in asset_feed_spec — otherwise Meta returns
-    error_subcode 2061015 ("The link field is required") and the CTA is dropped.
+    For DOF + video, Meta v24 requires both:
+      - asset_feed_spec carries link_urls + call_to_action_types (a
+        video_data anchor inside object_story_spec trips error 1443048).
+      - object_story_spec carries `link_data: {link: <url>}` (a bare
+        `{page_id}` trips error_subcode 2061015 "link field required").
+    A video_data anchor would trip 1443226 ("thumbnail required") instead.
+    Verified empirically against the v24 sandbox 2026-05-27.
 
-    Before the fix, the DOF branch in create_ad_creative produced an
-    asset_feed_spec containing only optimization_type/ad_formats/media/text and
-    omitted link_urls + call_to_action_types entirely, making DOF + video +
-    multi-text creatives unreachable through the MCP tool.
+    Before the fix, the DOF branch produced bare object_story_spec and
+    omitted link_urls + call_to_action_types from asset_feed_spec, making
+    DOF + video + multi-text creatives unreachable through the MCP tool.
     """
 
     with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
@@ -406,11 +413,14 @@ async def test_video_creative_with_dof_includes_link_and_cta_in_asset_feed_spec(
         assert afs["titles"] == [{"text": "Headline A"}, {"text": "Headline B"}]
         assert afs["descriptions"] == [{"text": "Desc A"}, {"text": "Desc B"}]
 
-        # object_story_spec must be bare {page_id} — a video_data or link_data
-        # anchor here breaks Meta v24 (error 1443048 "object_story_spec ill
-        # formed").
+        # object_story_spec must carry the link_data.link anchor (Meta v24
+        # rejects a bare {page_id} with error_subcode 2061015 "link field
+        # required"). A video_data anchor would trip 1443226 instead.
         oss = creative_data["object_story_spec"]
-        assert oss == {"page_id": "123456789"}
+        assert oss == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/landing"},
+        }
 
 
 @pytest.mark.asyncio
@@ -457,8 +467,11 @@ async def test_video_creative_with_dof_and_call_now_cta_uses_call_to_actions_plu
         ]
         assert "call_to_action_types" not in afs
 
-        # object_story_spec stays bare for DOF + video.
-        assert creative_data["object_story_spec"] == {"page_id": "123456789"}
+        # DOF + video object_story_spec needs the link_data.link anchor.
+        assert creative_data["object_story_spec"] == {
+            "page_id": "123456789",
+            "link_data": {"link": "https://example.com/"},
+        }
 
 
 @pytest.mark.asyncio
