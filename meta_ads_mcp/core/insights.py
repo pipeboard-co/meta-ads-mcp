@@ -52,6 +52,50 @@ _ACTION_TYPED_FIELDS = frozenset({
 })
 
 
+# Default set of fields requested when the caller does not supply `fields`.
+# This is the legacy hard-coded list — kept stable for back-compat.
+_DEFAULT_INSIGHTS_FIELDS = [
+    "account_id", "account_name", "campaign_id", "campaign_name",
+    "adset_id", "adset_name", "ad_id", "ad_name",
+    "impressions", "clicks", "spend", "cpc", "cpm", "ctr", "reach",
+    "frequency", "actions", "action_values", "conversions",
+    "unique_clicks", "cost_per_action_type",
+]
+
+# Identifier/dimension fields that are always merged in when the caller passes
+# a custom `fields` list — without these, downstream tools that group by IDs
+# would break.
+_REQUIRED_DIMENSION_FIELDS = [
+    "account_id", "account_name",
+    "campaign_id", "campaign_name",
+    "adset_id", "adset_name",
+    "ad_id", "ad_name",
+    "date_start", "date_stop",
+]
+
+
+def _build_fields_list(user_fields: Optional[List[str]]) -> List[str]:
+    """Build the list of fields to request from Meta's Insights API.
+
+    When `user_fields` is provided, merges it with the required dimension
+    fields and deduplicates. When None/empty, falls back to the default list
+    so existing callers keep getting the same response shape.
+    """
+    if not user_fields:
+        return list(_DEFAULT_INSIGHTS_FIELDS)
+    seen: set = set()
+    merged: List[str] = []
+    for f in [*_REQUIRED_DIMENSION_FIELDS, *user_fields]:
+        if not isinstance(f, str):
+            continue
+        normalized = f.strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        merged.append(normalized)
+    return merged
+
+
 def _strip_redundant_actions(row: dict) -> dict:
     """Remove redundant action-type entries from a single insight row."""
     for key in ("actions", "action_values", "cost_per_action_type"):
@@ -76,6 +120,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                       action_attribution_windows: Optional[List[str]] = None,
                       action_breakdowns: Optional[List[str]] = None,
                       compact: bool = False,
+                      fields: Optional[List[str]] = None,
                       account_id: str = "", campaign_id: str = "",
                       adset_id: str = "", ad_id: str = "") -> str:
     """
@@ -143,12 +188,27 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                  (omni_*, onsite_web_*, offsite_conversion.fb_pixel_*, etc.) to reduce
                  payload size by ~60%. The canonical action types (purchase, add_to_cart,
                  view_content, etc.) are always preserved. Default: False.
+        fields: Optional list of Meta Insights API field names to request. When None or
+                empty, the legacy default set is returned (impressions, clicks, spend,
+                cpc, cpm, ctr, reach, frequency, actions, action_values, conversions,
+                unique_clicks, cost_per_action_type, plus identifier fields). When
+                provided, the listed fields are passed through to Meta and merged with
+                the required dimension fields (account_id, campaign_id, adset_id, ad_id,
+                date_start, date_stop, *_name). Use this to surface video milestone
+                metrics (video_p25_watched_actions, video_p50_watched_actions,
+                video_p75_watched_actions, video_p95_watched_actions,
+                video_p100_watched_actions, video_thruplay_watched_actions,
+                video_avg_time_watched_actions, video_play_actions,
+                video_30_sec_watched_actions) or ranking diagnostics (quality_ranking,
+                engagement_rate_ranking, conversion_rate_ranking) that aren't in the
+                default set.
 
-    Note on response size: This tool always returns a fixed set of fields (impressions, clicks,
-    spend, cpc, cpm, ctr, reach, actions, action_values, etc.) and cannot filter to a subset.
-    For large result sets (50+ rows), the actions/action_values arrays can make responses very
-    large (1–2MB+). If you only need specific metrics like spend or impressions, consider using
-    bulk_get_insights with compact=true and the fields parameter:
+    Note on response size: By default this tool returns a fixed set of fields (impressions,
+    clicks, spend, cpc, cpm, ctr, reach, actions, action_values, etc.). The `fields`
+    parameter narrows or extends that set. For large result sets (50+ rows), the
+    actions/action_values arrays can make responses very large (1–2MB+). If you only
+    need specific metrics like spend or impressions, consider using bulk_get_insights
+    with compact=true and the fields parameter:
         bulk_get_insights(level="ad", account_ids=[...], compact=true, fields=["spend", "impressions"])
     bulk_get_insights supports level="ad", "adset", "campaign", and "account".
     """
@@ -160,13 +220,10 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         return json.dumps({"error": "No object ID provided. Use object_id, account_id, campaign_id, adset_id, or ad_id."}, indent=2)
         
     endpoint = f"{object_id}/insights"
-    fields = [
-        "account_id", "account_name", "campaign_id", "campaign_name",
-        "adset_id", "adset_name", "ad_id", "ad_name",
-        "impressions", "clicks", "spend", "cpc", "cpm", "ctr", "reach",
-        "frequency", "actions", "action_values", "conversions",
-        "unique_clicks", "cost_per_action_type",
-    ]
+    # Build the field list: caller-supplied `fields` is merged with required
+    # dimension/identifier fields; falling back to the legacy default when no
+    # custom fields are requested keeps existing callers' responses unchanged.
+    request_fields = _build_fields_list(fields)
 
     # Meta rejects platform_position alone or with the default
     # action_breakdowns=[action_type]: it must be paired with publisher_platform,
@@ -178,7 +235,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         breakdown_values = ["publisher_platform", *breakdown_values]
         breakdown_set.add("publisher_platform")
     if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
-        fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
+        request_fields = [f for f in request_fields if f not in _ACTION_TYPED_FIELDS]
     # media_type collides with action_breakdowns=[action_type] but is a real
     # field — override action_breakdowns to empty so the request succeeds with
     # the action-typed metrics intact.
@@ -187,7 +244,7 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
     )
 
     params = {
-        "fields": ",".join(fields),
+        "fields": ",".join(request_fields),
         "level": level,
         "limit": limit
     }
