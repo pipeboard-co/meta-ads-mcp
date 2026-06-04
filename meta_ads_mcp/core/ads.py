@@ -1725,6 +1725,7 @@ async def create_ad_creative(
     image_hashes: Optional[List[str]] = None,
     video_id: Optional[Union[str, int]] = None,
     thumbnail_url: Optional[str] = None,
+    display_url: Optional[str] = None,
     optimization_type: Optional[str] = None,
     dynamic_creative_spec: Optional[Dict[str, Any]] = None,
     call_to_action_type: Optional[str] = None,
@@ -1820,6 +1821,12 @@ async def create_ad_creative(
                       a few seconds (poll with get_ad_video until video_status
                       is "ready") and retry, or pass thumbnail_url explicitly
                       (any public image URL works).
+        display_url: Optional vanity/branding URL shown to users ("Use display URL"
+                     in Ads Manager, e.g. "brand.example") while the real destination
+                     stays in link_url (e.g. "https://example.com/landing"). Requires
+                     link_url. Works for image and video creatives. Carried on
+                     asset_feed_spec.link_urls; setting it routes the creative through
+                     the asset_feed_spec path.
         optimization_type: Optional. Valid values:
                           - "DEGREES_OF_FREEDOM": FLEX (Advantage+) creatives where Meta auto-optimizes
                             across all asset combinations. At least one multi-variant asset field required.
@@ -2242,6 +2249,9 @@ async def create_ad_creative(
         use_asset_feed = bool(
             headlines or descriptions or messages or image_hashes or videos or images
             or optimization_type or asset_customization_rules
+            # display_url is only accepted on asset_feed_spec.link_urls, never in
+            # object_story_spec.video_data, so honoring it requires the AFS path.
+            or display_url
         )
 
         # Track whether `description` was provided but cannot be rendered in the
@@ -2502,7 +2512,12 @@ async def create_ad_creative(
                 # Lead-gen flows can omit a website link_url (lead_gen_form_id
                 # provides the destination), so guard link_urls on link_url.
                 if link_url:
-                    asset_feed_spec["link_urls"] = [{"website_url": link_url}]
+                    link_url_entry: Dict[str, Any] = {"website_url": link_url}
+                    # display_url ("Use display URL") rides on the link_urls entry —
+                    # the only place Meta accepts it for a creative.
+                    if display_url:
+                        link_url_entry["display_url"] = display_url
+                    asset_feed_spec["link_urls"] = [link_url_entry]
                 if optimization_type:
                     asset_feed_spec["optimization_type"] = optimization_type
 
