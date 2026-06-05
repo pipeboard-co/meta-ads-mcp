@@ -256,12 +256,15 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
         auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
         pipeboard_token = FastMCPAuthIntegration.extract_pipeboard_token_from_headers(dict(request.headers))
 
-        if not auth_token and not pipeboard_token:
-            # Reject unauthenticated requests. Without this, the request would fall
-            # through to tool handlers which transparently use the META_ACCESS_TOKEN
-            # env var, allowing any network-reachable caller to invoke tools and
-            # exfiltrate the operator's credential via Graph API error responses.
-            # See GHSA-9gw6-46qc-99vr.
+        if not auth_token:
+            # A request must carry a primary access-token credential: an
+            # Authorization: Bearer header, X-META-ACCESS-TOKEN, or
+            # X-PIPEBOARD-API-TOKEN (all resolved by extract_token_from_headers).
+            # X-Pipeboard-Token is only a supplementary service token for the
+            # duplication callback — on its own it establishes no request auth
+            # context, so it must not admit a request. Otherwise the request
+            # would fall through to tool handlers that use the META_ACCESS_TOKEN
+            # env var. See GHSA-9gw6-46qc-99vr.
             logger.warning(
                 "HTTP Auth Middleware: rejecting request to %s — no Authorization "
                 "Bearer or X-PIPEBOARD-API-TOKEN header present", request.url.path,

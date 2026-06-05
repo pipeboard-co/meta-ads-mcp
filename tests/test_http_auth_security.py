@@ -70,6 +70,38 @@ def test_middleware_accepts_pipeboard_token():
     assert resp.status_code == 200
 
 
+def test_middleware_rejects_supplementary_token_alone():
+    """X-Pipeboard-Token is a supplementary service token (duplication
+    callback) and must not, on its own, admit a request — without a primary
+    access-token credential the request must be rejected with 401."""
+    client = TestClient(_build_app())
+    resp = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+        headers={"X-Pipeboard-Token": "anything-not-validated"},
+    )
+    assert resp.status_code == 401
+    assert resp.headers.get("WWW-Authenticate") == "Bearer"
+    assert resp.json()["error"] == "Unauthorized"
+    assert "reached_handler" not in resp.text
+
+
+def test_middleware_accepts_supplementary_token_with_primary_credential():
+    """The legitimate flow forwards X-Pipeboard-Token alongside a primary
+    credential; the request must still be admitted."""
+    client = TestClient(_build_app())
+    resp = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "method": "tools/list", "id": 1},
+        headers={
+            "Authorization": "Bearer some-meta-token-value-xyz",
+            "X-Pipeboard-Token": "pb-supplementary-token",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"reached_handler": True}
+
+
 def test_redact_url_strips_access_token():
     url = (
         "https://graph.facebook.com/v24.0/me/adaccounts"
