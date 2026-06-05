@@ -80,3 +80,36 @@ the JSON-RPC error payload, exposing the long-lived operator credential.
 - If you exposed an earlier version to an untrusted network, rotate the Meta
   access token (`https://developers.facebook.com/tools/debug/accesstoken/`)
   and review Graph API access logs for unexpected calls.
+
+### GHSA-2v2f-mvfg-ph56 — `X-Pipeboard-Token` header bypasses auth and reuses operator Meta access token
+
+- **Severity:** High (CVSS 3.1 7.4 — `AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N`)
+- **Affected versions:** `<= 1.0.113` when run with `--transport streamable-http`
+  and a `META_ACCESS_TOKEN` environment variable.
+- **Fixed in:** `1.0.115`
+- **Affected configurations:** Self-hosted deployments that expose the
+  streamable-HTTP port on a reachable network interface with `META_ACCESS_TOKEN`
+  set. The hosted MCP at `*.mcp.pipeboard.co` was not affected — it does not set
+  `META_ACCESS_TOKEN` and binds the Python process to localhost behind an
+  authenticating proxy.
+
+**What went wrong.** This is a follow-up to GHSA-9gw6-46qc-99vr. After that fix,
+`AuthInjectionMiddleware` rejected a request only when *both* a primary token and
+a supplementary token were absent. `X-Pipeboard-Token` is a supplementary service
+token (used only for the duplication callback) and is read into the supplementary
+slot, so a request carrying `X-Pipeboard-Token` alone — with any arbitrary value —
+satisfied the guard and passed through. No request auth context was set, so tool
+handlers fell back to the operator's `META_ACCESS_TOKEN`, letting a
+network-reachable caller act as the operator.
+
+**Fix.** `AuthInjectionMiddleware` now requires a primary access-token credential
+(`Authorization: Bearer`, `X-META-ACCESS-TOKEN`, or `X-PIPEBOARD-API-TOKEN`) and
+returns `401 Unauthorized` otherwise. `X-Pipeboard-Token` is treated as a
+supplementary token only and cannot, on its own, admit a request.
+
+**Action for operators.**
+- Upgrade to `1.0.115` or later.
+- If you exposed an earlier version on a reachable network with
+  `META_ACCESS_TOKEN` set, rotate the Meta access token
+  (`https://developers.facebook.com/tools/debug/accesstoken/`) and review Graph
+  API access logs for unexpected calls.
