@@ -12,6 +12,9 @@ import json
 import logging
 import pathlib
 import platform
+import ipaddress
+import socket
+from urllib.parse import urlparse
 
 # Check for Meta app credentials in environment
 META_APP_ID = os.environ.get("META_APP_ID", "")
@@ -144,29 +147,140 @@ def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
     return unique_urls
 
 
+# --- Server-side request forgery (SSRF) guard for outbound image fetches ---
+#
+# upload_ad_image and the image-viewing tools fetch a caller-supplied URL
+# server-side. Without validation an attacker could point the URL at internal
+# services (http://127.0.0.1/...), private networks (10.x/192.168.x/172.16.x),
+# or the cloud metadata endpoint (http://169.254.169.254/) and use the server
+# as a proxy. See GHSA-45gf-fjxp-cjpq.
+#
+# Known residual: a hostname that resolves to a public IP at validation time
+# but to a private IP at connection time (DNS rebinding) is not fully closed,
+# since httpx resolves independently when it connects. The practical vectors
+# (a directly-internal URL, and a public URL that redirects inward) are blocked.
+
+class BlockedURLError(Exception):
+    """Raised when a URL targets a disallowed (non-public) address."""
+
+
+_ALLOWED_URL_SCHEMES = ("http", "https")
+
+
+def _ip_is_disallowed(ip) -> bool:
+    """Return True if `ip` is not a public, routable address.
+
+    Blocks private, loopback, link-local (incl. 169.254.169.254 cloud
+    metadata), reserved, multicast, and unspecified addresses. IPv4-mapped
+    IPv6 addresses (e.g. ::ffff:127.0.0.1) are unwrapped first so they can't
+    be used to smuggle a private IPv4 target past the check.
+    """
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_private
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+def validate_public_url(url: str) -> None:
+    """Validate that `url` is safe to fetch from the server (SSRF guard).
+
+    Raises BlockedURLError if the URL is not http(s), has no host, or resolves
+    to any non-public address. A literal-IP host is checked directly; a
+    hostname is resolved and every returned address must be public.
+    """
+    if not url or not isinstance(url, str):
+        raise BlockedURLError("No URL provided")
+
+    parsed = urlparse(url.strip())
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_URL_SCHEMES:
+        raise BlockedURLError(
+            f"URL scheme '{parsed.scheme}' is not allowed; "
+            "only http and https URLs can be fetched"
+        )
+
+    host = parsed.hostname
+    if not host:
+        raise BlockedURLError("URL has no host")
+
+    try:
+        candidate_ips = [ipaddress.ip_address(host)]
+    except ValueError:
+        # Not a literal IP — resolve the hostname and check every address.
+        try:
+            infos = socket.getaddrinfo(host, None)
+        except socket.gaierror as e:
+            raise BlockedURLError(f"Could not resolve host '{host}': {e}")
+        candidate_ips = []
+        for info in infos:
+            ip_text = info[4][0].split("%")[0]  # strip any IPv6 scope id
+            try:
+                candidate_ips.append(ipaddress.ip_address(ip_text))
+            except ValueError:
+                continue
+        if not candidate_ips:
+            raise BlockedURLError(f"Could not resolve host '{host}' to any IP address")
+
+    for ip in candidate_ips:
+        if _ip_is_disallowed(ip):
+            raise BlockedURLError(
+                f"Refusing to fetch '{host}': it resolves to a non-public address "
+                f"({ip}). Private, loopback, link-local, and cloud-metadata "
+                "addresses are blocked to prevent server-side request forgery."
+            )
+
+
+async def _ssrf_guard_request_hook(request: "httpx.Request") -> None:
+    """httpx request event hook that re-validates every outbound request.
+
+    Fires for the initial request and for each redirect hop, so a public URL
+    cannot redirect into a private/internal address.
+    """
+    validate_public_url(str(request.url))
+
+
 async def download_image(url: str) -> Optional[bytes]:
     """
     Download an image from a URL.
-    
+
     Args:
         url: Image URL
-        
+
     Returns:
         Image data as bytes if successful, None otherwise
     """
+    # SSRF guard: refuse non-public targets before opening any connection.
+    try:
+        validate_public_url(url)
+    except BlockedURLError as e:
+        logger.warning("Refusing to download image from disallowed URL: %s", e)
+        print(f"Refusing to download image from disallowed URL: {e}")
+        return None
+
     try:
         print(f"Attempting to download image from URL: {url}")
-        
+
         # Use minimal headers like curl does
         headers = {
             "User-Agent": "curl/8.4.0",
             "Accept": "*/*"
         }
-        
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=30.0,
+            event_hooks={"request": [_ssrf_guard_request_hook]},
+        ) as client:
             # Simple GET request just like curl
             response = await client.get(url, headers=headers)
-            
+
             # Check response
             if response.status_code == 200:
                 print(f"Successfully downloaded image: {len(response.content)} bytes")
@@ -174,7 +288,12 @@ async def download_image(url: str) -> Optional[bytes]:
             else:
                 print(f"Failed to download image: HTTP {response.status_code}")
                 return None
-                
+
+    except BlockedURLError as e:
+        # A redirect pointed at a disallowed (non-public) address.
+        logger.warning("Blocked SSRF redirect during image download: %s", e)
+        print(f"Blocked image download (redirect to disallowed address): {e}")
+        return None
     except httpx.HTTPStatusError as e:
         print(f"HTTP Error when downloading image: {e}")
         return None
@@ -195,14 +314,23 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
         
     Returns:
         Image data as bytes if successful, None otherwise
+
+    Raises:
+        BlockedURLError: if `url` targets a non-public address (SSRF guard),
+            raised up-front so callers can surface a clear rejection message.
     """
+    # SSRF guard: validate once up-front and propagate a clear error. Each
+    # client below also re-validates every request (including redirect hops)
+    # via _ssrf_guard_request_hook, so a public URL cannot redirect inward.
+    validate_public_url(url)
+
     # Method 1: Direct download with custom headers
     image_data = await download_image(url)
     if image_data:
         return image_data
-    
+
     print("Direct download failed, trying alternative methods...")
-    
+
     # Method 2: Try adding Facebook cookie simulation
     try:
         headers = {
@@ -210,18 +338,24 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
             "Accept": "image/webp,image/apng,image/*,*/*;q=0.8",
             "Cookie": "presence=EDvF3EtimeF1697900316EuserFA21B00112233445566AA0EstateFDutF0CEchF_7bCC"  # Fake cookie
         }
-        
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            event_hooks={"request": [_ssrf_guard_request_hook]},
+        ) as client:
             response = await client.get(url, headers=headers, timeout=30.0)
             response.raise_for_status()
             print(f"Method 2 succeeded with cookie simulation: {len(response.content)} bytes")
             return response.content
     except Exception as e:
         print(f"Method 2 failed: {str(e)}")
-    
+
     # Method 3: Try with session that keeps redirects and cookies
     try:
-        async with httpx.AsyncClient(follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            event_hooks={"request": [_ssrf_guard_request_hook]},
+        ) as client:
             # First visit Facebook to get cookies
             await client.get("https://www.facebook.com/", timeout=30.0)
             # Then try the image URL
@@ -231,7 +365,7 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
             return response.content
     except Exception as e:
         print(f"Method 3 failed: {str(e)}")
-    
+
     return None
 
 
