@@ -28,27 +28,12 @@ _REDUNDANT_ACTION_PREFIXES = (
 )
 
 
-# Breakdowns Meta rejects when combined with the default action_breakdowns
-# (which is [action_type]). Picking any of these auto-drops the action-typed
-# fields below so the request still succeeds. Meta error path is
-# "(#100) Current combination of data breakdown columns (action_type, X) is invalid".
-_BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE = frozenset({
-    "platform_position",
-})
-
 # Breakdowns that collide with the default action_breakdowns=[action_type] but
 # are real Meta fields (so we explicitly clear action_breakdowns instead of
 # dropping the action-typed response fields). For non-DCO ads this returns
 # empty rows; for DCO ads it returns the breakdown dimension populated.
 _BREAKDOWNS_REQUIRING_EMPTY_ACTION_BREAKDOWNS = frozenset({
     "media_type",
-})
-
-_ACTION_TYPED_FIELDS = frozenset({
-    "actions",
-    "action_values",
-    "cost_per_action_type",
-    "conversions",
 })
 
 
@@ -97,10 +82,10 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
                    Demographic: age, gender, country, region, dma
                    Platform/Device: device_platform, platform_position, publisher_platform, impression_device
                    NOTE: platform_position is a Meta-restricted breakdown — Meta requires it to be paired
-                   with publisher_platform and is incompatible with the default action_breakdowns=[action_type].
-                   When you pass platform_position, this tool auto-adds publisher_platform and drops the
-                   action-typed fields (actions, action_values, conversions, cost_per_action_type) from the
-                   response. Use publisher_platform alone if you need action data alongside placement.
+                   with publisher_platform (otherwise "(#100) ... (action_type, platform_position) is invalid").
+                   When you pass platform_position, this tool auto-adds publisher_platform, and the
+                   action-typed fields (actions, action_values, conversions, cost_per_action_type) are
+                   returned per placement, so you get leads/CPL/conversions broken down by placement.
                    Creative Assets: ad_format_asset, body_asset, call_to_action_asset, description_asset,
                                   image_asset, link_url_asset, title_asset, video_asset, media_type,
                                   creative_relaxation_asset_type, flexible_format_asset_type,
@@ -168,17 +153,17 @@ async def get_insights(object_id: str = "", access_token: Optional[str] = None,
         "unique_clicks", "cost_per_action_type",
     ]
 
-    # Meta rejects platform_position alone or with the default
-    # action_breakdowns=[action_type]: it must be paired with publisher_platform,
-    # and the action-typed fields must be dropped. Auto-fix both so the request
-    # succeeds with placement-level metrics.
+    # Meta rejects platform_position on its own: it must be paired with
+    # publisher_platform, otherwise "(#100) Current combination of data breakdown
+    # columns (action_type, platform_position) is invalid". Auto-add
+    # publisher_platform so the request succeeds with placement-level metrics —
+    # including the action-typed fields (actions, cost_per_action_type, etc.),
+    # which Meta returns per placement once the pairing is in place.
     breakdown_values = [b.strip() for b in breakdown.split(",") if b.strip()] if breakdown else []
     breakdown_set = set(breakdown_values)
     if "platform_position" in breakdown_set and "publisher_platform" not in breakdown_set:
         breakdown_values = ["publisher_platform", *breakdown_values]
         breakdown_set.add("publisher_platform")
-    if breakdown_set & _BREAKDOWNS_INCOMPATIBLE_WITH_ACTION_TYPE:
-        fields = [f for f in fields if f not in _ACTION_TYPED_FIELDS]
     # media_type collides with action_breakdowns=[action_type] but is a real
     # field — override action_breakdowns to empty so the request succeeds with
     # the action-typed metrics intact.
