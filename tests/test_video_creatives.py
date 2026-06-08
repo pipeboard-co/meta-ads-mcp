@@ -1683,3 +1683,93 @@ async def test_videos_array_proceeds_when_thumbnail_fetch_fails():
         # No thumbnail_url on the entry — graceful degradation.
         assert "thumbnail_url" not in videos_out[0]
         assert videos_out[0]["video_id"] == "vid_no_thumb"
+
+
+@pytest.mark.asyncio
+async def test_video_creative_with_display_url_uses_asset_feed_link_urls():
+    """display_url routes a video creative through asset_feed_spec.link_urls.
+
+    Meta only accepts display_url on asset_feed_spec.link_urls[].display_url, not
+    inside object_story_spec.video_data, so setting it forces the asset_feed_spec
+    path.
+    """
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        mock_api.side_effect = [
+            # 1) Auto-fetch video thumbnail (no thumbnail_url provided)
+            {"picture": "https://example.com/auto-thumb.jpg"},
+            # 2) POST create creative
+            {"id": "creative_display_url_1"},
+            # 3) GET creative details
+            {"id": "creative_display_url_1", "name": "Display URL Creative", "status": "ACTIVE"},
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            video_id="vid_987654",
+            name="Display URL Ad",
+            link_url="https://example.com/landing",
+            display_url="brand.example",
+            message="Check out this video",
+            headline="Watch Now",
+            call_to_action_type="LEARN_MORE",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[1][0][2]
+
+        # Routed through asset_feed_spec, not the simple video_data path.
+        assert "asset_feed_spec" in creative_data
+        assert "video_data" not in creative_data.get("object_story_spec", {})
+
+        link_urls = creative_data["asset_feed_spec"]["link_urls"]
+        assert link_urls == [
+            {"website_url": "https://example.com/landing", "display_url": "brand.example"}
+        ]
+
+
+@pytest.mark.asyncio
+async def test_image_creative_with_display_url_uses_asset_feed_link_urls():
+    """display_url is also supported for image creatives via asset_feed_spec.link_urls."""
+
+    with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api, \
+         patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+
+        mock_discover.return_value = {
+            "success": True,
+            "page_id": "123456789",
+            "page_name": "Test Page",
+        }
+
+        mock_api.side_effect = [
+            # 1) POST create creative
+            {"id": "creative_display_url_img"},
+            # 2) GET creative details
+            {"id": "creative_display_url_img", "name": "Display URL Image", "status": "ACTIVE"},
+        ]
+
+        result = await create_ad_creative(
+            account_id="act_123456",
+            image_hash="abc123",
+            name="Display URL Image Ad",
+            link_url="https://example.com/landing",
+            display_url="brand.example",
+            message="Body",
+            access_token="test_token",
+        )
+
+        creative_data = mock_api.call_args_list[0][0][2]
+        assert "asset_feed_spec" in creative_data
+        link_urls = creative_data["asset_feed_spec"]["link_urls"]
+        assert link_urls == [
+            {"website_url": "https://example.com/landing", "display_url": "brand.example"}
+        ]
+        assert creative_data["asset_feed_spec"]["images"] == [{"hash": "abc123"}]
