@@ -122,11 +122,12 @@ async def create_adset(
         name: Ad set name
         optimization_goal: Conversion optimization goal. Valid values depend on the campaign objective and destination_type.
                           OUTCOME_ENGAGEMENT + destination_type=WEBSITE: OFFSITE_CONVERSIONS, LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
-                          OUTCOME_ENGAGEMENT + On Post: POST_ENGAGEMENT, IMPRESSIONS, REACH.
-                          OUTCOME_ENGAGEMENT + On Video: THRUPLAY, TWO_SECOND_CONTINUOUS_VIDEO_VIEWS.
-                          OUTCOME_ENGAGEMENT + On Event: EVENT_RESPONSES, IMPRESSIONS, POST_ENGAGEMENT, REACH.
-                          OUTCOME_ENGAGEMENT + On Page: PAGE_LIKES.
+                          OUTCOME_ENGAGEMENT + On Post (destination_type=ON_POST): POST_ENGAGEMENT, IMPRESSIONS, REACH. Also set promoted_object={page_id} at creation (immutable; without it create_ad fails with subcode 1885154). Do NOT use ON_AD here — ON_AD is the OUTCOME_LEADS instant-form destination and Meta rejects it for OUTCOME_ENGAGEMENT (subcode 1815715).
+                          OUTCOME_ENGAGEMENT + On Video (destination_type=ON_VIDEO): THRUPLAY, TWO_SECOND_CONTINUOUS_VIDEO_VIEWS.
+                          OUTCOME_ENGAGEMENT + On Event (destination_type=ON_EVENT): EVENT_RESPONSES, IMPRESSIONS, POST_ENGAGEMENT, REACH.
+                          OUTCOME_ENGAGEMENT + On Page (destination_type=ON_PAGE): PAGE_LIKES.
                           OUTCOME_ENGAGEMENT + Messaging (MESSENGER/WHATSAPP/INSTAGRAM_DIRECT): CONVERSATIONS, LINK_CLICKS.
+                          OUTCOME_ENGAGEMENT "Profile and Page visits" (PROFILE_AND_PAGE_ENGAGEMENT with destination_type INSTAGRAM_PROFILE / FACEBOOK_PAGE / INSTAGRAM_PROFILE_AND_FACEBOOK_PAGE) is shown in Ads Manager but NOT supported via the Marketing API — Meta rejects every variant (code 100). Closest API-supported option is POST_ENGAGEMENT + ON_POST.
                           OUTCOME_TRAFFIC + WEBSITE: LANDING_PAGE_VIEWS, LINK_CLICKS, IMPRESSIONS, REACH.
                           OUTCOME_AWARENESS: REACH, IMPRESSIONS, AD_RECALL_LIFT, THRUPLAY.
                           OUTCOME_LEADS: LEAD_GENERATION, QUALITY_LEAD (forms), QUALITY_CALL (calls), OFFSITE_CONVERSIONS, LINK_CLICKS (website).
@@ -179,10 +180,16 @@ async def create_adset(
                         Required for EU-targeted ad sets along with dsa_payor.
         dsa_payor: DSA payor for European compliance (person/org paying for the ads).
                    Required for EU-targeted ad sets along with dsa_beneficiary.
-        promoted_object: App config for APP_INSTALLS. Required: application_id, object_store_url.
-        destination_type: Where users go after click. Common values: 'WEBSITE', 'WHATSAPP', 'MESSENGER',
-                         'INSTAGRAM_DIRECT', 'ON_AD', 'APP', 'FACEBOOK', 'SHOP_AUTOMATIC'.
-                         Also supports multi-channel combos like 'MESSAGING_MESSENGER_WHATSAPP'.
+        promoted_object: For APP_INSTALLS: app config, required application_id + object_store_url.
+                        For OUTCOME_ENGAGEMENT On-Post (destination_type=ON_POST): set {"page_id": "<id>"} at
+                        creation — required for ads (else create_ad fails with subcode 1885154) and immutable
+                        afterward (cannot be added via update_adset).
+        destination_type: Conversion location / where users go. Pass-through to Meta (no client-side validation).
+                         Common values: 'WEBSITE', 'WHATSAPP', 'MESSENGER', 'INSTAGRAM_DIRECT', 'APP', 'FACEBOOK',
+                         'SHOP_AUTOMATIC'. OUTCOME_ENGAGEMENT on-asset locations: 'ON_POST' (post engagement; needs
+                         promoted_object={page_id}), 'ON_PAGE' (PAGE_LIKES), 'ON_EVENT', 'ON_VIDEO'. 'ON_AD' is the
+                         OUTCOME_LEADS instant-form destination — do NOT use it for OUTCOME_ENGAGEMENT (Meta rejects
+                         it with subcode 1815715). Also supports multi-channel combos like 'MESSAGING_MESSENGER_WHATSAPP'.
         is_dynamic_creative: Enable Dynamic Creative for this ad set.
         frequency_control_specs: Frequency cap specs. MUST be set at creation time — Meta makes this field
                                  immutable after the ad set is created (error 1815198).
@@ -275,9 +282,11 @@ async def create_adset(
             }, indent=2)
     
     # destination_type is passed through to Meta's API without client-side validation.
-    # Meta supports 23+ values (WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, ON_AD, WEBSITE,
-    # APP, FACEBOOK, SHOP_AUTOMATIC, multi-channel MESSAGING_* combos, etc.)
-    # and may add more. Let Meta's API reject invalid values.
+    # Meta supports 23+ values (WHATSAPP, MESSENGER, INSTAGRAM_DIRECT, ON_AD, ON_POST,
+    # ON_PAGE, ON_EVENT, ON_VIDEO, WEBSITE, APP, FACEBOOK, SHOP_AUTOMATIC, multi-channel
+    # MESSAGING_* combos, etc.) and may add more. Validity depends on the campaign
+    # objective (e.g. ON_AD is for OUTCOME_LEADS, ON_POST for OUTCOME_ENGAGEMENT) — let
+    # Meta's API reject incompatible combinations.
     # See: facebook-python-business-sdk AdSet.DestinationType
 
     # Basic targeting is required if not provided
