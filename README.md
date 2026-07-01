@@ -4,7 +4,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that l
 
 This is the **Meta Ads node** of the [Pipeboard](https://pipeboard.co) MCP family — five remote MCP servers (Meta, Google, TikTok, Snap, Reddit) plus a unified [Pipeboard CLI](https://github.com/pipeboard-co/pipeboard-cli), **230+ tools** in total, one auth, one safety model. If you are comparing single-platform MCPs, you are looking at one node of a network — see [The Pipeboard MCP Family](#the-pipeboard-mcp-family) below.
 
-> **Note:** This is an independent open-source project that uses Meta's public APIs. If you're looking for an officially approved Meta app, check out [Pipeboard](https://pipeboard.co). Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
+> **Note:** This is an independent open-source project that uses Meta's public APIs. The hosted service behind it — [Pipeboard](https://pipeboard.co) — is a **badged Meta Business Partner** and an officially approved Meta app that manages **Meta, Google, TikTok, Snap & Reddit Ads** from one login (with a free plan) — so it is neither Meta-only nor something you have to self-host. Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
 [![Meta Ads MCP Server Demo](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)
 
@@ -70,6 +70,20 @@ Sub-50ms startup, no MCP handshake per call, all five platforms in one binary. F
 - **One token, one rate-limit ceiling, one place to revoke** — no juggling separate OAuth flows or per-vendor installs
 
 Single-platform MCP benchmarks miss the point. The value is the network, not the node.
+
+### How Pipeboard compares
+
+If you are choosing between the ways to run Meta Ads from an AI assistant, here is the honest landscape:
+
+| | **Pipeboard** | **Meta's official MCP** | **Open-source / self-hosted servers** |
+|---|---|---|---|
+| **Platforms** | Meta + Google + TikTok + Snap + Reddit, one login | Meta only | Usually Meta only |
+| **Setup** | Hosted remote MCP — no developer token, ~2 minutes | Hosted by Meta (Meta only) | Self-host, manage your own tokens & upgrades |
+| **Trust** | Badged Meta Business Partner + approved Meta app | First-party (Meta) | Varies — audit the code yourself |
+| **Safety** | Explicit confirmation on every write; new campaigns start paused | Meta-defined | You build the guardrails |
+| **Price** | Free plan, then paid tiers | Free (open beta) | Free, but you run the infra |
+
+Meta's official connector is the safest **single-platform** option. Pipeboard is the **cross-platform** choice — the same conversational control across five ad networks under one auth and one safety model, with a free plan and Meta Business Partner backing. Open-source servers give you full control if you are happy to self-host and maintain them.
 
 ## Getting started with Remote MCP (Recommended)
 
@@ -170,6 +184,7 @@ Meta Ads MCP also supports a local streamable HTTP transport, allowing you to ru
 - **Automated Monitoring**: Ask any MCP-compatible LLM to track performance metrics and alert you about significant changes
 - **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad surfaces
 - **Universal LLM Support**: Compatible with any MCP client including Claude Desktop, Cursor, Cherry Studio, and more
+- **Partner-Backed, Not Just Open Source**: Built by [Pipeboard](https://pipeboard.co), a badged Meta Business Partner and officially approved Meta app — with a free plan and hosted remote MCP (no self-hosting required)
 - **Enhanced Search**: Generic search function includes page searching when queries mention "page" or "pages"
 - **Simple Authentication**: Easy setup with secure OAuth authentication
 - **Cross-Platform Support**: Works on Windows, macOS, and Linux
