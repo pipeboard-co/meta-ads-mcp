@@ -25,21 +25,35 @@ async def get_adsets(account_id: str, access_token: Optional[str] = None, limit:
 
     account_id = ensure_act_prefix(account_id)
 
+    # daily_min_spend_target / daily_spend_cap / lifetime_min_spend_target /
+    # lifetime_spend_cap are the CBO ad set spend limits. They are included
+    # here so callers can verify (via a readback) whether a create_adset /
+    # update_adset call that set them actually persisted the value on Meta's
+    # side — there was previously no way to check via this tool at all.
+    adset_fields = (
+        "id,name,campaign_id,status,daily_budget,lifetime_budget,"
+        "daily_min_spend_target,daily_spend_cap,lifetime_min_spend_target,lifetime_spend_cap,"
+        "targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,"
+        "billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,"
+        "frequency_control_specs{event,interval_days,max_frequency},"
+        "regional_regulated_categories,regional_regulation_identities"
+    )
+
     # Change endpoint based on whether campaign_id is provided
     if campaign_id:
         endpoint = f"{campaign_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
+            "fields": adset_fields,
             "limit": limit
         }
     else:
         # Use account endpoint if no campaign_id is given
         endpoint = f"{account_id}/adsets"
         params = {
-            "fields": "id,name,campaign_id,status,daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,is_dynamic_creative,frequency_control_specs{event,interval_days,max_frequency},regional_regulated_categories,regional_regulation_identities",
+            "fields": adset_fields,
             "limit": limit
         }
-        # Note: Removed the attempt to add campaign_id to params for the account endpoint case, 
+        # Note: Removed the attempt to add campaign_id to params for the account endpoint case,
         # as it was ineffective and the logic now uses the correct endpoint for campaign filtering.
 
     data = await make_api_request(endpoint, access_token, params)
@@ -67,9 +81,21 @@ async def get_adset_details(adset_id: str, access_token: Optional[str] = None) -
         return json.dumps({"error": "No ad set ID provided"}, indent=2)
     
     endpoint = f"{adset_id}"
-    # Explicitly prioritize frequency_control_specs in the fields request
+    # Explicitly prioritize frequency_control_specs in the fields request.
+    # daily_min_spend_target / daily_spend_cap / lifetime_min_spend_target /
+    # lifetime_spend_cap (CBO ad set spend limits) are included so callers can
+    # verify whether a create_adset / update_adset call that set them actually
+    # persisted the value — previously there was no way to check via this tool.
     params = {
-        "fields": "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},daily_budget,lifetime_budget,targeting,bid_amount,bid_adjustments,bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,created_time,updated_time,attribution_spec,destination_type,promoted_object,pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,regional_regulated_categories,regional_regulation_identities"
+        "fields": (
+            "id,name,campaign_id,status,frequency_control_specs{event,interval_days,max_frequency},"
+            "daily_budget,lifetime_budget,daily_min_spend_target,daily_spend_cap,"
+            "lifetime_min_spend_target,lifetime_spend_cap,targeting,bid_amount,bid_adjustments,"
+            "bid_strategy,bid_constraints,optimization_goal,billing_event,start_time,end_time,"
+            "created_time,updated_time,attribution_spec,destination_type,promoted_object,"
+            "pacing_type,budget_remaining,dsa_beneficiary,dsa_payor,is_dynamic_creative,"
+            "regional_regulated_categories,regional_regulation_identities"
+        )
     }
     
     data = await make_api_request(endpoint, access_token, params)
