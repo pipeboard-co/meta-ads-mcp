@@ -198,7 +198,12 @@ async def make_api_request(
         "User-Agent": USER_AGENT,
     }
     
-    request_params = params or {}
+    # Shallow-copy the caller's params: this function injects credentials
+    # (access_token, appsecret_proof) and JSON-stringifies dict/list values
+    # below. Mutating the caller's dict leaked the access token into tool
+    # responses that echo their params back (e.g. update_ad_creative's
+    # attempted_updates on error 1815573).
+    request_params = dict(params) if params else {}
     request_params["access_token"] = access_token
 
     # Add appsecret_proof when META_APP_SECRET is configured.
