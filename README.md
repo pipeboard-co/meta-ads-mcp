@@ -1,6 +1,6 @@
 # Meta Ads MCP
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants run your Meta Ads end to end — launch campaigns, upload creatives, update budgets, and dig into performance through natural conversation. Works across Facebook, Instagram, and other Meta surfaces.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants — Claude, ChatGPT, Perplexity, Cursor, or any MCP client — run your Meta Ads end to end: launch campaigns, upload creatives, update budgets, and analyze performance through natural conversation across Facebook, Instagram, and every Meta ad surface. Available as a **hosted remote MCP** — no developer token, no self-hosting required.
 
 This is the **Meta Ads node** of the [Pipeboard](https://pipeboard.co) MCP family — five remote MCP servers (Meta, Google, TikTok, Snap, Reddit) plus a unified [Pipeboard CLI](https://github.com/pipeboard-co/pipeboard-cli), **230+ tools** in total, one auth, one safety model. If you are comparing single-platform MCPs, you are looking at one node of a network — see [The Pipeboard MCP Family](#the-pipeboard-mcp-family) below.
 
@@ -45,7 +45,7 @@ Pipeboard ships a remote [MCP server](https://modelcontextprotocol.io/) for ever
 | **Snap Ads MCP** | `https://snap-ads.mcp.pipeboard.co/` | **37 tools** — ad accounts, campaigns, ad squads, ads, creatives, media upload, insights |
 | **Reddit Ads MCP** | `https://reddit-ads.mcp.pipeboard.co/` | **33 tools** — accounts, campaigns, ad groups, ads, performance reports |
 
-**That is 230+ tools across five ad platforms behind one auth.** Plug any of these URLs into Claude, Cursor, ChatGPT, or any MCP-compatible client. Connect your ad accounts once at [pipeboard.co](https://pipeboard.co) and every client gets access.
+**That is 230+ tools across five ad platforms behind one auth.** Plug any of these URLs into Claude, Cursor, ChatGPT, Perplexity, or any MCP-compatible client. Connect your ad accounts once at [pipeboard.co](https://pipeboard.co) and every client gets access.
 
 ### Pipeboard CLI — the same tools, in your shell
 
