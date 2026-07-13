@@ -164,7 +164,10 @@ async def estimate_audience_size(
                 "cities",
                 "zips",
                 "geo_markets",
-                "country_groups"
+                "country_groups",
+                "custom_locations",
+                "places",
+                "electoral_districts",
             ]:
                 val = geo.get(key)
                 if isinstance(val, list) and len(val) > 0:
@@ -187,7 +190,7 @@ async def estimate_audience_size(
         return json.dumps({
             "error": "Missing target audience location",
             "details": "Select at least one location in targeting.geo_locations or include a custom audience.",
-            "action_required": "Add geo_locations with countries/regions/cities/zips or include custom_audiences.",
+            "action_required": "Add geo_locations with countries/regions/cities/zips/geo_markets/custom_locations/places/electoral_districts, or include custom_audiences.",
             "example": {
                 "geo_locations": {"countries": ["US"]},
                 "age_min": 25,
@@ -224,7 +227,7 @@ async def estimate_audience_size(
                         "error": "Missing target audience location",
                         "details": raw_err.get("error_user_msg") or "Select at least one location, or choose a custom audience.",
                         "endpoint_used": f"{account_id}/reachestimate",
-                        "action_required": "Add geo_locations with at least one of countries/regions/cities/zips or include custom_audiences.",
+                        "action_required": "Add geo_locations with at least one of countries/regions/cities/zips/geo_markets/custom_locations/places/electoral_districts or include custom_audiences.",
                         "blame_field_specs": raw_err.get("error_data", {}).get("blame_field_specs") if isinstance(raw_err.get("error_data"), dict) else None
                     }, indent=2)
             except Exception:
