@@ -276,6 +276,153 @@ class TestEstimateAudienceSize:
         assert "example" in nested_data
     
     @pytest.mark.asyncio
+    async def test_missing_location_rejected_by_preflight(self):
+        """Targeting with no location keys and no custom audience should be rejected before
+        ever reaching the reachestimate endpoint."""
+        targeting_spec = {
+            "age_min": 22,
+            "age_max": 55
+        }
+
+        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
+            result = await estimate_audience_size(
+                access_token="test_token",
+                account_id="act_123456789",
+                targeting=targeting_spec
+            )
+
+            # Preflight check should short-circuit before calling the Graph API
+            mock_api.assert_not_called()
+
+            result_data = json.loads(result)
+            assert "data" in result_data
+            nested_data = json.loads(result_data["data"])
+            assert nested_data["error"] == "Missing target audience location"
+            assert "action_required" in nested_data
+
+    @pytest.mark.asyncio
+    async def test_custom_locations_only_passes_preflight(self):
+        """Regression test: a targeting spec whose only location signal is
+        geo_locations.custom_locations (radius targeting) must pass Pipeboard's preflight
+        check and reach the reachestimate endpoint. Previously this was incorrectly
+        rejected with "Missing target audience location" (custom_locations was missing
+        from the recognized geo_locations keys)."""
+        mock_response = {
+            "data": [
+                {
+                    "estimate_mau": 42000,
+                    "estimate_dau": [],
+                    "bid_estimates": {},
+                    "unsupported_targeting": []
+                }
+            ]
+        }
+
+        targeting_spec = {
+            "age_min": 22,
+            "age_max": 55,
+            "geo_locations": {
+                "custom_locations": [
+                    {"latitude": 40.759, "longitude": -73.9895, "radius": 1.5, "distance_unit": "mile"}
+                ],
+                "location_types": ["home"]
+            },
+            "targeting_automation": {"advantage_audience": 0}
+        }
+
+        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = mock_response
+
+            result = await estimate_audience_size(
+                access_token="test_token",
+                account_id="act_123456789",
+                targeting=targeting_spec
+            )
+
+            mock_api.assert_called_once_with(
+                "act_123456789/reachestimate",
+                "test_token",
+                {"targeting_spec": targeting_spec},
+                method="GET"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+            assert result_data["estimated_audience_size"] == 42000
+
+    @pytest.mark.asyncio
+    async def test_places_only_passes_preflight(self):
+        """A targeting spec using only geo_locations.places (e.g. targeting around a named
+        place/landmark) should also pass the preflight location check."""
+        mock_response = {
+            "data": [
+                {
+                    "estimate_mau": 15000,
+                    "estimate_dau": [],
+                    "bid_estimates": {},
+                    "unsupported_targeting": []
+                }
+            ]
+        }
+
+        targeting_spec = {
+            "age_min": 18,
+            "age_max": 65,
+            "geo_locations": {
+                "places": [{"key": 129672430416115, "name": "SFO", "radius": 10, "distance_unit": "mile"}]
+            }
+        }
+
+        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = mock_response
+
+            result = await estimate_audience_size(
+                access_token="test_token",
+                account_id="act_123456789",
+                targeting=targeting_spec
+            )
+
+            mock_api.assert_called_once()
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_electoral_districts_only_passes_preflight(self):
+        """A targeting spec using only geo_locations.electoral_districts should also pass
+        the preflight location check."""
+        mock_response = {
+            "data": [
+                {
+                    "estimate_mau": 8000,
+                    "estimate_dau": [],
+                    "bid_estimates": {},
+                    "unsupported_targeting": []
+                }
+            ]
+        }
+
+        targeting_spec = {
+            "age_min": 18,
+            "age_max": 65,
+            "geo_locations": {
+                "electoral_districts": [{"key": "US:CA14"}]
+            }
+        }
+
+        with patch('meta_ads_mcp.core.targeting.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = mock_response
+
+            result = await estimate_audience_size(
+                access_token="test_token",
+                account_id="act_123456789",
+                targeting=targeting_spec
+            )
+
+            mock_api.assert_called_once()
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+    @pytest.mark.asyncio
     async def test_error_no_parameters(self):
         """Test error when no parameters provided"""
         # Since we're using the @meta_api_tool decorator, we need to simulate
