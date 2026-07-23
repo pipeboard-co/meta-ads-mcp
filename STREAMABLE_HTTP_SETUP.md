@@ -53,6 +53,7 @@ curl -X POST http://localhost:8080/mcp \
 | `--transport` | Transport mode | `stdio` |
 | `--host` | Server host address | `localhost` |
 | `--port` | Server port | `8080` |
+| `--sse-response` | Return responses as SSE streams instead of JSON | `false` (JSON) |
 
 ### Examples
 
@@ -66,6 +67,42 @@ python -m meta_ads_mcp --transport streamable-http --host 0.0.0.0 --port 8080
 # Custom port
 python -m meta_ads_mcp --transport streamable-http --port 9000
 ```
+
+## Security Model (read before exposing the port)
+
+The HTTP transport uses a **per-request** authentication model that is
+deliberately different from stdio. Understanding it is the difference between a
+safe deployment and leaking your Meta account to the internet.
+
+- **stdio (local):** the server acts as whatever credential is configured in its
+  environment — `META_ACCESS_TOKEN`, `PIPEBOARD_API_TOKEN`, or a stored login.
+  Only the local process that launched it can talk to it, so this is expected
+  and safe. *If all you want is to use the MCP locally, prefer stdio.*
+
+- **streamable-http (network):** every request must carry **its own** token
+  header — `Authorization: Bearer <token>`, `X-META-ACCESS-TOKEN`, or the legacy
+  `X-PIPEBOARD-API-TOKEN`. Requests without one are rejected with
+  `401 Unauthorized`. The server-side `META_ACCESS_TOKEN` environment variable is
+  **intentionally not** used as an implicit fallback for HTTP requests — if it
+  were, any caller who can reach the port would act as you. This gating is
+  enforced by `AuthInjectionMiddleware`.
+
+**Operational rules:**
+
+1. **Do not expose the raw port to an untrusted network.** `--host 0.0.0.0`
+   binds to every interface. Put the server behind an authenticating reverse
+   proxy (or a private network / firewall), exactly as the hosted MCP at
+   `*.mcp.pipeboard.co` does (localhost-bound Python process behind a proxy).
+2. **Avoid setting `META_ACCESS_TOKEN` on a network-exposed HTTP server.** It is
+   an operator-wide, long-lived credential. Have callers pass their own tokens
+   in headers instead. If you must set it (e.g. single-tenant behind a trusted
+   proxy), ensure the port is unreachable by untrusted callers.
+3. **The auth gate applies in both response modes** — default JSON and
+   `--sse-response`. (Historically `--sse-response` had a bug where the gate was
+   not attached to the served app; see `SECURITY.md`, GHSA-8353-5qhw-8hfw. Fixed
+   in `1.0.119` — upgrade if you use `--sse-response`.)
+4. **If you ever exposed an unauthenticated server, rotate the Meta access
+   token** and review Graph API access logs.
 
 ## Authentication
 
@@ -295,10 +332,18 @@ client.callTool('get_ad_accounts', { limit: 5 })
 
 ### Security Considerations
 
+See **[Security Model](#security-model-read-before-exposing-the-port)** above for
+the per-request auth model and why it matters. In short:
+
 1. **Use HTTPS**: In production, run behind a reverse proxy with SSL/TLS
-2. **Authentication**: Always use valid Bearer tokens.
-3. **Network Security**: Configure firewalls and access controls appropriately
-4. **Rate Limiting**: Consider implementing rate limiting for public APIs
+2. **Authentication**: Every request must carry its own token header; the server
+   returns `401` otherwise. Do not rely on a server-side `META_ACCESS_TOKEN` as
+   an implicit credential for HTTP callers — it is not used as a fallback.
+3. **Network Security**: Never expose the raw port to an untrusted network. Bind
+   to localhost behind an authenticating proxy, or restrict with firewalls.
+4. **Avoid `META_ACCESS_TOKEN` on network-exposed servers**: it is an
+   operator-wide credential; prefer per-request header tokens.
+5. **Rate Limiting**: Consider implementing rate limiting for public APIs
 
 ### Docker Deployment
 
@@ -325,7 +370,11 @@ export PIPEBOARD_API_TOKEN=your_pipeboard_token
 export META_APP_ID=your_app_id
 export META_APP_SECRET=your_app_secret
 
-# Optional (for direct Meta token)
+# Optional (for direct Meta token).
+# WARNING: on the HTTP transport this is NOT used as a fallback credential for
+# incoming requests — callers must pass their own token header (see "Security
+# Model"). Setting it on a network-exposed server is an operator-wide credential
+# risk; prefer stdio, or keep the port unreachable by untrusted callers.
 export META_ACCESS_TOKEN=your_access_token
 ```
 

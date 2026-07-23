@@ -196,36 +196,48 @@ def setup_fastmcp_http_auth(mcp_server):
     # 2. Patch the methods that provide the Starlette app instance
     # This ensures our middleware is added to the app Uvicorn will actually serve.
 
+    # The streamable-http transport ALWAYS serves the app returned by
+    # streamable_http_app(): the SDK's run_streamable_http_async() calls
+    # self.streamable_http_app() regardless of the json_response setting.
+    # json_response is only forwarded to StreamableHTTPSessionManager as an
+    # SSE-vs-JSON wire-format switch — it does NOT change which Starlette app is
+    # served. Selecting the app to patch by json_response therefore attaches the
+    # auth middleware to the wrong (unserved) app under --sse-response, leaving
+    # the served app without an auth gate. See GHSA-8353-5qhw-8hfw.
+    #
+    # Patch streamable_http_app unconditionally (it is the served app), and
+    # also sse_app when present as defense-in-depth against future SDK routing
+    # changes. Both response formats are served by streamable_http_app today.
     app_provider_methods = []
-    if mcp_server.settings.json_response:
-        if hasattr(mcp_server, "streamable_http_app") and callable(mcp_server.streamable_http_app):
-            app_provider_methods.append("streamable_http_app")
-        else:
-            logger.warning("mcp_server.streamable_http_app not found or not callable, cannot patch for JSON responses.")
-    else: # SSE
-        if hasattr(mcp_server, "sse_app") and callable(mcp_server.sse_app):
-            app_provider_methods.append("sse_app")
-        else:
-            logger.warning("mcp_server.sse_app not found or not callable, cannot patch for SSE responses.")
+    if hasattr(mcp_server, "streamable_http_app") and callable(mcp_server.streamable_http_app):
+        app_provider_methods.append("streamable_http_app")
+    else:
+        logger.error("mcp_server.streamable_http_app not found or not callable — the served streamable-http app cannot be protected with AuthInjectionMiddleware.")
+    if hasattr(mcp_server, "sse_app") and callable(mcp_server.sse_app):
+        app_provider_methods.append("sse_app")
 
     if not app_provider_methods:
         logger.error("No suitable app provider method (streamable_http_app or sse_app) found on mcp_server. Cannot add HTTP Auth middleware.")
         # Fallback or error handling might be needed here if this is critical
-    
+
     for method_name in app_provider_methods:
         original_app_provider_method = getattr(mcp_server, method_name)
-        
-        def new_patched_app_provider_method(*args, **kwargs):
+
+        # Bind method_name / original via default args so each patched closure
+        # captures its own iteration's values. Late-binding by reference would
+        # make every patched method call the LAST iteration's original — a real
+        # bug now that more than one method is patched.
+        def new_patched_app_provider_method(*args, _method_name=method_name, _original=original_app_provider_method, **kwargs):
             # Call the original method to get/create the Starlette app
-            app = original_app_provider_method(*args, **kwargs)
+            app = _original(*args, **kwargs)
             if app:
-                logger.debug(f"Original {method_name} returned app: {type(app)}. Adding AuthInjectionMiddleware.")
+                logger.debug(f"Original {_method_name} returned app: {type(app)}. Adding AuthInjectionMiddleware.")
                 # Now, add our middleware to this specific app instance
-                setup_starlette_middleware(app) 
+                setup_starlette_middleware(app)
             else:
-                logger.error(f"Original {method_name} returned None or a non-app object.")
+                logger.error(f"Original {_method_name} returned None or a non-app object.")
             return app
-            
+
         setattr(mcp_server, method_name, new_patched_app_provider_method)
         logger.debug(f"Patched mcp_server.{method_name} to inject AuthInjectionMiddleware.")
 

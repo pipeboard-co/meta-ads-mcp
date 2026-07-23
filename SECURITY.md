@@ -113,3 +113,38 @@ supplementary token only and cannot, on its own, admit a request.
   `META_ACCESS_TOKEN` set, rotate the Meta access token
   (`https://developers.facebook.com/tools/debug/accesstoken/`) and review Graph
   API access logs for unexpected calls.
+
+### GHSA-8353-5qhw-8hfw — Unauthenticated HTTP MCP tool execution under `--sse-response` (auth middleware installed on the unserved app)
+
+- **Severity:** Critical (CVSS 3.1 9.1 — `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N`)
+- **Affected versions:** `<= 1.0.118` when run with
+  `--transport streamable-http --sse-response` and a `META_ACCESS_TOKEN`
+  environment variable, on a network-reachable interface.
+- **Fixed in:** `1.0.119`
+- **Affected configurations:** Self-hosted deployments that pass
+  `--sse-response` and expose the streamable-HTTP port on a reachable network
+  interface with `META_ACCESS_TOKEN` set. The **default JSON response mode is
+  not affected**. The hosted MCP at `*.mcp.pipeboard.co` was not affected — it
+  runs in the default JSON mode, does not set `META_ACCESS_TOKEN`, and binds the
+  Python process to localhost behind an authenticating proxy.
+
+**What went wrong.** This is a third instance of the class fixed in
+GHSA-9gw6-46qc-99vr and GHSA-2v2f-mvfg-ph56. Those fixes hardened the HTTP auth
+middleware's request handling, but under `--sse-response` the middleware was not
+attached to the Starlette app that the streamable-http transport actually
+serves. As a result the served endpoint carried no auth gate in that
+configuration, so requests could reach tool handlers and fall back to the
+operator's `META_ACCESS_TOKEN`. The default JSON response mode was unaffected.
+
+**Fix.** The HTTP auth middleware is now attached to the served app
+unconditionally (independent of the response-format setting), with the SSE app
+covered as well for defense-in-depth. Regression tests assert the served app
+rejects unauthenticated requests in both JSON and `--sse-response` modes.
+
+**Action for operators.**
+- Upgrade to `1.0.119` or later.
+- If you exposed an earlier version with `--transport streamable-http
+  --sse-response` and `META_ACCESS_TOKEN` set on a reachable network, rotate the
+  Meta access token (`https://developers.facebook.com/tools/debug/accesstoken/`)
+  and review Graph API access logs for unexpected calls.
+- Credited to zx (Jace) — GitHub [@manus-use](https://github.com/manus-use).
