@@ -327,6 +327,10 @@ export META_APP_SECRET=your_app_secret
 
 # Optional (for direct Meta token)
 export META_ACCESS_TOKEN=your_access_token
+
+# Optional: expose only allowlisted reporting, discovery, and targeting tools.
+# All create/update/upload/budget tools, plus unknown future tools, are removed.
+export META_ADS_MCP_READ_ONLY=1
 ```
 
 ## Troubleshooting
@@ -364,4 +368,4 @@ If you're currently using stdio transport with MCP clients, you can support both
     - For stdio, the `PIPEBOARD_API_TOKEN` environment variable is used.
     - For HTTP, pass the token in the `Authorization: Bearer <token>` header.
 
-Both transports access the same Meta Ads functionality and use the same underlying authentication system. 
+Both transports access the same Meta Ads functionality and use the same underlying authentication system.
