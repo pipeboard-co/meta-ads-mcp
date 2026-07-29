@@ -1,0 +1,52 @@
+Using CPython 3.10.20
+Creating virtual environment at: .venv
+   Building meta-ads-mcp @ file:///home/yves/.pb-workspaces/slack-8bb14535-ipt3t/meta-ads-mcp
+      Built meta-ads-mcp @ file:///home/yves/.pb-workspaces/slack-8bb14535-ipt3t/meta-ads-mcp
+Installed 52 packages in 38ms
+INFO:     Started server process [863084]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://localhost:9000 (Press CTRL+C to quit)
+Starting Meta Ads MCP server with Streamable HTTP transport
+Server will listen on localhost:9000
+Response format: JSON
+Primary authentication: Bearer Token (via Authorization: Bearer <token> header)
+Fallback authentication: Custom Meta App OAuth (via X-META-APP-ID header)
+✅ FastMCP HTTP authentication integration enabled
+   - Bearer tokens via Authorization: Bearer <token> header
+   - Direct Meta tokens via X-META-ACCESS-TOKEN header
+✅ Server configured successfully
+   URL: http://localhost:9000/mcp
+   Mode: Stateless
+   Format: JSON
+INFO:     ::1:50304 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:50304 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:35488 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:35488 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:49930 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:49930 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:56242 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:56242 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:56242 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:55794 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:55794 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:55806 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:55806 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:56066 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:56066 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:60168 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:60168 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:57920 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:57920 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:47654 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:47654 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:55936 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:55936 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:49760 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:49760 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     ::1:59480 - "POST /mcp HTTP/1.1" 200 OK
+INFO:     ::1:59480 - "POST /mcp HTTP/1.1" 202 Accepted
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [863084]

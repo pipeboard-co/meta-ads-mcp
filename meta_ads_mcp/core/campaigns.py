@@ -104,7 +104,11 @@ async def get_campaign_details(campaign_id: str, access_token: Optional[str] = N
     
     endpoint = f"{campaign_id}"
     params = {
-        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy,special_ad_categories,special_ad_category_country,budget_remaining,configured_status"
+        # is_skadnetwork_attribution / promoted_object / smart_promotion_type are the
+        # only way to verify after the fact that a campaign really is in iOS 14+/
+        # SKAdNetwork mode — the flag is create-only, so a wrong value means the
+        # campaign has to be recreated.
+        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy,special_ad_categories,special_ad_category_country,budget_remaining,configured_status,is_skadnetwork_attribution,promoted_object,smart_promotion_type"
     }
     
     data = await make_api_request(endpoint, access_token, params)
@@ -129,7 +133,9 @@ async def create_campaign(
     spend_cap: Optional[int] = None,
     campaign_budget_optimization: Optional[bool] = None,
     ab_test_control_setups: Optional[List[Dict[str, Any]]] = None,
-    use_adset_level_budgets: bool = False
+    use_adset_level_budgets: bool = False,
+    is_skadnetwork_attribution: Optional[bool] = None,
+    promoted_object: Optional[Dict[str, Any]] = None
 ) -> str:
     """
     Create a new Facebook or Instagram ad campaign in a Meta Ads account. Use this to start
@@ -164,6 +170,18 @@ async def create_campaign(
         campaign_budget_optimization: Whether to enable campaign budget optimization (only used if use_adset_level_budgets=False)
         ab_test_control_setups: Settings for A/B testing (e.g., [{"name":"Creative A", "ad_format":"SINGLE_IMAGE"}])
         use_adset_level_budgets: If True, budgets will be set at the ad set level instead of campaign level (default: False)
+        is_skadnetwork_attribution: Enable Meta's iOS 14+ / SKAdNetwork campaign type.
+            REQUIRED for iOS app-install campaigns that must reach iOS 14.5+: without it,
+            create_adset rejects targeting.user_os=["iOS_ver_14.5_and_above"] with
+            error_subcode 1487348 ("Invalid user_os value"), and a plain user_os=["iOS"]
+            can be silently narrowed to iOS 14.4-and-below (near-zero audience).
+            CREATE-ONLY — update_campaign cannot change it afterwards (Meta returns
+            error_subcode 2446698 even for a PAUSED campaign), so a campaign created
+            without it must be recreated. Not needed for Android-only or non-app campaigns.
+        promoted_object: The promoted object, set at the CAMPAIGN level. Used for iOS 14+/
+            SKAdNetwork app campaigns where Meta pins the app on the campaign rather than
+            the ad set: {"application_id": "<app id>", "object_store_url": "<App Store URL>"}.
+            For ordinary (non-SKAN) campaigns the promoted object belongs on the ad set.
     """
     # Check required parameters
     if not account_id:
@@ -238,7 +256,19 @@ async def create_campaign(
     
     if ab_test_control_setups:
         params["ab_test_control_setups"] = json.dumps(ab_test_control_setups)
-    
+
+    # iOS 14+ / SKAdNetwork campaign type. Campaign-level and create-only —
+    # Meta refuses a later change with error_subcode 2446698.
+    if is_skadnetwork_attribution is not None:
+        params["is_skadnetwork_attribution"] = "true" if is_skadnetwork_attribution else "false"
+
+    # promoted_object at the campaign level (SKAN app campaigns pin the app here
+    # instead of on the ad set).
+    if promoted_object is not None:
+        params["promoted_object"] = (
+            promoted_object if isinstance(promoted_object, str) else json.dumps(promoted_object)
+        )
+
     try:
         data = await make_api_request(endpoint, access_token, params, method="POST")
         
@@ -277,6 +307,8 @@ async def update_campaign(
     objective: Optional[str] = None,  # Add objective if it's updatable
     use_adset_level_budgets: Optional[bool] = None,  # Add other updatable fields as needed based on API docs
     adset_budgets: Optional[List[Dict[str, Any]]] = None,
+    is_skadnetwork_attribution: Optional[bool] = None,
+    promoted_object: Optional[Dict[str, Any]] = None,
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
@@ -312,6 +344,15 @@ async def update_campaign(
             atomic call. Example:
                 [{"adset_id": "1234", "daily_budget": 5000},
                  {"adset_id": "5678", "daily_budget": 7000}]
+        is_skadnetwork_attribution: Meta refuses this here — the iOS 14+/SKAdNetwork
+            campaign type is create-only (error_subcode 2446698, "Once you publish an
+            iOS 14 campaign, you can't change the campaign type"), which fires even for
+            a PAUSED campaign that never spent. Set it on create_campaign instead. It is
+            still forwarded rather than dropped so the caller sees Meta's explicit error.
+        promoted_object: Campaign-level promoted object, e.g.
+            {"application_id": "<app id>", "object_store_url": "<App Store URL>"}.
+            Whether Meta accepts a change depends on the campaign type and whether it
+            has been published — read the campaign back to confirm what applied.
     """
     if not campaign_id:
         return json.dumps({"error": "No campaign ID provided"}, indent=2)
@@ -383,6 +424,17 @@ async def update_campaign(
     # make_api_request JSON-encodes lists for POST form data.
     if adset_budgets is not None:
         params["adset_budgets"] = adset_budgets
+
+    # Forwarded rather than silently dropped: Meta rejects a campaign-type change
+    # with error_subcode 2446698, which is more useful to the caller than either
+    # "No update parameters provided" or a success that changed nothing.
+    if is_skadnetwork_attribution is not None:
+        params["is_skadnetwork_attribution"] = "true" if is_skadnetwork_attribution else "false"
+
+    if promoted_object is not None:
+        params["promoted_object"] = (
+            promoted_object if isinstance(promoted_object, str) else json.dumps(promoted_object)
+        )
 
     if not params:
         return json.dumps({"error": "No update parameters provided"}, indent=2)
