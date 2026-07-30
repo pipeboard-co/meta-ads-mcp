@@ -3136,6 +3136,237 @@ async def update_ad_creative(
         }, indent=2)
 
 
+# ---------------------------------------------------------------------------
+# Change a live ad's destination URL / url_tags by cloning its creative
+# ---------------------------------------------------------------------------
+
+def _creative_landing_url(creative: Dict[str, Any]) -> Optional[str]:
+    """Best-effort extraction of a creative's destination URL across shapes.
+
+    The destination URL lives in different places depending on the creative
+    type, so we check them in priority order:
+      - top-level call_to_action.value.link (video / branded-content ads)
+      - object_story_spec.{link_data,video_data}.call_to_action.value.link / .link
+      - asset_feed_spec.link_urls[].website_url (Advantage+/dynamic creatives)
+      - link_url (fallback the API exposes for many shapes)
+    """
+    value = (creative.get("call_to_action") or {}).get("value") or {}
+    if value.get("link"):
+        return value["link"]
+    oss = creative.get("object_story_spec") or {}
+    for key in ("link_data", "video_data"):
+        data = oss.get(key) or {}
+        inner = (data.get("call_to_action") or {}).get("value") or {}
+        if inner.get("link"):
+            return inner["link"]
+        if data.get("link"):
+            return data["link"]
+    for link_url in (creative.get("asset_feed_spec") or {}).get("link_urls") or []:
+        if link_url.get("website_url"):
+            return link_url["website_url"]
+    return creative.get("link_url")
+
+
+def _asset_feed_with_url(asset_feed_spec: Dict[str, Any], website_url: Optional[str]) -> Dict[str, Any]:
+    """Deep-copy an asset_feed_spec, rewriting every link_urls entry to website_url."""
+    import copy
+    spec = copy.deepcopy(asset_feed_spec)
+    if website_url is not None:
+        for link_url in spec.get("link_urls") or []:
+            if "website_url" in link_url:
+                link_url["website_url"] = website_url
+            if link_url.get("display_url"):
+                link_url["display_url"] = website_url
+    return spec
+
+
+def _cloned_creative_params(creative: Dict[str, Any], website_url: Optional[str],
+                            url_tags: Optional[str]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """Build adcreatives params that faithfully clone `creative`, changing only the URL / url_tags.
+
+    Returns (params, None) on success or (None, error_message) if the shape is unknown.
+    Read-only fields that Meta rejects on re-creation (object_story_spec.*.image_url,
+    which triggers #1443051) are stripped. degrees_of_freedom_spec.standard_enhancements
+    is never re-sent (Meta rejects it with #3858504), so it is simply not copied.
+    """
+    import copy
+    params: Dict[str, Any] = {"name": (creative.get("name") or "creative")[:80]}
+    tags = url_tags if url_tags is not None else creative.get("url_tags")
+    if tags:
+        params["url_tags"] = tags
+
+    oss = creative.get("object_story_spec") or {}
+    asset_feed = creative.get("asset_feed_spec")
+    source_media = creative.get("source_instagram_media_id")
+
+    if oss.get("link_data") or oss.get("video_data"):
+        new_oss = copy.deepcopy(oss)
+        for key in ("link_data", "video_data"):
+            data = new_oss.get(key)
+            if not data:
+                continue
+            data.pop("image_url", None)  # read-only; leaving it in triggers #1443051
+            if website_url is not None:
+                if data.get("link") is not None:
+                    data["link"] = website_url
+                cta = data.get("call_to_action")
+                if cta and isinstance(cta.get("value"), dict) and "link" in cta["value"]:
+                    cta["value"]["link"] = website_url
+        params["object_story_spec"] = json.dumps(new_oss)
+        if asset_feed:  # keep dynamic (DOF) text/asset variants
+            params["asset_feed_spec"] = json.dumps(_asset_feed_with_url(asset_feed, website_url))
+    elif asset_feed and asset_feed.get("link_urls"):
+        params["asset_feed_spec"] = json.dumps(_asset_feed_with_url(asset_feed, website_url))
+        if oss:
+            params["object_story_spec"] = json.dumps(oss)
+    elif source_media:  # partnership / branded-content ad
+        params["source_instagram_media_id"] = source_media
+        cta = creative.get("call_to_action") or {}
+        value = dict(cta.get("value") or {})
+        if website_url is not None:
+            value["link"] = website_url
+        params["call_to_action"] = json.dumps({"type": cta.get("type", "LEARN_MORE"), "value": value})
+        for field in ("instagram_branded_content", "facebook_branded_content"):
+            if creative.get(field):
+                params[field] = json.dumps(creative[field])
+    else:
+        return None, "Unrecognized creative shape; cannot locate the destination URL to change."
+    return params, None
+
+
+@mcp_server.tool()
+@meta_api_tool
+async def update_ad_url(
+    ad_id: str,
+    website_url: Optional[str] = None,
+    url_tags: Optional[str] = None,
+    dry_run: bool = False,
+    access_token: Optional[str] = None
+) -> str:
+    """
+    Change the destination (landing page) URL and/or url_tags (UTM) of an existing,
+    possibly-running ad — keeping the SAME ad (ad_id is unchanged, reporting history
+    is preserved).
+
+    WHY THIS EXISTS
+      Meta ad creatives are immutable: updating the URL on an existing creative fails
+      with #1815573, and update_ad_creative therefore cannot change it. Ads Manager
+      itself, when you edit an ad's URL and click "Save", silently creates a NEW
+      creative and points the ad to it. This tool does exactly that via the API: it
+      reads the current creative, clones it faithfully changing only the URL/url_tags,
+      creates the new creative, verifies it, and swaps it onto the same ad — then
+      returns the previous creative_id so the change can be rolled back.
+
+    It handles the shapes where the URL lives in different places:
+      - object_story_spec.link_data.link                        (static link ad)
+      - object_story_spec.video_data.call_to_action.value.link  (video ad)
+      - asset_feed_spec.link_urls[].website_url                 (Advantage+/dynamic)
+      - source_instagram_media_id + branded content            (partnership ad)
+
+    Gotchas encoded:
+      - Strips read-only object_story_spec.*.image_url (else #1443051 "object story
+        dynamic parameter redundant").
+      - Never re-sends degrees_of_freedom_spec.standard_enhancements (else #3858504).
+      - Re-attaches asset_feed_spec so dynamic (DOF) text/asset variants are kept.
+      - Verifies the new creative's landing URL equals `website_url` before swapping.
+
+    NOTE: swapping a creative sends the ad back to review (effective_status IN_PROCESS)
+    and can reset the learning phase. Ad-level performance history is preserved because
+    the ad_id does not change.
+
+    Args:
+        ad_id: The ad whose destination to change.
+        website_url: New landing page URL. If omitted, the URL is left unchanged
+            (use this to change only url_tags).
+        url_tags: New url_tags / UTM query string. If omitted, the existing url_tags
+            are preserved on the cloned creative.
+        dry_run: If true, build and verify the replacement creative but DO NOT swap it
+            onto the ad (returns new_creative_id for inspection).
+        access_token: Meta API access token (optional; uses cached token if omitted).
+
+    Returns:
+        JSON with success, ad_id, old_creative_id, new_creative_id, website_url, url_tags.
+        Roll back with: update_ad(ad_id=..., creative_id=old_creative_id).
+    """
+    if not ad_id:
+        return json.dumps({"error": "No ad ID provided"}, indent=2)
+    if website_url is None and url_tags is None:
+        return json.dumps({"error": "Provide website_url and/or url_tags to change"}, indent=2)
+
+    # 1) Read the ad's current creative + owning account.
+    ad_fields = (
+        "account_id,creative{id,name,link_url,url_tags,call_to_action,object_story_spec,"
+        "asset_feed_spec,source_instagram_media_id,instagram_branded_content,facebook_branded_content}"
+    )
+    ad_data = await make_api_request(ad_id, access_token, {"fields": ad_fields})
+    if "error" in ad_data:
+        return json.dumps({"error": "Failed to read ad", "details": ad_data["error"]}, indent=2)
+    creative = ad_data.get("creative") or {}
+    old_creative_id = creative.get("id")
+    account_id = ensure_act_prefix(str(ad_data.get("account_id"))) if ad_data.get("account_id") else None
+    if not old_creative_id or not account_id:
+        return json.dumps({"error": "Ad has no readable creative / account", "ad_id": ad_id}, indent=2)
+
+    # 2) Build a faithful clone that changes only the URL / url_tags.
+    params, build_error = _cloned_creative_params(creative, website_url, url_tags)
+    if build_error:
+        return json.dumps({"error": build_error, "ad_id": ad_id, "creative_id": old_creative_id}, indent=2)
+
+    # 3) Create the replacement creative.
+    create_resp = await make_api_request(f"{account_id}/adcreatives", access_token, params, method="POST")
+    new_creative_id = create_resp.get("id")
+    if not new_creative_id:
+        return json.dumps({
+            "error": "Failed to create replacement creative",
+            "details": create_resp.get("error", create_resp),
+            "hint": ("error_subcode 1443051 means a read-only field (e.g. image_url) leaked into "
+                     "object_story_spec; 3858504 means standard_enhancements must not be sent."),
+            "ad_id": ad_id,
+        }, indent=2)
+
+    # 4) Verify the new creative actually took the requested URL before swapping.
+    if website_url is not None:
+        verify = await make_api_request(
+            new_creative_id, access_token,
+            {"fields": "link_url,call_to_action,object_story_spec,asset_feed_spec"})
+        observed = _creative_landing_url(verify)
+        if observed != website_url:
+            return json.dumps({
+                "error": "Replacement creative did not take the requested URL; not swapping.",
+                "ad_id": ad_id, "new_creative_id": new_creative_id,
+                "requested_url": website_url, "observed_url": observed,
+            }, indent=2)
+
+    # 5) dry-run stops before touching the live ad.
+    if dry_run:
+        return json.dumps({
+            "success": True, "dry_run": True, "ad_id": ad_id,
+            "old_creative_id": old_creative_id, "new_creative_id": new_creative_id,
+            "note": "Creative built and verified but NOT swapped onto the ad.",
+        }, indent=2)
+
+    # 6) Swap the new creative onto the SAME ad.
+    swap = await make_api_request(
+        ad_id, access_token, {"creative": json.dumps({"creative_id": new_creative_id})}, method="POST")
+    if "error" in swap:
+        return json.dumps({
+            "error": "Failed to swap the new creative onto the ad",
+            "details": swap["error"], "ad_id": ad_id,
+            "new_creative_id": new_creative_id, "old_creative_id": old_creative_id,
+            "hint": ("error_subcode 3858355 is a FLEX image mismatch: the first image in the new "
+                     "creative's asset_feed_spec must match its object_story_spec image."),
+        }, indent=2)
+
+    return json.dumps({
+        "success": True, "ad_id": ad_id,
+        "old_creative_id": old_creative_id, "new_creative_id": new_creative_id,
+        "website_url": website_url,
+        "url_tags": url_tags if url_tags is not None else creative.get("url_tags"),
+        "note": ("Ad re-enters review (effective_status IN_PROCESS). Roll back with "
+                 "update_ad(ad_id, creative_id=old_creative_id)."),
+    }, indent=2)
+
+
 async def _discover_pages_for_account(account_id: str, access_token: str) -> dict:
     """
     Internal function to discover pages for an account using multiple approaches.
