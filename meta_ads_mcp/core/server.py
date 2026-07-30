@@ -11,6 +11,7 @@ from .auth import login as login_auth
 from .resources import list_resources, get_resource
 from .utils import logger
 from .pipeboard_auth import pipeboard_auth_manager
+from .tool_policy import apply_read_only_tool_policy, read_only_mode_enabled
 import time
 
 # Initialize FastMCP server
@@ -19,6 +20,17 @@ mcp_server = FastMCP("meta-ads")
 # Register resource URIs
 mcp_server.resource(uri="meta-ads://resources")(list_resources)
 mcp_server.resource(uri="meta-ads://images/{resource_id}")(get_resource)
+
+
+def _apply_configured_tool_policy() -> None:
+    removed_tools = apply_read_only_tool_policy(
+        mcp_server, enabled=read_only_mode_enabled()
+    )
+    if removed_tools:
+        logger.warning(
+            "Read-only mode enabled; removed tools: %s",
+            ", ".join(sorted(removed_tools)),
+        )
 
 
 class StreamableHTTPHandler:
@@ -351,6 +363,8 @@ def main():
         logger.info("Ensuring all tools are registered for HTTP transport")
         from . import accounts, campaigns, adsets, ads, insights, authentication
         from . import ads_library, budget_schedules, reports, openai_deep_research
+
+        _apply_configured_tool_policy()
         
         # ✅ NEW: Setup HTTP authentication middleware
         logger.info("Setting up HTTP authentication middleware")
@@ -392,4 +406,5 @@ def main():
     else:
         # Default stdio transport
         logger.info("Starting MCP server with stdio transport")
-        mcp_server.run(transport='stdio') 
+        _apply_configured_tool_policy()
+        mcp_server.run(transport='stdio')
