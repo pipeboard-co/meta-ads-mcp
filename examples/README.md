@@ -8,7 +8,7 @@ This directory contains example scripts and usage demonstrations for the Meta Ad
 A complete example HTTP client that demonstrates how to interact with the Meta Ads MCP server using the HTTP transport.
 
 **Features:**
-- Shows how to authenticate with Pipeboard tokens or Meta access tokens
+- Shows how to authenticate with a Meta access token
 - Demonstrates all basic MCP operations (initialize, list tools, call tools)
 - Includes error handling and response formatting
 - Ready-to-use client class for integration
@@ -24,8 +24,8 @@ python http_client.py
 ```
 
 **Authentication:**
-- Set `PIPEBOARD_API_TOKEN` environment variable for Pipeboard auth
-- Or pass `meta_access_token` parameter for direct Meta API auth
+- Set the `META_ACCESS_TOKEN` environment variable, or pass the
+  `meta_access_token` parameter, using a token from your own Meta app
 
 ## Adding New Examples
 

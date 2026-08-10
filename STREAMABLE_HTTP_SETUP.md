@@ -18,11 +18,24 @@ python -m meta_ads_mcp --transport streamable-http --host 0.0.0.0 --port 9000
 
 ### 2. Set Authentication
 
-Set your Pipeboard token as an environment variable. This is optional for HTTP transport if you provide the token in the header, but it can be useful for command-line use.
+When you run this server yourself, the credential is a **Meta access token** from
+your own Meta app — create one at
+[developers.facebook.com](https://developers.facebook.com/apps/). A Pipeboard API
+token will not work here: the server passes whatever you give it straight to the
+Meta Graph API.
 
 ```bash
-export PIPEBOARD_API_TOKEN=your_pipeboard_token
+export META_ACCESS_TOKEN=your_meta_access_token
 ```
+
+Setting this is optional for the HTTP transport if you pass the token per request
+in a header (see [Security Model](#security-model-read-before-exposing-the-port)),
+but it is convenient for command-line use.
+
+> Want to authenticate with a Pipeboard API token instead, and never handle a Meta
+> token? Use the hosted MCP at `https://meta-ads.mcp.pipeboard.co/` rather than
+> running this server. (`PIPEBOARD_API_TOKEN` is no longer supported by this
+> package — see [Migration](#migration-from-stdio).)
 
 ### 3. Make HTTP Requests
 
@@ -32,7 +45,7 @@ The server accepts JSON-RPC 2.0 requests at the `/mcp` endpoint. Use the `Author
 curl -X POST http://localhost:8080/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
-  -H "Authorization: Bearer your_pipeboard_token" \
+  -H "Authorization: Bearer your_meta_access_token" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -75,7 +88,7 @@ deliberately different from stdio. Understanding it is the difference between a
 safe deployment and leaking your Meta account to the internet.
 
 - **stdio (local):** the server acts as whatever credential is configured in its
-  environment — `META_ACCESS_TOKEN`, `PIPEBOARD_API_TOKEN`, or a stored login.
+  environment — `META_ACCESS_TOKEN` or a stored login from the local OAuth flow.
   Only the local process that launched it can talk to it, so this is expected
   and safe. *If all you want is to use the MCP locally, prefer stdio.*
 
@@ -106,33 +119,23 @@ safe deployment and leaking your Meta account to the internet.
 
 ## Authentication
 
-### Primary Method: Bearer Token (Recommended)
+Which credential you use depends on **who runs the server**.
 
-1. Sign up at [Pipeboard.co](https://pipeboard.co)
-2. Generate an API token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens)
-3. Include the token in the `Authorization` HTTP header:
+### Self-hosted: Meta access token
+
+When you run this package yourself, supply a Meta access token from your own Meta
+app. Create one at [developers.facebook.com](https://developers.facebook.com/apps/),
+then pass it in the `Authorization` header:
 
 ```bash
-curl -H "Authorization: Bearer your_pipeboard_token" \
+curl -H "Authorization: Bearer your_meta_access_token" \
      -X POST http://localhost:8080/mcp \
      -H "Content-Type: application/json" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
 
-#### Remote MCP: Token in URL
-
-When using the hosted Remote MCP at `https://mcp.pipeboard.co/meta-ads-mcp`, you can alternatively authenticate by including the token as a URL parameter:
-
-```
-https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
-```
-
-This is particularly useful for MCP clients that don't support interactive authentication flows.
-
-### Alternative Method: Direct Meta Token
-
-If you have a Meta Developer App, you can use a direct access token via the `X-META-ACCESS-TOKEN` header. This is less common.
+The `X-META-ACCESS-TOKEN` header is equivalent:
 
 ```bash
 curl -H "X-META-ACCESS-TOKEN: your_meta_access_token" \
@@ -141,6 +144,28 @@ curl -H "X-META-ACCESS-TOKEN: your_meta_access_token" \
      -H "Accept: application/json, text/event-stream" \
      -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
 ```
+
+### Hosted: Pipeboard API token
+
+The hosted Remote MCP at `https://meta-ads.mcp.pipeboard.co/` accepts a **Pipeboard
+API token** instead, so you never handle a Meta token yourself. Pipeboard resolves
+the Meta credential server-side and enforces the API token's account and permission
+scoping on every call.
+
+1. Sign up at [Pipeboard.co](https://pipeboard.co)
+2. Generate an API token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens)
+3. Point your MCP client at `https://meta-ads.mcp.pipeboard.co/` with
+   `Authorization: Bearer <your_pipeboard_token>`
+
+For clients that cannot send headers, the token may be passed as a URL parameter:
+
+```
+https://meta-ads.mcp.pipeboard.co/?token=YOUR_PIPEBOARD_TOKEN
+```
+
+> A Pipeboard API token only works against the hosted endpoint. Passing one to a
+> server you run yourself will fail, because that server forwards the token
+> directly to the Meta Graph API.
 
 ## Available Endpoints
 
@@ -279,7 +304,7 @@ class MetaAdsMCPClient:
         return response.json()
 
 # Usage
-client = MetaAdsMCPClient(token="your_pipeboard_token")
+client = MetaAdsMCPClient(token="your_meta_access_token")
 result = client.call_tool("get_ad_accounts", {"limit": 5})
 print(json.dumps(result, indent=2))
 ```
@@ -323,7 +348,7 @@ class MetaAdsMCPClient {
 }
 
 // Usage
-const client = new MetaAdsMCPClient('http://localhost:8080', 'your_pipeboard_token');
+const client = new MetaAdsMCPClient('http://localhost:8080', 'your_meta_access_token');
 client.callTool('get_ad_accounts', { limit: 5 })
     .then(result => console.log(JSON.stringify(result, null, 2)));
 ```
@@ -362,11 +387,11 @@ CMD ["python", "-m", "meta_ads_mcp", "--transport", "streamable-http", "--host",
 ### Environment Variables
 
 ```bash
-# For Pipeboard-based authentication. The token will be used for stdio,
-# but for HTTP it should be passed in the Authorization header.
-export PIPEBOARD_API_TOKEN=your_pipeboard_token
+# Meta access token from your own Meta app. Used for stdio; for HTTP it can
+# also be passed per request in the Authorization header.
+export META_ACCESS_TOKEN=your_meta_access_token
 
-# Optional (for custom Meta apps)
+# Optional (for the local OAuth flow instead of a direct token)
 export META_APP_ID=your_app_id
 export META_APP_SECRET=your_app_secret
 
@@ -410,7 +435,13 @@ If you're currently using stdio transport with MCP clients, you can support both
 1. **Keep existing MCP client setup** (Claude Desktop, Cursor, etc.) using stdio.
 2. **Add HTTP transport** for web applications and custom integrations by running a separate server instance with the `--transport streamable-http` flag.
 3. **Use the same authentication method**:
-    - For stdio, the `PIPEBOARD_API_TOKEN` environment variable is used.
+    - For stdio, the `META_ACCESS_TOKEN` environment variable is used.
     - For HTTP, pass the token in the `Authorization: Bearer <token>` header.
+
+> **Removed:** `PIPEBOARD_API_TOKEN` used to exchange a Pipeboard API token for the
+> underlying Meta access token. That exchange has been removed, because the Meta
+> token it returned ignored the scoping on the API token that requested it. Either
+> set `META_ACCESS_TOKEN` from your own Meta app, or use the hosted MCP at
+> `https://meta-ads.mcp.pipeboard.co/`.
 
 Both transports access the same Meta Ads functionality and use the same underlying authentication system. 

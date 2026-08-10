@@ -1,26 +1,30 @@
 """Authentication-specific functionality for Meta Ads API.
 
-The Meta Ads MCP server supports three authentication modes:
+Running this package yourself requires a Meta access token of your own. There are
+two ways to get one:
 
-1. **Development/Local Mode** (default)
-   - Uses local callback server on localhost:8080+ for OAuth redirect
-   - Requires META_ADS_DISABLE_CALLBACK_SERVER to NOT be set
-   - Best for local development and testing
+1. **Direct token** (simplest)
+   - Set META_ACCESS_TOKEN to a token generated from your own Meta app
+   - Takes precedence over every other mechanism
 
-2. **Production with API Token** 
-   - Uses PIPEBOARD_API_TOKEN for server-to-server authentication
-   - Bypasses OAuth flow entirely
-   - Best for server deployments with pre-configured tokens
+2. **Local OAuth flow** (default when META_ACCESS_TOKEN is unset)
+   - Requires META_APP_ID for your own Meta app
+   - Uses a local callback server on localhost:8080+ for the OAuth redirect
+   - Disabled when META_ADS_DISABLE_CALLBACK_SERVER is set
 
-3. **Production OAuth Flow** (NEW)
-   - Uses Pipeboard OAuth endpoints for dynamic client registration
-   - Triggered when META_ADS_DISABLE_CALLBACK_SERVER is set but no PIPEBOARD_API_TOKEN
-   - Supports MCP clients that implement OAuth 2.0 discovery
+If you would rather not run a Meta app at all, use the hosted MCP at
+https://meta-ads.mcp.pipeboard.co/ and authenticate with a Pipeboard API token.
+Pipeboard then calls the Meta API on your behalf and the Meta token is never
+exposed to the client.
+
+Note: PIPEBOARD_API_TOKEN is no longer supported. It used to exchange a Pipeboard
+API token for the underlying Meta access token, which defeated the scoping on that
+API token; the endpoint behind it has been removed.
 
 Environment Variables:
-- PIPEBOARD_API_TOKEN: Enables mode 2 (token-based auth)  
-- META_ADS_DISABLE_CALLBACK_SERVER: Disables local server, enables mode 3
-- META_ACCESS_TOKEN: Direct Meta token (fallback)
+- META_ACCESS_TOKEN: Direct Meta token (highest precedence)
+- META_APP_ID / META_APP_SECRET: Your own Meta app, for the local OAuth flow
+- META_ADS_DISABLE_CALLBACK_SERVER: Disables the local callback server
 - META_ADS_DISABLE_LOGIN_LINK: Hard-disables the get_login_link tool; returns a disabled message
 """
 
@@ -33,7 +37,6 @@ from . import auth
 from .auth import start_callback_server, shutdown_callback_server, auth_manager
 from .server import mcp_server
 from .utils import logger, META_APP_SECRET
-from .pipeboard_auth import pipeboard_auth_manager
 
 # Only register the login link tool if not explicitly disabled
 ENABLE_LOGIN_LINK = not bool(os.environ.get("META_ADS_DISABLE_LOGIN_LINK", ""))
@@ -43,97 +46,39 @@ async def get_login_link(access_token: Optional[str] = None) -> str:
     """
     Get a clickable login link for Meta Ads authentication.
     
-    NOTE: This method should only be used if you're using your own Facebook app.
-    If using Pipeboard authentication (recommended), set the PIPEBOARD_API_TOKEN
-    environment variable instead (token obtainable via https://pipeboard.co).
-    
+    NOTE: This method requires your own Facebook app (META_APP_ID). If you would
+    rather not run one, use the hosted MCP at https://meta-ads.mcp.pipeboard.co/
+    instead, which authenticates with a Pipeboard API token.
+
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
     
     Returns:
         A clickable resource link for Meta authentication
     """
-    # Check if we're using pipeboard authentication
-    using_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
     callback_server_disabled = bool(os.environ.get("META_ADS_DISABLE_CALLBACK_SERVER", ""))
-    
-    if using_pipeboard:
-        # Pipeboard token-based authentication
-        try:
-            logger.info("Using Pipeboard token-based authentication")
-            
-            # If an access token was provided, this is likely a test - return success
-            if access_token:
-                return json.dumps({
-                    "message": "✅ Authentication Token Provided",
-                    "status": "Using provided access token for authentication",
-                    "token_info": f"Token preview: {access_token[:10]}...",
-                    "authentication_method": "manual_token",
-                    "ready_to_use": "You can now use all Meta Ads MCP tools and commands."
-                }, indent=2)
-            
-            # Check if Pipeboard token is working
-            token = pipeboard_auth_manager.get_access_token()
-            if token:
-                return json.dumps({
-                    "message": "✅ Already Authenticated",
-                    "status": "You're successfully authenticated with Meta Ads via Pipeboard!",
-                    "token_info": f"Token preview: {token[:10]}...",
-                    "authentication_method": "pipeboard_token",
-                    "ready_to_use": "You can now use all Meta Ads MCP tools and commands."
-                }, indent=2)
-            
-            # Start Pipeboard auth flow
-            auth_data = pipeboard_auth_manager.initiate_auth_flow()
-            login_url = auth_data.get('loginUrl')
-            
-            if login_url:
-                return json.dumps({
-                    "message": "🔗 Click to Authenticate",
-                    "login_url": login_url,
-                    "markdown_link": f"[🚀 Authenticate with Meta Ads]({login_url})",
-                    "instructions": "Click the link above to complete authentication with Meta Ads.",
-                    "authentication_method": "pipeboard_oauth",
-                    "what_happens_next": "After clicking, you'll be redirected to Meta's authentication page. Once completed, your token will be automatically saved.",
-                    "token_duration": "Your token will be valid for approximately 60 days."
-                }, indent=2)
-            else:
-                return json.dumps({
-                    "message": "❌ Authentication Error",
-                    "error": "Could not generate authentication URL from Pipeboard",
-                    "troubleshooting": [
-                        "Check that your PIPEBOARD_API_TOKEN is valid",
-                        "Ensure the Pipeboard service is accessible",
-                        "Try again in a few moments"
-                    ],
-                    "authentication_method": "pipeboard_oauth_failed"
-                }, indent=2)
-                
-        except Exception as e:
-            logger.error(f"Error initiating Pipeboard auth flow: {e}")
-            return json.dumps({
-                "message": "❌ Pipeboard Authentication Error",
-                "error": f"Failed to initiate Pipeboard authentication: {str(e)}",
-                "troubleshooting": [
-                    "✅ Check that PIPEBOARD_API_TOKEN environment variable is set correctly",
-                    "🌐 Verify that pipeboard.co is accessible from your network",
-                    "🔄 Try refreshing your Pipeboard API token",
-                    "⏰ Wait a moment and try again"
-                ],
-                "get_help": "Contact support if the issue persists",
-                "authentication_method": "pipeboard_error"
-            }, indent=2)
-    elif callback_server_disabled:
-        # Production OAuth flow - use Pipeboard OAuth endpoints directly
-        logger.info("Production OAuth flow - using Pipeboard OAuth endpoints")
-        
+
+    if callback_server_disabled:
+        # No local callback server, so the browser-based OAuth flow is unavailable.
+        # Point at the two remaining ways to supply a token.
+        logger.info("Callback server disabled - cannot run the local OAuth flow")
+
         return json.dumps({
             "message": "🔐 Authentication Required",
-            "instructions": "Please sign in to your Pipeboard account to authenticate with Meta Ads.",
-            "sign_in_url": "https://pipeboard.co/auth/signin",
-            "markdown_link": "[🚀 Sign in to Pipeboard](https://pipeboard.co/auth/signin)",
-            "what_to_do": "Click the link above to sign in to your Pipeboard account and complete authentication.",
-            "authentication_method": "production_oauth"
+            "reason": "The local callback server is disabled (META_ADS_DISABLE_CALLBACK_SERVER), so the browser OAuth flow cannot run.",
+            "options": [
+                {
+                    "option": "Use the hosted Meta Ads MCP (recommended)",
+                    "url": "https://meta-ads.mcp.pipeboard.co/",
+                    "how": "Point your MCP client at this URL and authenticate with your Pipeboard API token. Pipeboard calls the Meta API for you, so no Meta token is needed locally."
+                },
+                {
+                    "option": "Bring your own Meta access token",
+                    "url": "https://developers.facebook.com/apps/",
+                    "how": "Create your own Meta app, generate an access token, and set META_ACCESS_TOKEN before starting the server."
+                }
+            ],
+            "authentication_method": "callback_server_disabled"
         }, indent=2)
     else:
         # Original Meta authentication flow (development/local)
@@ -173,8 +118,8 @@ async def get_login_link(access_token: Optional[str] = None) -> str:
                 "error": "Cannot start local callback server for authentication",
                 "reason": str(e),
                 "solutions": [
-                    "🌐 Use Pipeboard authentication: Set PIPEBOARD_API_TOKEN environment variable",
-                    "🔑 Use direct token: Set META_ACCESS_TOKEN environment variable", 
+                    "🔑 Use direct token: Set META_ACCESS_TOKEN environment variable",
+                    "🌐 Use the hosted MCP at https://meta-ads.mcp.pipeboard.co/ with your Pipeboard API token",
                     "🔧 Check if another service is using the required ports"
                 ],
                 "authentication_method": "meta_oauth_disabled"

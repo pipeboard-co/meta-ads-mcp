@@ -14,26 +14,27 @@ import pathlib
 import platform
 import ipaddress
 import socket
+import sys
 from urllib.parse import urlparse
 
 # Check for Meta app credentials in environment
 META_APP_ID = os.environ.get("META_APP_ID", "")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 
-# Only show warnings about Meta credentials if we're not using Pipeboard
-# Check for Pipeboard token in environment
-using_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
+# A direct META_ACCESS_TOKEN needs neither an app id nor an app secret, so these
+# warnings only apply when we might have to run the local OAuth flow.
+using_direct_token = bool(os.environ.get("META_ACCESS_TOKEN", ""))
 
-# Print warning if Meta app credentials are not configured and not using Pipeboard
-if not using_pipeboard:
+# Written to stderr on purpose: stdout is the JSON-RPC channel on the stdio
+# transport, so printing there corrupts the protocol stream.
+if not using_direct_token:
     if not META_APP_ID:
-        print("WARNING: META_APP_ID environment variable is not set.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
-        print("ALTERNATIVE: For direct Meta authentication, set META_APP_ID to your Meta App ID.")
+        print("WARNING: META_APP_ID environment variable is not set.", file=sys.stderr)
+        print("RECOMMENDED: Set META_ACCESS_TOKEN to a token from your own Meta app.", file=sys.stderr)
+        print("ALTERNATIVE: Set META_APP_ID to your Meta App ID to use the local OAuth flow.", file=sys.stderr)
     if not META_APP_SECRET:
-        print("WARNING: META_APP_SECRET environment variable is not set.")
-        print("NOTE: This is only needed for direct Meta authentication. Pipeboard authentication doesn't require this.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
+        print("WARNING: META_APP_SECRET environment variable is not set.", file=sys.stderr)
+        print("NOTE: This is only needed to exchange a short-lived token for a long-lived one.", file=sys.stderr)
 
 # Configure logging to file
 def setup_logging():
@@ -67,7 +68,7 @@ def setup_logging():
     # Log startup information
     logger.info(f"Logging initialized. Log file: {log_file}")
     logger.info(f"Platform: {platform.system()} {platform.release()}")
-    logger.info(f"Using Pipeboard authentication: {using_pipeboard}")
+    logger.info(f"Using META_ACCESS_TOKEN from environment: {using_direct_token}")
     
     return logger
 

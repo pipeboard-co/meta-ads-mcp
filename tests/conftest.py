@@ -47,10 +47,10 @@ def test_headers():
 
 
 @pytest.fixture
-def pipeboard_auth_headers(test_headers):
-    """Headers with Pipeboard authentication token"""
+def bearer_auth_headers(test_headers):
+    """Headers with a Meta access token in the Authorization header"""
     headers = test_headers.copy()
-    headers["Authorization"] = "Bearer test_pipeboard_token_12345"
+    headers["Authorization"] = "Bearer test_meta_access_token_12345"
     return headers
 
 
