@@ -206,72 +206,57 @@ class TestPageDiscovery:
     @pytest.mark.asyncio
     async def test_search_pages_by_name_core_success(self):
         """Test the core search function with successful page discovery."""
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-            mock_discover.return_value = mock_discovery_result
-            
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
-            
+
             assert len(result_data["data"]) == 1
             assert result_data["data"][0]["id"] == "123456789"
             assert result_data["data"][0]["name"] == "Test Page"
             assert result_data["search_term"] == "test"
             assert result_data["total_found"] == 1
             assert result_data["total_available"] == 1
-    
+
     @pytest.mark.asyncio
     async def test_search_pages_by_name_core_no_pages(self):
         """Test the core search function when no pages are found."""
-        mock_discovery_result = {
-            "success": False,
-            "message": "No pages found"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-            mock_discover.return_value = mock_discovery_result
-            
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover:
+            mock_discover.return_value = set()
+
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
-            
+
             assert len(result_data["data"]) == 0
             assert "No pages found" in result_data["message"]
-    
+
     @pytest.mark.asyncio
     async def test_search_pages_by_name_core_no_search_term(self):
         """Test the core search function without search term."""
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-            mock_discover.return_value = mock_discovery_result
-            
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+
             result = await _search_pages_by_name_core("test_token", "act_123456789")
             result_data = json.loads(result)
-            
+
             assert len(result_data["data"]) == 1
             assert result_data["total_available"] == 1
             assert "note" in result_data
-    
+
     @pytest.mark.asyncio
     async def test_search_pages_by_name_core_exception_handling(self):
         """Test the core search function with exception handling."""
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover:
             mock_discover.side_effect = Exception("Test exception")
-            
+
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
-            
+
             assert "error" in result_data
             assert "Failed to search pages by name" in result_data["error"]
     
@@ -348,30 +333,126 @@ class TestPageDiscovery:
     @pytest.mark.asyncio
     async def test_search_pages_by_name_case_insensitive(self):
         """Test search function with case insensitive matching."""
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover:
-            mock_discover.return_value = mock_discovery_result
-            
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+
             # Test with uppercase search term
             result = await _search_pages_by_name_core("test_token", "act_123456789", "TEST")
             result_data = json.loads(result)
-            
+
             assert len(result_data["data"]) == 1
             assert result_data["total_found"] == 1
-            
+
             # Test with lowercase search term
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
-            
+
             assert len(result_data["data"]) == 1
             assert result_data["total_found"] == 1
 
 
+class TestSearchPagesByNameBroadDiscovery:
+    """Regression tests: search_pages_by_name must discover the SAME broad page
+    universe as get_account_pages (not the single-page auto-select helper)."""
+
+    @pytest.mark.asyncio
+    async def test_total_available_reflects_full_discovered_set(self):
+        """total_available must equal the full discovered page set, not 0/1.
+
+        Regression test for the bug where search_pages_by_name wrapped the
+        single-page _discover_pages_for_account result in a 1-element list, so
+        total_available was always 0 or 1 even when get_account_pages found
+        many pages for the same account.
+        """
+        discovered_ids = {"111", "222", "333", "444", "555", "666"}
+        page_details = [
+            {"id": "111", "name": "Dexcap Finance"},
+            {"id": "222", "name": "Viajarcomdesconto.ribus.io"},
+            {"id": "333", "name": "Carolina Caribé"},
+            {"id": "444", "name": "Marcellebonomo.pediatra"},
+            {"id": "555", "name": "Ribus"},
+            {"id": "666", "error": "Page details not accessible"},
+        ]
+
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
+            mock_discover.return_value = discovered_ids
+            mock_fetch.return_value = page_details
+
+            # No search term: full set is returned
+            result = await _search_pages_by_name_core("test_token", "act_809396714231583")
+            result_data = json.loads(result)
+            assert result_data["total_available"] == 6
+            assert len(result_data["data"]) == 6
+
+            # With search term: filter applies but total_available still shows the full set
+            result = await _search_pages_by_name_core("test_token", "act_809396714231583", "incorporação digital")
+            result_data = json.loads(result)
+            assert result_data["total_found"] == 0
+            assert result_data["total_available"] == 6
+            assert result_data["data"] == []
+
+            # Partial name match across the broad set
+            result = await _search_pages_by_name_core("test_token", "act_809396714231583", "ribus")
+            result_data = json.loads(result)
+            assert result_data["total_found"] == 2
+            assert result_data["total_available"] == 6
+            names = [p["name"] for p in result_data["data"]]
+            assert "Viajarcomdesconto.ribus.io" in names
+            assert "Ribus" in names
+
+    @pytest.mark.asyncio
+    async def test_search_discovers_pages_from_multiple_approaches(self):
+        """End-to-end through make_api_request: pages from any approach are searchable."""
+        mock_page_details = {
+            "111111111": {"id": "111111111", "name": "Personal Page"},
+            "333333333": {"id": "333333333", "name": "Incorporação Digital"},
+        }
+
+        with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+            def mock_api_side_effect(endpoint, access_token, params):
+                if endpoint == "me/accounts":
+                    return {"data": [{"id": "111111111"}]}
+                elif endpoint == "act_123456789/adcreatives":
+                    return {"data": [{"id": "creative_1", "object_story_spec": {"page_id": "333333333"}}]}
+                elif endpoint in mock_page_details:
+                    return mock_page_details[endpoint]
+                else:
+                    return {"data": []}
+
+            mock_api.side_effect = mock_api_side_effect
+
+            result = await _search_pages_by_name_core("test_token", "act_123456789", "incorporação")
+            result_data = json.loads(result)
+
+            assert result_data["total_available"] == 2
+            assert result_data["total_found"] == 1
+            assert result_data["data"][0]["id"] == "333333333"
+            assert result_data["data"][0]["name"] == "Incorporação Digital"
+
+    @pytest.mark.asyncio
+    async def test_inaccessible_pages_visible_without_search_term(self):
+        """Pages the token can't read still appear (as error entries) in listings."""
+        with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+            def mock_api_side_effect(endpoint, access_token, params):
+                if endpoint == "act_123456789/client_pages":
+                    return {"data": [{"id": "915543871653193", "name": "Accessible Page"}]}
+                elif endpoint == "915543871653193":
+                    return {"error": {"message": "Unsupported get request", "code": 100}}
+                else:
+                    return {"data": []}
+
+            mock_api.side_effect = mock_api_side_effect
+
+            result = await _search_pages_by_name_core("test_token", "act_123456789")
+            result_data = json.loads(result)
+
+            assert result_data["total_available"] == 1
+            assert result_data["data"][0]["id"] == "915543871653193"
+            assert "error" in result_data["data"][0]
+
+
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])

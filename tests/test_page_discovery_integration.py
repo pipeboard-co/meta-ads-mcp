@@ -73,22 +73,16 @@ class TestPageDiscoveryIntegration:
     @pytest.mark.asyncio
     async def test_search_pages_by_name_integration(self):
         """Test the complete search_pages_by_name function with real-like data."""
-        # Mock the page discovery to return a successful result
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Injury Payouts",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch, \
              patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
-            
+
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
-            
-            mock_discover.return_value = mock_discovery_result
-            
+
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Injury Payouts", "source": "tracking_specs"}]
+
             # Test searching for pages
             result = await search_pages_by_name(
                 account_id="act_123456789",
@@ -204,22 +198,16 @@ class TestPageDiscoveryIntegration:
     @pytest.mark.asyncio
     async def test_search_pages_by_name_no_search_term(self):
         """Test search_pages_by_name without a search term (should return all pages)."""
-        # Mock the page discovery to return a successful result
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch, \
              patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
-            
+
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
-            
-            mock_discover.return_value = mock_discovery_result
-            
+
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+
             # Test searching without a search term
             result = await search_pages_by_name(
                 account_id="act_123456789",
@@ -244,22 +232,16 @@ class TestPageDiscoveryIntegration:
     @pytest.mark.asyncio
     async def test_search_pages_by_name_no_matches(self):
         """Test search_pages_by_name when no pages match the search term."""
-        # Mock the page discovery to return a successful result
-        mock_discovery_result = {
-            "success": True,
-            "page_id": "123456789",
-            "page_name": "Test Page",
-            "source": "tracking_specs"
-        }
-        
-        with patch('meta_ads_mcp.core.ads._discover_pages_for_account') as mock_discover, \
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch, \
              patch('meta_ads_mcp.core.auth.get_current_access_token') as mock_get_token:
-            
+
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
-            
-            mock_discover.return_value = mock_discovery_result
-            
+
+            mock_discover.return_value = {"123456789"}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+
             # Test searching for a term that doesn't match
             result = await search_pages_by_name(
                 account_id="act_123456789",
