@@ -80,8 +80,8 @@ class TestPageDiscoveryIntegration:
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
 
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Injury Payouts", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Injury Payouts"}]
 
             # Test searching for pages
             result = await search_pages_by_name(
@@ -205,8 +205,8 @@ class TestPageDiscoveryIntegration:
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
 
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page"}]
 
             # Test searching without a search term
             result = await search_pages_by_name(
@@ -239,8 +239,8 @@ class TestPageDiscoveryIntegration:
             # Provide a valid access token to bypass authentication
             mock_get_token.return_value = "test_token_123"
 
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page"}]
 
             # Test searching for a term that doesn't match
             result = await search_pages_by_name(

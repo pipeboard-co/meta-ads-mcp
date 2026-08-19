@@ -208,8 +208,8 @@ class TestPageDiscovery:
         """Test the core search function with successful page discovery."""
         with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
              patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page"}]
 
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
@@ -217,6 +217,7 @@ class TestPageDiscovery:
             assert len(result_data["data"]) == 1
             assert result_data["data"][0]["id"] == "123456789"
             assert result_data["data"][0]["name"] == "Test Page"
+            assert result_data["data"][0]["source"] == "ads_tracking_specs"
             assert result_data["search_term"] == "test"
             assert result_data["total_found"] == 1
             assert result_data["total_available"] == 1
@@ -225,7 +226,7 @@ class TestPageDiscovery:
     async def test_search_pages_by_name_core_no_pages(self):
         """Test the core search function when no pages are found."""
         with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover:
-            mock_discover.return_value = set()
+            mock_discover.return_value = {}
 
             result = await _search_pages_by_name_core("test_token", "act_123456789", "test")
             result_data = json.loads(result)
@@ -238,13 +239,14 @@ class TestPageDiscovery:
         """Test the core search function without search term."""
         with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
              patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page"}]
 
             result = await _search_pages_by_name_core("test_token", "act_123456789")
             result_data = json.loads(result)
 
             assert len(result_data["data"]) == 1
+            assert result_data["data"][0]["source"] == "ads_tracking_specs"
             assert result_data["total_available"] == 1
             assert "note" in result_data
 
@@ -335,8 +337,8 @@ class TestPageDiscovery:
         """Test search function with case insensitive matching."""
         with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
              patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
-            mock_discover.return_value = {"123456789"}
-            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page", "source": "tracking_specs"}]
+            mock_discover.return_value = {"123456789": ["ads_tracking_specs"]}
+            mock_fetch.return_value = [{"id": "123456789", "name": "Test Page"}]
 
             # Test with uppercase search term
             result = await _search_pages_by_name_core("test_token", "act_123456789", "TEST")
@@ -366,7 +368,14 @@ class TestSearchPagesByNameBroadDiscovery:
         total_available was always 0 or 1 even when get_account_pages found
         many pages for the same account.
         """
-        discovered_ids = {"111", "222", "333", "444", "555", "666"}
+        discovered = {
+            "111": ["me/accounts"],
+            "222": ["client_pages"],
+            "333": ["owned_pages"],
+            "444": ["adcreatives"],
+            "555": ["ads_tracking_specs"],
+            "666": ["client_pages"],
+        }
         page_details = [
             {"id": "111", "name": "Dexcap Finance"},
             {"id": "222", "name": "Viajarcomdesconto.ribus.io"},
@@ -378,7 +387,7 @@ class TestSearchPagesByNameBroadDiscovery:
 
         with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
              patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
-            mock_discover.return_value = discovered_ids
+            mock_discover.return_value = discovered
             mock_fetch.return_value = page_details
 
             # No search term: full set is returned
@@ -386,6 +395,12 @@ class TestSearchPagesByNameBroadDiscovery:
             result_data = json.loads(result)
             assert result_data["total_available"] == 6
             assert len(result_data["data"]) == 6
+            # Every item carries its discovery source, including error entries
+            by_id = {str(p["id"]): p for p in result_data["data"]}
+            assert by_id["111"]["source"] == "me/accounts"
+            assert by_id["555"]["source"] == "ads_tracking_specs"
+            assert by_id["666"]["source"] == "client_pages"
+            assert "error" in by_id["666"]
 
             # With search term: filter applies but total_available still shows the full set
             result = await _search_pages_by_name_core("test_token", "act_809396714231583", "incorporação digital")
@@ -431,6 +446,8 @@ class TestSearchPagesByNameBroadDiscovery:
             assert result_data["total_found"] == 1
             assert result_data["data"][0]["id"] == "333333333"
             assert result_data["data"][0]["name"] == "Incorporação Digital"
+            # Source attribution is computed by the real code from the approaches
+            assert result_data["data"][0]["source"] == "adcreatives"
 
     @pytest.mark.asyncio
     async def test_inaccessible_pages_visible_without_search_term(self):
@@ -452,6 +469,82 @@ class TestSearchPagesByNameBroadDiscovery:
             assert result_data["total_available"] == 1
             assert result_data["data"][0]["id"] == "915543871653193"
             assert "error" in result_data["data"][0]
+            assert result_data["data"][0]["source"] == "client_pages"
+
+    @pytest.mark.asyncio
+    async def test_results_are_deterministically_sorted(self):
+        """Output order must not depend on set/dict iteration order."""
+        with patch('meta_ads_mcp.core.ads._discover_all_page_ids_for_account', new_callable=AsyncMock) as mock_discover, \
+             patch('meta_ads_mcp.core.ads._fetch_page_details_for_ids', new_callable=AsyncMock) as mock_fetch:
+            mock_discover.return_value = {
+                "1": ["me/accounts"], "2": ["me/accounts"], "3": ["me/accounts"], "4": ["me/accounts"],
+            }
+            # Deliberately unsorted fetch result (gather preserves input order)
+            mock_fetch.return_value = [
+                {"id": "3", "name": "Zulu Page"},
+                {"id": "1", "name": "Alpha Page"},
+                {"id": "4", "error": "Page details not accessible"},
+                {"id": "2", "name": "Mike Page"},
+            ]
+
+            result = await _search_pages_by_name_core("test_token", "act_123456789")
+            result_data = json.loads(result)
+
+            # Named pages alphabetically first, then the error entry
+            assert [p["id"] for p in result_data["data"]] == ["1", "2", "3", "4"]
+
+
+class TestDiscoverAllPageIds:
+    """Direct tests for the shared broad-discovery helper."""
+
+    @pytest.mark.asyncio
+    async def test_ads_endpoint_called_once_for_both_extraction_paths(self):
+        """Creative-spec and tracking-specs extraction share ONE ads request."""
+        with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+            def mock_api_side_effect(endpoint, access_token, params):
+                if endpoint == "act_123456789/ads":
+                    return {
+                        "data": [{
+                            "id": "ad_1",
+                            "creative": {"object_story_spec": {"page_id": "111"}},
+                            "tracking_specs": [{"page": ["222"]}],
+                        }]
+                    }
+                return {"data": []}
+
+            mock_api.side_effect = mock_api_side_effect
+
+            from meta_ads_mcp.core.ads import _discover_all_page_ids_for_account
+            result = await _discover_all_page_ids_for_account("act_123456789", "test_token")
+
+            # Both pages discovered with their respective sources
+            assert result["111"] == ["ads_creative_spec"]
+            assert result["222"] == ["ads_tracking_specs"]
+
+            # The ads endpoint was hit exactly once (merged request)
+            ads_calls = [c for c in mock_api.call_args_list if c[0][0] == "act_123456789/ads"]
+            assert len(ads_calls) == 1
+            fields = ads_calls[0][0][2]["fields"]
+            assert "creative{object_story_spec{page_id}" in fields
+            assert "tracking_specs" in fields
+
+    @pytest.mark.asyncio
+    async def test_source_labels_accumulate_across_approaches(self):
+        """A page found by several approaches lists all of them."""
+        with patch('meta_ads_mcp.core.ads.make_api_request') as mock_api:
+            def mock_api_side_effect(endpoint, access_token, params):
+                if endpoint == "me/accounts":
+                    return {"data": [{"id": "111111111"}]}
+                if endpoint == "act_123456789/client_pages":
+                    return {"data": [{"id": "111111111"}]}
+                return {"data": []}
+
+            mock_api.side_effect = mock_api_side_effect
+
+            from meta_ads_mcp.core.ads import _discover_all_page_ids_for_account
+            result = await _discover_all_page_ids_for_account("act_123456789", "test_token")
+
+            assert result == {"111111111": ["me/accounts", "client_pages"]}
 
 
 if __name__ == "__main__":

@@ -3235,7 +3235,7 @@ async def _discover_pages_for_account(account_id: str, access_token: str) -> dic
 _PAGE_DETAIL_FIELDS = "id,name,username,category,fan_count,link,verification_status,picture"
 
 
-async def _discover_all_page_ids_for_account(account_id: str, access_token: str) -> set:
+async def _discover_all_page_ids_for_account(account_id: str, access_token: str) -> dict:
     """
     Discover ALL page IDs associated with an ad account using every available
     approach (broad, exhaustive discovery).
@@ -3250,11 +3250,25 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         access_token: Meta API access token
 
     Returns:
-        Set of page ID strings (may be empty)
+        Dict mapping each discovered page ID (str) to the list of discovery
+        source labels that surfaced it, in approach order (e.g.
+        {"123": ["me/accounts", "ads_tracking_specs"]}). Callers that only need
+        the IDs use the dict keys; the source labels let callers distinguish
+        account-linked pages from pages seen only via the user's own page list
+        (me/accounts), which may not be usable with this ad account.
     """
-    all_page_ids = set()
+    page_sources: dict = {}
 
-    # Approach 1: Get user's personal pages (broad scope)
+    def _add(page_id, source: str) -> None:
+        pid = str(page_id)
+        if pid not in page_sources:
+            page_sources[pid] = []
+        if source not in page_sources[pid]:
+            page_sources[pid].append(source)
+
+    # Approach 1: Get user's personal pages (broad scope). NOTE: these are NOT
+    # necessarily usable with this ad account — the "me/accounts" source label
+    # lets callers tell them apart from account-linked pages.
     try:
         endpoint = "me/accounts"
         params = {
@@ -3264,7 +3278,7 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in user_pages_data:
             for page in user_pages_data["data"]:
                 if "id" in page:
-                    all_page_ids.add(page["id"])
+                    _add(page["id"], "me/accounts")
     except Exception:
         pass
 
@@ -3280,7 +3294,7 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in business_pages_data:
             for page in business_pages_data["data"]:
                 if "id" in page:
-                    all_page_ids.add(page["id"])
+                    _add(page["id"], "owned_pages")
     except Exception:
         pass
 
@@ -3294,7 +3308,7 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in client_pages_data:
             for page in client_pages_data["data"]:
                 if "id" in page:
-                    all_page_ids.add(page["id"])
+                    _add(page["id"], "client_pages")
     except Exception:
         pass
 
@@ -3309,22 +3323,33 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in creatives_data:
             for creative in creatives_data["data"]:
                 if "object_story_spec" in creative and "page_id" in creative["object_story_spec"]:
-                    all_page_ids.add(creative["object_story_spec"]["page_id"])
+                    _add(creative["object_story_spec"]["page_id"], "adcreatives")
     except Exception:
         pass
 
-    # Approach 5: Get active ads and extract page IDs from creatives
+    # Approach 5+7 (merged into a single {account_id}/ads request): extract page
+    # IDs from ad creatives' object_story_spec AND from ads' tracking_specs —
+    # same endpoint, one round trip for both extraction paths.
     try:
         endpoint = f"{account_id}/ads"
         params = {
-            "fields": "creative{object_story_spec{page_id},link_url,call_to_action}",
+            "fields": "id,name,status,creative{object_story_spec{page_id},link_url,call_to_action},tracking_specs",
             "limit": 100
         }
         ads_data = await make_api_request(endpoint, access_token, params)
         if "data" in ads_data:
             for ad in ads_data.get("data", []):
                 if "creative" in ad and "object_story_spec" in ad["creative"] and "page_id" in ad["creative"]["object_story_spec"]:
-                    all_page_ids.add(ad["creative"]["object_story_spec"]["page_id"])
+                    _add(ad["creative"]["object_story_spec"]["page_id"], "ads_creative_spec")
+                tracking_specs = ad.get("tracking_specs", [])
+                if isinstance(tracking_specs, list):
+                    for spec in tracking_specs:
+                        if isinstance(spec, dict) and "page" in spec:
+                            page_list = spec["page"]
+                            if isinstance(page_list, list):
+                                for page_id in page_list:
+                                    if isinstance(page_id, (str, int)) and str(page_id).isdigit():
+                                        _add(str(page_id), "ads_tracking_specs")
     except Exception:
         pass
 
@@ -3338,29 +3363,7 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in promoted_objects_data:
             for obj in promoted_objects_data["data"]:
                 if "page_id" in obj:
-                    all_page_ids.add(obj["page_id"])
-    except Exception:
-        pass
-
-    # Approach 7: Extract page IDs from tracking_specs in ads (most reliable)
-    try:
-        endpoint = f"{account_id}/ads"
-        params = {
-            "fields": "id,name,status,creative,tracking_specs",
-            "limit": 100
-        }
-        tracking_ads_data = await make_api_request(endpoint, access_token, params)
-        if "data" in tracking_ads_data:
-            for ad in tracking_ads_data.get("data", []):
-                tracking_specs = ad.get("tracking_specs", [])
-                if isinstance(tracking_specs, list):
-                    for spec in tracking_specs:
-                        if isinstance(spec, dict) and "page" in spec:
-                            page_list = spec["page"]
-                            if isinstance(page_list, list):
-                                for page_id in page_list:
-                                    if isinstance(page_id, (str, int)) and str(page_id).isdigit():
-                                        all_page_ids.add(str(page_id))
+                    _add(obj["page_id"], "promoted_objects")
     except Exception:
         pass
 
@@ -3375,11 +3378,16 @@ async def _discover_all_page_ids_for_account(account_id: str, access_token: str)
         if "data" in campaigns_data:
             for campaign in campaigns_data["data"]:
                 if "promoted_object" in campaign and "page_id" in campaign["promoted_object"]:
-                    all_page_ids.add(campaign["promoted_object"]["page_id"])
+                    _add(campaign["promoted_object"]["page_id"], "campaigns_promoted_object")
     except Exception:
         pass
 
-    return all_page_ids
+    return page_sources
+
+
+# Max concurrent per-page detail fetches. Bounded so accounts with many
+# discovered pages don't fan out unboundedly against Meta's rate limits.
+_PAGE_DETAIL_CONCURRENCY = 10
 
 
 async def _fetch_page_details_for_ids(page_ids, access_token: str) -> list:
@@ -3388,35 +3396,53 @@ async def _fetch_page_details_for_ids(page_ids, access_token: str) -> list:
     read are returned as {"id": ..., "error": ...} entries (matching
     get_account_pages behavior) so they remain visible in listings.
 
+    Fetches run concurrently (bounded by _PAGE_DETAIL_CONCURRENCY) instead of
+    strictly sequentially — important for Business Managers with dozens of
+    pages, where sequential fetches could blow the MCP client's timeout.
+
     Args:
         page_ids: Iterable of page ID strings
         access_token: Meta API access token
 
     Returns:
-        List of page detail dicts (or error entries for inaccessible pages)
+        List of page detail dicts (or error entries for inaccessible pages),
+        in the SAME ORDER as the input IDs (asyncio.gather preserves order).
     """
-    pages = []
-    for page_id in page_ids:
-        try:
-            page_endpoint = f"{page_id}"
-            page_params = {
-                "fields": _PAGE_DETAIL_FIELDS
-            }
+    semaphore = asyncio.Semaphore(_PAGE_DETAIL_CONCURRENCY)
 
-            page_data = await make_api_request(page_endpoint, access_token, page_params)
-            if "id" in page_data:
-                pages.append(page_data)
-            else:
-                pages.append({
+    async def _fetch_one(page_id: str) -> dict:
+        async with semaphore:
+            try:
+                page_data = await make_api_request(
+                    f"{page_id}",
+                    access_token,
+                    {"fields": _PAGE_DETAIL_FIELDS}
+                )
+                if "id" in page_data:
+                    return page_data
+                return {
                     "id": page_id,
                     "error": "Page details not accessible"
-                })
-        except Exception as e:
-            pages.append({
-                "id": page_id,
-                "error": f"Failed to get page details: {str(e)}"
-            })
-    return pages
+                }
+            except Exception as e:
+                return {
+                    "id": page_id,
+                    "error": f"Failed to get page details: {str(e)}"
+                }
+
+    return await asyncio.gather(*[_fetch_one(str(page_id)) for page_id in page_ids])
+
+
+def _page_sort_key(page: dict):
+    """
+    Deterministic ordering for page listings: pages with a name sort
+    alphabetically first (case-insensitive), then entries without a name
+    (e.g. {"id", "error"} entries for inaccessible pages) by ID.
+    """
+    name = page.get("name")
+    if name:
+        return (0, str(name).lower(), str(page.get("id", "")))
+    return (1, "", str(page.get("id", "")))
 
 
 async def _search_pages_by_name_core(access_token: str, account_id: str, search_term: str = None) -> str:
@@ -3438,23 +3464,33 @@ async def _search_pages_by_name_core(access_token: str, account_id: str, search_
         # searchable page universe matches what get_account_pages lists. The old
         # implementation called _discover_pages_for_account (a single-page
         # auto-select helper), which made total_available always 0 or 1.
-        all_page_ids = await _discover_all_page_ids_for_account(account_id, access_token)
+        page_sources = await _discover_all_page_ids_for_account(account_id, access_token)
 
-        if not all_page_ids:
+        if not page_sources:
             return json.dumps({
                 "data": [],
                 "message": "No pages found for this account",
                 "details": "No pages could be discovered via any available approach (user pages, business pages, client pages, creatives, ads, promoted objects, campaigns)"
             }, indent=2)
 
-        all_pages_data = {"data": await _fetch_page_details_for_ids(all_page_ids, access_token)}
+        all_pages = await _fetch_page_details_for_ids(list(page_sources.keys()), access_token)
+
+        # Annotate each page with its discovery source(s) so callers can tell
+        # account-linked pages apart from pages seen only via the user's own
+        # page list (me/accounts), which may not be usable with this ad account.
+        for page in all_pages:
+            sources = page_sources.get(str(page.get("id", "")), [])
+            page["source"] = ",".join(sources) if sources else "unknown"
+
+        # Deterministic ordering: named pages alphabetically, then error entries by ID
+        all_pages.sort(key=_page_sort_key)
 
         # Filter pages by search term if provided
         if search_term:
             search_term_lower = search_term.lower()
             filtered_pages = []
 
-            for page in all_pages_data["data"]:
+            for page in all_pages:
                 page_name = page.get("name", "").lower()
                 if search_term_lower in page_name:
                     filtered_pages.append(page)
@@ -3463,13 +3499,13 @@ async def _search_pages_by_name_core(access_token: str, account_id: str, search_
                 "data": filtered_pages,
                 "search_term": search_term,
                 "total_found": len(filtered_pages),
-                "total_available": len(all_pages_data["data"])
+                "total_available": len(all_pages)
             }, indent=2)
         else:
             # Return all pages if no search term provided
             return json.dumps({
-                "data": all_pages_data["data"],
-                "total_available": len(all_pages_data["data"]),
+                "data": all_pages,
+                "total_available": len(all_pages),
                 "note": "Use search_term parameter to filter pages by name"
             }, indent=2)
 
@@ -3485,14 +3521,22 @@ async def _search_pages_by_name_core(access_token: str, account_id: str, search_
 async def search_pages_by_name(account_id: str, access_token: Optional[str] = None, search_term: Optional[str] = None) -> str:
     """
     Search for pages by name within an account.
-    
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         access_token: Meta API access token (optional - will use cached token if not provided)
         search_term: Search term to find pages by name (optional - returns all pages if not provided)
-    
+
     Returns:
-        JSON response with matching pages
+        JSON response with matching pages. Each item in data carries the page
+        details plus a "source" field listing which discovery approach(es)
+        surfaced the page (comma-separated). Pages discovered ONLY via
+        "me/accounts" come from the connected user's own page list and may not
+        be usable with this ad account (creating ads as them can fail with a
+        Meta page-permission error). Items may lack "name": pages the token
+        cannot read appear as {"id": ..., "error": "Page details not
+        accessible"} — that is a Meta-side permission denial for that Page,
+        not an indexing problem.
     """
     # Check required parameters
     if not account_id:
@@ -3541,14 +3585,17 @@ async def get_account_pages(account_id: str, access_token: Optional[str] = None)
     try:
         # Collect all page IDs from multiple approaches (shared with
         # search_pages_by_name so both tools see the same page universe)
-        all_page_ids = await _discover_all_page_ids_for_account(account_id, access_token)
+        page_sources = await _discover_all_page_ids_for_account(account_id, access_token)
 
         # If we found any page IDs, get details for each
-        if all_page_ids:
+        if page_sources:
             page_details = {
-                "data": await _fetch_page_details_for_ids(all_page_ids, access_token),
-                "total_pages_found": len(all_page_ids)
+                "data": await _fetch_page_details_for_ids(list(page_sources.keys()), access_token),
+                "total_pages_found": len(page_sources)
             }
+
+            # Deterministic ordering: named pages alphabetically, then error entries by ID
+            page_details["data"].sort(key=_page_sort_key)
 
             if page_details["data"]:
                 return json.dumps(page_details, indent=2)
