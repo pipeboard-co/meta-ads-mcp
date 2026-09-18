@@ -111,10 +111,10 @@ class TestInsightsActionsAndValues:
         assert 'cost_per_action_type' in fields
         
         # Verify the response structure
-        assert 'data' in result_data
-        assert len(result_data['data']) > 0
-        assert 'actions' in result_data['data'][0]
-        assert 'action_values' in result_data['data'][0]
+        assert 'items' in result_data
+        assert len(result_data['items']) > 0
+        assert 'actions' in result_data['items'][0]
+        assert 'action_values' in result_data['items'][0]
     
     @pytest.mark.asyncio
     async def test_purchase_data_extraction(self, mock_api_request, mock_auth_manager, valid_campaign_id):
@@ -130,7 +130,7 @@ class TestInsightsActionsAndValues:
         result_data = json.loads(result)
         
         # Get the first data point
-        data_point = result_data['data'][0]
+        data_point = result_data['items'][0]
         
         # Extract purchase data from actions
         actions = data_point.get('actions', [])
@@ -173,7 +173,7 @@ class TestInsightsActionsAndValues:
         assert params['level'] == 'adset'
         
         # Verify the response structure
-        assert 'data' in result_data
+        assert 'items' in result_data
     
     @pytest.mark.asyncio
     async def test_actions_at_ad_level(self, mock_api_request, mock_auth_manager, valid_campaign_id):
@@ -197,7 +197,7 @@ class TestInsightsActionsAndValues:
         assert params['level'] == 'ad'
         
         # Verify the response structure
-        assert 'data' in result_data
+        assert 'items' in result_data
     
     @pytest.mark.asyncio
     async def test_actions_with_custom_time_range(self, mock_api_request, mock_auth_manager, valid_campaign_id):
@@ -224,7 +224,7 @@ class TestInsightsActionsAndValues:
         assert params['time_range'] == json.dumps(custom_time_range)
         
         # Verify the response structure
-        assert 'data' in result_data
+        assert 'items' in result_data
     
     @pytest.mark.asyncio
     async def test_actions_with_breakdown(self, mock_api_request, mock_auth_manager, valid_campaign_id):
@@ -250,7 +250,7 @@ class TestInsightsActionsAndValues:
         assert params['breakdowns'] == 'age'
         
         # Verify the response structure
-        assert 'data' in result_data
+        assert 'items' in result_data
     
     @pytest.mark.asyncio
     async def test_actions_without_object_id(self, mock_api_request, mock_auth_manager):
@@ -415,7 +415,7 @@ class TestInsightsActionsAndValues:
         result_data = json.loads(result)
         
         # Get the first data point
-        data_point = result_data['data'][0]
+        data_point = result_data['items'][0]
         
         # Check that multiple action types are present
         actions = data_point.get('actions', [])
@@ -614,4 +614,4 @@ class TestPurchaseDataExtraction:
         result = extract_purchase_data(insights_data)
         
         assert result["purchase_count"] == 0
-        assert result["purchase_value"] == 0.0 
+        assert result["purchase_value"] == 0.0

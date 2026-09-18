@@ -100,9 +100,10 @@ class TestInsightsPagination:
 
             # Verify the response structure
             result_data = json.loads(result)
-            assert "data" in result_data
-            assert len(result_data["data"]) == 2
-            assert "paging" in result_data
+            assert "items" in result_data
+            assert len(result_data["items"]) == 2
+            assert result_data["next_cursor"] == "after_cursor_1"
+            assert result_data["has_more"] is True
 
     @pytest.mark.asyncio
     async def test_insights_with_after_cursor(self, mock_auth_manager, valid_account_id, mock_paginated_response_page2):
@@ -130,8 +131,10 @@ class TestInsightsPagination:
 
             # Verify the response structure
             result_data = json.loads(result)
-            assert "data" in result_data
-            assert len(result_data["data"]) == 1
+            assert "items" in result_data
+            assert len(result_data["items"]) == 1
+            assert result_data["next_cursor"] == "after_cursor_2"
+            assert result_data["has_more"] is False
 
     @pytest.mark.asyncio
     async def test_insights_default_limit(self, mock_auth_manager, valid_account_id, mock_paginated_response_page1):
@@ -248,10 +251,10 @@ class TestInsightsPagination:
                 limit=2
             )
 
-            # Verify the response includes paging information
+            # Verify provider URLs are normalized to an opaque cursor.
             result_data = json.loads(result)
-            assert "data" in result_data
-            assert "paging" in result_data
-            assert "cursors" in result_data["paging"]
-            assert "after" in result_data["paging"]["cursors"]
-            assert "next" in result_data["paging"]
+            assert "items" in result_data
+            assert result_data["next_cursor"] == "after_cursor_1"
+            assert result_data["has_more"] is True
+            assert "paging" not in result_data
+            assert "graph.facebook.com" not in result
