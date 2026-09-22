@@ -221,3 +221,40 @@ cache per caller would have kept the machinery without the benefit.
   typed tools instead: `get_ad_accounts`, `get_campaigns`,
   `get_campaign_details`, `get_adsets`, `get_ads`, `get_ad_details`.
 - Credited to [@BarakSrour](https://github.com/BarakSrour).
+
+### GHSA-25fp-988j-w29f — MCP resource interface over a process-global, unscoped image cache
+
+- **Severity:** Low (reported as Medium; see *Reachability* below)
+- **Affected versions:** `<= 1.0.122`
+- **Fixed in:** `1.0.123`
+- **Affected configurations:** Would have applied to multi-caller
+  `--transport streamable-http` deployments. The hosted MCP at
+  `*.mcp.pipeboard.co` does not expose the MCP resources interface to clients.
+
+**What was wrong.** `utils.ad_creative_images` was a module-level dict of ad
+creative images keyed by image hash alone, with no caller, session or tenant
+component and no eviction. Two MCP resources registered on the server read it
+directly: `meta-ads://resources` (`list_resources`) enumerated every entry, and
+`meta-ads://images/{resource_id}` (`get_resource`) returned any entry's raw
+bytes. Neither handler resolved or used the request credential, so the shape of
+the code was a cross-caller read with an enumeration primitive attached.
+
+**Reachability.** No shipped version could populate that cache. The only write
+was `create_resource_from_image()`, which has had no call sites since `0.4.0`
+(July 2025) — `get_ad_image` returns the image directly and never cached it.
+Verified against the running server: `meta-ads://resources` returns
+`{"resources": []}` and every `meta-ads://images/...` read returns
+"Resource not found". No creative image of any caller was ever exposed through
+this interface. The finding is accurate about the code and does not describe a
+disclosure that could occur in practice.
+
+**Fix.** The cache, its writer, the `resources` module and both resource
+registrations were removed. An unscoped global with live readers is one commit
+away from being exploitable the moment a write path returns.
+
+**Action for operators.** None required. Upgrade to `1.0.123` to drop the dead
+interface. Clients that enumerated `meta-ads://resources` (it only ever returned
+an empty list) should use `get_ad_image` / `get_ad_creatives` instead.
+
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).

@@ -7,15 +7,10 @@ import sys
 import json
 from typing import Dict, Any, Optional
 from .auth import login as login_auth
-from .resources import list_resources, get_resource
 from .utils import logger
 
 # Initialize FastMCP server
 mcp_server = FastMCP("meta-ads")
-
-# Register resource URIs
-mcp_server.resource(uri="meta-ads://resources")(list_resources)
-mcp_server.resource(uri="meta-ads://images/{resource_id}")(get_resource)
 
 
 class StreamableHTTPHandler:

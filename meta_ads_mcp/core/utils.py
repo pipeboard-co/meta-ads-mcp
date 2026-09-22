@@ -75,9 +75,6 @@ def setup_logging():
 # Create the logger instance to be imported by other modules
 logger = setup_logging()
 
-# Global store for ad creative images
-ad_creative_images = {}
-
 
 def extract_creative_image_urls(creative: Dict[str, Any]) -> List[str]:
     """
@@ -369,28 +366,3 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
 
     return None
 
-
-def create_resource_from_image(image_bytes: bytes, resource_id: str, name: str) -> Dict[str, Any]:
-    """
-    Create a resource entry from image bytes.
-    
-    Args:
-        image_bytes: Raw image data
-        resource_id: Unique identifier for the resource
-        name: Human-readable name for the resource
-        
-    Returns:
-        Dictionary with resource information
-    """
-    ad_creative_images[resource_id] = {
-        "data": image_bytes,
-        "mime_type": "image/jpeg",
-        "name": name
-    }
-    
-    return {
-        "resource_id": resource_id,
-        "resource_uri": f"meta-ads://images/{resource_id}",
-        "name": name,
-        "size": len(image_bytes)
-    } 

@@ -433,7 +433,7 @@ def _translate_video_customization_rules_for_existing_post(
     return translated_rules, videos_array
 
 
-from .utils import download_image, try_multiple_download_methods, ad_creative_images, extract_creative_image_urls
+from .utils import download_image, try_multiple_download_methods, extract_creative_image_urls
 from .server import mcp_server
 
 
