@@ -2,13 +2,14 @@
 
 import threading
 import socket
-import asyncio
-import json
+import time
 import logging
+import secrets
 import webbrowser
 import os
+from html import escape as html_escape
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, quote
+from urllib.parse import urlparse, parse_qs
 from typing import Dict, Any, Optional
 
 from .utils import logger
@@ -27,6 +28,9 @@ server_shutdown_timer = None
 # Timeout in seconds before shutting down the callback server
 CALLBACK_SERVER_TIMEOUT = 180  # 3 minutes timeout
 
+# Maximum number of characters of an OAuth error echoed back to the browser
+MAX_ERROR_DISPLAY_LENGTH = 200
+
 
 class CallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -36,8 +40,6 @@ class CallbackHandler(BaseHTTPRequestHandler):
             
             if self.path.startswith("/callback"):
                 self._handle_oauth_callback()
-            elif self.path.startswith("/token"):
-                self._handle_token()
             else:
                 # If no matching path, return a 404 error
                 self.send_response(404)
@@ -47,6 +49,20 @@ class CallbackHandler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
     
+    def _send_html(self, html: str, csp: str = "default-src 'none'") -> None:
+        """Send an HTML response with hardening headers."""
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Security-Policy", csp)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def _handle_oauth_callback(self):
         """Handle OAuth callback after user authorization"""
         # Check if we're being redirected from Facebook with an authorization code
@@ -58,19 +74,19 @@ class CallbackHandler(BaseHTTPRequestHandler):
         state = params.get('state', [None])[0]
         error = params.get('error', [None])[0]
         
-        # Send 200 OK response with a simple HTML page
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
+        # Anything reaching this endpoint is attacker-controllable, so the error
+        # is HTML-escaped (and truncated) before it is echoed back to the browser.
+        csp = "default-src 'none'"
         
         if error:
             # User denied access or other error occurred
+            safe_error = html_escape(error[:MAX_ERROR_DISPLAY_LENGTH])
             html = f"""
             <html>
             <head><title>Authorization Failed</title></head>
             <body>
                 <h1>Authorization Failed</h1>
-                <p>Error: {error}</p>
+                <p>Error: {safe_error}</p>
                 <p>The authorization was cancelled or failed. You can close this window.</p>
             </body>
             </html>
@@ -85,21 +101,25 @@ class CallbackHandler(BaseHTTPRequestHandler):
             token_container.update({
                 "auth_code": code,
                 "state": state,
-                "timestamp": asyncio.get_event_loop().time()
+                "timestamp": time.monotonic()
             })
             
-            html = """
+            # The success page needs its own inline script, so allow just that
+            # one script via a per-response nonce rather than loosening the CSP.
+            nonce = secrets.token_urlsafe(16)
+            csp = f"default-src 'none'; script-src 'nonce-{nonce}'"
+            html = f"""
             <html>
             <head><title>Authorization Successful</title></head>
             <body>
                 <h1>✅ Authorization Successful!</h1>
                 <p>You have successfully authorized the Meta Ads MCP application.</p>
                 <p>You can now close this window and return to your application.</p>
-                <script>
+                <script nonce="{nonce}">
                     // Try to close the window automatically after 2 seconds
-                    setTimeout(function() {
+                    setTimeout(function() {{
                         window.close();
-                    }, 2000);
+                    }}, 2000);
                 </script>
             </body>
             </html>
@@ -118,27 +138,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
             """
             logger.warning("OAuth callback received without code or error")
         
-        self.wfile.write(html.encode())
-    
-    def _handle_token(self):
-        """Handle token endpoint for retrieving stored token data"""
-        # This endpoint allows other parts of the application to retrieve
-        # token information from the callback server
-        
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
-        
-        # Return current token container contents
-        response_data = {
-            "status": "success",
-            "data": token_container
-        }
-        
-        self.wfile.write(json.dumps(response_data).encode())
-        
-        # The actual token processing is now handled by the auth module
-        # that imports this module and accesses token_container
+        self._send_html(html, csp)
     
     # Silence server logs
     def log_message(self, format, *args):
@@ -222,7 +222,6 @@ def start_callback_server() -> int:
         callback_server_thread.start()
         
         # Wait a moment for the server to start
-        import time
         time.sleep(0.5)
         
         if not callback_server_running:
