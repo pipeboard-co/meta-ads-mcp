@@ -5,11 +5,17 @@ Covers GHSA-45gf-fjxp-cjpq: upload_ad_image / the image-viewing tools fetch a
 caller-supplied URL server-side, so the URL must be restricted to public
 http(s) targets before any connection is opened.
 
+Also covers GHSA-cx77-j6h8-3382: the first fix classified addresses with a
+category denylist, which let 100.64.0.0/10 (RFC 6598 shared address space, used
+for GKE pod/service CIDRs and ISP CGNAT) through because it is neither private
+nor reserved. The guard now requires `is_global`.
+
 These tests use literal IPs for the block/allow matrix so they do not depend on
 network DNS; only the "localhost" case exercises real name resolution (which is
 universally available).
 """
 
+import ipaddress
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -18,6 +24,7 @@ import pytest
 
 from meta_ads_mcp.core.utils import (
     BlockedURLError,
+    _ip_is_disallowed,
     validate_public_url,
     download_image,
     try_multiple_download_methods,
@@ -41,6 +48,18 @@ BLOCKED_URLS = [
     "http://[fe80::1]/",                   # IPv6 link-local
     "http://[fc00::1]/",                   # IPv6 unique-local (private)
     "https://169.254.169.254/",            # https also blocked
+    # GHSA-cx77-j6h8-3382 — non-public, but neither private nor reserved, so a
+    # category denylist let these through.
+    "http://100.64.1.1/internal",          # RFC 6598 shared address space
+    "http://100.127.255.254/",             # top of the shared range
+    "http://[::ffff:100.64.1.1]/",         # IPv4-mapped shared address
+    "http://192.0.0.1/",                   # IETF protocol assignments
+    "http://198.18.0.5/",                  # benchmarking range
+    "http://192.0.2.9/",                   # TEST-NET-1
+    "http://198.51.100.9/",                # TEST-NET-2
+    "http://203.0.113.9/",                 # TEST-NET-3
+    "http://240.0.0.1/",                   # reserved (class E)
+    "http://[2001:db8::1]/",               # IPv6 documentation range
 ]
 
 
@@ -91,6 +110,43 @@ def test_validate_public_url_blocks_localhost_name():
 def test_validate_public_url_allows_public_ip_literals(url):
     # Should not raise.
     validate_public_url(url)
+
+
+# --- GHSA-cx77-j6h8-3382: shared address space -------------------------------
+
+@pytest.mark.parametrize(
+    "address",
+    ["100.64.0.0", "100.64.1.1", "100.127.255.254", "100.127.255.255"],
+)
+def test_shared_address_space_is_not_public(address):
+    """100.64.0.0/10 is is_global == False but is_private == False, which is
+    exactly the gap the category denylist had."""
+    ip = ipaddress.ip_address(address)
+
+    assert not ip.is_private, "test would pass for the wrong reason"
+    assert _ip_is_disallowed(ip)
+
+
+@pytest.mark.parametrize("address", ["100.63.255.255", "100.128.0.0", "8.8.8.8"])
+def test_addresses_outside_the_shared_range_stay_reachable(address):
+    """The bounds matter: 100.64.0.0/10 is not all of 100.0.0.0/8."""
+    assert not _ip_is_disallowed(ipaddress.ip_address(address))
+
+
+async def test_redirect_into_shared_address_space_is_blocked():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "8.8.8.8":
+            return httpx.Response(302, headers={"Location": "http://100.64.1.1/internal"})
+        return httpx.Response(200, content=b"SHOULD-NOT-BE-FETCHED")
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(
+        transport=transport,
+        follow_redirects=True,
+        event_hooks={"request": [_ssrf_guard_request_hook]},
+    ) as client:
+        with pytest.raises(BlockedURLError):
+            await client.get("https://8.8.8.8/start")
 
 
 # --- request event hook (covers redirect hops) ------------------------------

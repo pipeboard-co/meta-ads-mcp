@@ -164,26 +164,54 @@ class BlockedURLError(Exception):
 
 _ALLOWED_URL_SCHEMES = ("http", "https")
 
+# Non-public ranges named explicitly, because `is_global`'s backing table has
+# changed across CPython patch releases and a category denylist alone missed
+# them (GHSA-cx77-j6h8-3382: 100.64.0.0/10 is neither private nor reserved, so
+# it passed the original check while hosting internal services on the
+# deployments that use it — GKE pod/service CIDRs, cloud internal endpoints,
+# ISP CGNAT).
+_BLOCKED_NETWORKS = tuple(
+    ipaddress.ip_network(cidr)
+    for cidr in (
+        "100.64.0.0/10",     # RFC 6598 shared address space (CGNAT)
+        "192.0.0.0/24",      # RFC 6890 IETF protocol assignments
+        "192.0.2.0/24",      # RFC 5737 TEST-NET-1
+        "198.18.0.0/15",     # RFC 2544 benchmarking
+        "198.51.100.0/24",   # RFC 5737 TEST-NET-2
+        "203.0.113.0/24",    # RFC 5737 TEST-NET-3
+        "240.0.0.0/4",       # RFC 1112 reserved, incl. 255.255.255.255
+        "2001:db8::/32",     # RFC 3849 documentation
+        "64:ff9b:1::/48",    # RFC 8215 local-use IPv4/IPv6 translation
+    )
+)
+
 
 def _ip_is_disallowed(ip) -> bool:
     """Return True if `ip` is not a public, routable address.
 
-    Blocks private, loopback, link-local (incl. 169.254.169.254 cloud
-    metadata), reserved, multicast, and unspecified addresses. IPv4-mapped
-    IPv6 addresses (e.g. ::ffff:127.0.0.1) are unwrapped first so they can't
-    be used to smuggle a private IPv4 target past the check.
+    The primary test is positive — an address must be `is_global` — so ranges
+    that are simply not public (shared address space, benchmarking, TEST-NETs)
+    are rejected without having to be enumerated. The category checks and the
+    explicit network list are kept alongside it as belt and braces.
+
+    IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1) are unwrapped first so
+    they cannot smuggle a non-public IPv4 target past the check.
     """
     mapped = getattr(ip, "ipv4_mapped", None)
     if mapped is not None:
         ip = mapped
-    return (
+    if (
         ip.is_private
         or ip.is_loopback
         or ip.is_link_local
         or ip.is_reserved
         or ip.is_multicast
         or ip.is_unspecified
-    )
+    ):
+        return True
+    if not ip.is_global:
+        return True
+    return any(ip in network for network in _BLOCKED_NETWORKS)
 
 
 def validate_public_url(url: str) -> None:
@@ -230,8 +258,9 @@ def validate_public_url(url: str) -> None:
         if _ip_is_disallowed(ip):
             raise BlockedURLError(
                 f"Refusing to fetch '{host}': it resolves to a non-public address "
-                f"({ip}). Private, loopback, link-local, and cloud-metadata "
-                "addresses are blocked to prevent server-side request forgery."
+                f"({ip}). Private, loopback, link-local, shared (CGNAT), reserved "
+                "and cloud-metadata addresses are blocked to prevent server-side "
+                "request forgery."
             )
 
 
