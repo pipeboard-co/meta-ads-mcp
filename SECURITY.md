@@ -148,3 +148,35 @@ rejects unauthenticated requests in both JSON and `--sse-response` modes.
   Meta access token (`https://developers.facebook.com/tools/debug/accesstoken/`)
   and review Graph API access logs for unexpected calls.
 - Credited to zx (Jace) — GitHub [@manus-use](https://github.com/manus-use).
+
+### GHSA-6v2r-2m4r-768m — Reflected XSS in the local OAuth callback server error page
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.120` when the local OAuth login flow is used
+  (the callback server listens on `127.0.0.1:8080-8089`).
+- **Fixed in:** `1.0.121`
+- **Affected configurations:** Anyone completing an interactive OAuth login on
+  a desktop where a browser can reach `localhost` during the 180-second
+  authorization window. The hosted MCP at `*.mcp.pipeboard.co` does not run the
+  local callback server.
+
+**What went wrong.** The callback server interpolated the `error` query
+parameter straight into its HTML error page, so a page open in the user's
+browser could navigate to the callback URL with script in `error` and execute
+it on the `localhost` origin. The server also exposed an unauthenticated
+`/token` endpoint that returned the stored OAuth authorization code to any
+same-origin page — the escalation target for the XSS above.
+
+**Fix.**
+1. The `error` value is HTML-escaped (and truncated) before being reflected.
+2. Every callback response now carries `Content-Security-Policy: default-src
+   'none'`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+   `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; the success
+   page's inline script runs under a per-response nonce.
+3. The unreferenced `/token` endpoint was removed.
+
+**Action for operators.**
+- Upgrade to `1.0.121` or later.
+- If you completed an OAuth login on a machine where an untrusted page may have
+  been open, reconnect the Meta account so a fresh token is issued.
+- Credited to zx — GitHub [@manus-pi](https://github.com/manus-pi).
