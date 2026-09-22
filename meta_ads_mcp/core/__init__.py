@@ -14,7 +14,6 @@ from .budget_schedules import create_budget_schedule
 from .targeting import search_interests, get_interest_suggestions, estimate_audience_size, search_behaviors, search_demographics, search_geo_locations
 from . import reports  # Import module to register conditional tools
 from . import duplication  # Import module to register conditional duplication tools
-from .openai_deep_research import search, fetch  # OpenAI MCP Deep Research tools
 
 __all__ = [
     'mcp_server',
@@ -44,6 +43,4 @@ __all__ = [
     'search_behaviors',
     'search_demographics',
     'search_geo_locations',
-    'search',  # OpenAI MCP Deep Research search tool
-    'fetch',   # OpenAI MCP Deep Research fetch tool
 ] 
