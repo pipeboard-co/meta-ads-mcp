@@ -3,7 +3,7 @@
 import json
 from typing import Optional, Union, Dict, List
 from .api import meta_api_tool, make_api_request
-from .utils import download_image, try_multiple_download_methods, ad_creative_images, create_resource_from_image
+from .utils import download_image, try_multiple_download_methods
 from .server import mcp_server
 import base64
 import datetime

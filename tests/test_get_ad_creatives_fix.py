@@ -3,8 +3,8 @@
 Tests for issue where get_ad_creatives would throw:
 'TypeError: 'dict' object is not callable'
 
-This was caused by trying to call ad_creative_images(creative) where 
-ad_creative_images is a dictionary, not a function.
+This was caused by trying to call ad_creative_images(creative), which was a
+dictionary, not a function. That dictionary is gone (GHSA-25fp-988j-w29f).
 
 The fix was to create extract_creative_image_urls() function and use that instead.
 """
@@ -13,7 +13,6 @@ import pytest
 import json
 from unittest.mock import AsyncMock, patch
 from meta_ads_mcp.core.ads import get_ad_creatives
-from meta_ads_mcp.core.utils import ad_creative_images
 
 
 @pytest.mark.asyncio
@@ -172,19 +171,3 @@ class TestGetAdCreativesBugFix:
             assert creative["creative_features_spec"]["image_touchups"]["enroll_status"] == "OPT_IN"
             assert "standard_enhancements" not in creative["degrees_of_freedom_spec"]["creative_features_spec"]
             assert creative["degrees_of_freedom_spec"]["creative_features_spec"]["profile_card"]["enroll_status"] == "OPT_IN"
-
-
-def test_ad_creative_images_is_dict():
-    """Test that ad_creative_images is a dictionary, not a function.
-    
-    This confirms the original issue: ad_creative_images is a dict for storing image data,
-    but was being called as a function ad_creative_images(creative), which would fail.
-    This test ensures we don't accidentally change ad_creative_images to a function
-    and break its intended purpose as a storage dictionary.
-    """
-    assert isinstance(ad_creative_images, dict)
-    
-    # This would raise TypeError: 'dict' object is not callable
-    # This is the original bug - trying to call a dict as a function
-    with pytest.raises(TypeError, match="'dict' object is not callable"):
-        ad_creative_images({"test": "data"}) 
