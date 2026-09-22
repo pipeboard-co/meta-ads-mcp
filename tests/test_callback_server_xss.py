@@ -16,6 +16,7 @@ import pytest
 from meta_ads_mcp.core.callback_server import (
     CallbackHandler,
     MAX_ERROR_DISPLAY_LENGTH,
+    new_oauth_state,
 )
 
 XSS_PAYLOAD = "<script>alert(document.domain)</script>"
@@ -71,7 +72,8 @@ def test_error_page_sets_locked_down_security_headers(callback_url):
 
 
 def test_success_page_allows_only_its_own_nonced_script(callback_url):
-    response = httpx.get(f"{callback_url}/callback?code=test-auth-code&state=xyz")
+    state = new_oauth_state()
+    response = httpx.get(f"{callback_url}/callback?code=test-auth-code&state={state}")
 
     csp = response.headers["content-security-policy"]
     assert csp.startswith("default-src 'none'; script-src 'nonce-")
@@ -84,7 +86,8 @@ def test_success_page_allows_only_its_own_nonced_script(callback_url):
 def test_token_endpoint_no_longer_exposes_the_auth_code(callback_url):
     """/token was unreferenced and handed the stored auth code to any
     same-origin page reachable via the XSS above."""
-    httpx.get(f"{callback_url}/callback?code=test-auth-code&state=xyz")
+    state = new_oauth_state()
+    httpx.get(f"{callback_url}/callback?code=test-auth-code&state={state}")
 
     response = httpx.get(f"{callback_url}/token")
 

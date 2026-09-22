@@ -258,3 +258,46 @@ an empty list) should use `get_ad_image` / `get_ad_creatives` instead.
 
 - Credited to [@Gal3m](https://github.com/Gal3m) and
   [@mohammad228](https://github.com/mohammad228).
+
+### GHSA-75j5-qp3x-mx37 — OAuth callback server: reflected XSS, `/token` disclosure, and missing CSRF `state`
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.120` for the XSS and `/token` disclosure;
+  `<= 1.0.123` for the missing `state` check.
+- **Fixed in:** `1.0.121` (XSS, `/token`) and `1.0.124` (`state`, bind address,
+  server lifetime).
+- **Affected configurations:** Installs that run the local OAuth login flow
+  (`--login`, the `get_login_link` tool, or `authenticate()`), which listens on
+  `127.0.0.1:8080-8089` during the authorization window. The hosted MCP at
+  `*.mcp.pipeboard.co` does not run the callback server.
+
+**What went wrong.** Three weaknesses in `callback_server.py` were reported
+together as a credential-theft chain:
+
+1. The `error` query parameter was reflected into the HTML error page without
+   escaping — fixed in `1.0.121`, tracked as GHSA-6v2r-2m4r-768m.
+2. `GET /token` returned the stored OAuth authorization artifact to any
+   same-origin page — the endpoint was removed in `1.0.121`.
+3. `get_auth_url` emitted no `state` parameter and the callback validated none
+   (RFC 6749 §10.12), so a page that could reach the callback server could hand
+   it an authorization code of the attacker's choosing.
+
+**Fix for item 3 (`1.0.124`).** A cryptographically random `state` is minted per
+authorization request, carried in the authorization URL, and required on the
+callback: a code whose `state` is missing, mismatched, or replayed is rejected
+and never stored. The state is single-use. The server now binds `127.0.0.1`
+explicitly rather than whatever `localhost` resolves to, and shuts down as soon
+as it has handled a valid callback instead of idling out the 180-second window.
+
+**On the report's fourth suggestion (random high port).** The callback port
+cannot be randomized: Meta validates the redirect URI against the list
+registered on the app, so the flow only works on pre-registered ports. The
+server stays on `8080-8089` by necessity; the `state` check, not port secrecy,
+is what makes an unsolicited callback useless.
+
+**Action for operators.**
+- Upgrade to `1.0.124` or later.
+- If you completed an interactive login on a machine where an untrusted page may
+  have been open, reconnect the Meta account so a fresh token is issued.
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).

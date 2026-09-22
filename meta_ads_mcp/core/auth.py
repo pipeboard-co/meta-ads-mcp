@@ -16,7 +16,9 @@ from .callback_server import (
     start_callback_server,
     shutdown_callback_server,
     token_container,
-    callback_server_port
+    callback_server_port,
+    get_oauth_state,
+    new_oauth_state
 )
 
 # Auth constants
@@ -219,12 +221,18 @@ class AuthManager:
     
     def get_auth_url(self) -> str:
         """Generate the Facebook OAuth URL for desktop app flow"""
+        # The callback only accepts a redirect carrying this state back, so the
+        # URL must not be built without one. start_callback_server() mints a
+        # fresh state per flow; mint here too for callers that print the URL
+        # without starting the server.
+        state = get_oauth_state() or new_oauth_state()
         return (
             f"https://www.facebook.com/v24.0/dialog/oauth?"
             f"client_id={self.app_id}&"
             f"redirect_uri={self.redirect_uri}&"
             f"scope={AUTH_SCOPE}&"
-            f"response_type={AUTH_RESPONSE_TYPE}"
+            f"response_type={AUTH_RESPONSE_TYPE}&"
+            f"state={state}"
         )
     
     def authenticate(self, force_refresh: bool = False) -> Optional[str]:
