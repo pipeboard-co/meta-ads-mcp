@@ -180,3 +180,44 @@ same-origin page — the escalation target for the XSS above.
 - If you completed an OAuth login on a machine where an untrusted page may have
   been open, reconnect the Meta account so a fresh token is issued.
 - Credited to zx — GitHub [@manus-pi](https://github.com/manus-pi).
+
+### GHSA-j7p8-g5m6-3wv5 — `search`/`fetch` deep-research tools returned one caller's cached records to another
+
+- **Severity:** High (CVSS 3.1 7.5 — `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N`)
+- **Affected versions:** `>= 0.6.0, <= 1.0.121` when run with
+  `--transport streamable-http` and serving more than one caller from one
+  process.
+- **Fixed in:** `1.0.122`
+- **Affected configurations:** Multi-caller deployments only. The default stdio
+  transport, and any deployment where a process serves a single caller, has no
+  cross-caller boundary to cross. The hosted MCP at `*.mcp.pipeboard.co`
+  intercepts `search` and answers it with its own implementation, so the Python
+  cache was never populated there and `fetch` had nothing to return — measured
+  over production traffic, every hosted `fetch` call returned "Record not found"
+  or a schema-validation error.
+
+**What went wrong.** `openai_deep_research.py` cached Meta Ads records in a
+module-level `MetaAdsDataManager` singleton, keyed only by `"<type>:<id>"` with
+no caller, session or tenant component. `search` populated that cache under the
+calling user's credential; `fetch` read it back with no credential resolution
+and no ownership check, so any caller who knew (or guessed) a record id could
+read another caller's cached ad-account, campaign, ad, page or business records
+— including account name, currency, total spend, balance and the raw Graph
+objects. `fetch` never called the Graph API, so nothing downstream validated
+the reader's token either; the HTTP auth gate gets a request past on any
+non-empty bearer token, which is enough for every other tool because Graph
+rejects a bad token, but not for a tool that answers from local state.
+
+**Fix.** The `search` and `fetch` tools and the module that backed them were
+removed outright. They had no working use left to preserve, so scoping the
+cache per caller would have kept the machinery without the benefit.
+
+**Action for operators.**
+- Upgrade to `1.0.122` or later.
+- If you ran an earlier version as a shared multi-caller service, treat the
+  record types listed above as potentially disclosed to other callers of that
+  process.
+- Clients that relied on the deep-research `search`/`fetch` pair should use the
+  typed tools instead: `get_ad_accounts`, `get_campaigns`,
+  `get_campaign_details`, `get_adsets`, `get_ads`, `get_ad_details`.
+- Credited to [@BarakSrour](https://github.com/BarakSrour).
