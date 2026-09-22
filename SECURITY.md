@@ -301,3 +301,40 @@ is what makes an unsolicited callback useless.
   have been open, reconnect the Meta account so a fresh token is issued.
 - Credited to [@Gal3m](https://github.com/Gal3m) and
   [@mohammad228](https://github.com/mohammad228).
+
+### GHSA-cx77-j6h8-3382 — SSRF guard allowed shared address space (`100.64.0.0/10`)
+
+- **Severity:** Medium
+- **Affected versions:** `>= 1.0.115, <= 1.0.124` — i.e. every version carrying
+  the original SSRF guard.
+- **Fixed in:** `1.0.125`
+- **Affected configurations:** Deployments where non-public services live in
+  `100.64.0.0/10` — GKE and other Kubernetes clusters default pod/service CIDRs
+  into that range, as do cloud internal endpoints and ISP CGNAT — and where a
+  caller can drive `upload_ad_image` or the image-viewing tools (including an
+  agent acting on injected instructions).
+
+**What went wrong.** `validate_public_url` classified a resolved address with a
+category denylist: `is_private or is_loopback or is_link_local or is_reserved or
+is_multicast or is_unspecified`. `100.64.0.0/10` (RFC 6598 shared address space)
+satisfies none of those — it is `is_global == False` but neither private nor
+reserved — so a URL resolving into it passed the guard and was fetched
+server-side, and the redirect re-validation hook allowed redirects that stayed
+inside the range. Loopback, RFC 1918 and link-local (including the cloud
+metadata endpoint) remained blocked, so the exposure was a partial internal-range
+SSRF confined to shared address space.
+
+**Fix.** The guard now tests positively for `ip.is_global` and rejects anything
+else, so non-public ranges no longer have to be enumerated to be blocked. The
+original category checks are kept alongside it, plus an explicit list of
+non-public networks (`100.64.0.0/10`, `192.0.0.0/24`, `198.18.0.0/15`, the RFC
+5737 TEST-NETs, `240.0.0.0/4`, `2001:db8::/32`, `64:ff9b:1::/48`), because
+`is_global`'s backing table has shifted across CPython patch releases. IPv4-mapped
+IPv6 addresses are still unwrapped first, so `::ffff:100.64.1.1` is rejected too.
+
+**Action for operators.**
+- Upgrade to `1.0.125` or later.
+- If you ran an earlier version where `100.64.0.0/10` reaches internal services,
+  review outbound request logs for fetches into that range.
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).
