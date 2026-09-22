@@ -28,8 +28,50 @@ server_shutdown_timer = None
 # Timeout in seconds before shutting down the callback server
 CALLBACK_SERVER_TIMEOUT = 180  # 3 minutes timeout
 
+# CSRF state for the authorization request currently in flight (RFC 6749 §10.12).
+# The callback only accepts a redirect that echoes back the state we minted for
+# the flow we started, so a page that navigates the browser to /callback with an
+# attacker-supplied code cannot bind the attacker's Meta account to this install.
+_oauth_state = None
+_oauth_state_lock = threading.Lock()
+
+# The redirect URI names localhost, so bind the loopback interface explicitly
+# rather than whatever "localhost" resolves to on this host.
+CALLBACK_SERVER_HOST = "127.0.0.1"
+
 # Maximum number of characters of an OAuth error echoed back to the browser
 MAX_ERROR_DISPLAY_LENGTH = 200
+
+
+def new_oauth_state() -> str:
+    """Mint and store the state parameter for a new authorization request."""
+    global _oauth_state
+    with _oauth_state_lock:
+        _oauth_state = secrets.token_urlsafe(32)
+        return _oauth_state
+
+
+def get_oauth_state() -> Optional[str]:
+    """Return the state of the authorization request in flight, if any."""
+    with _oauth_state_lock:
+        return _oauth_state
+
+
+def consume_oauth_state(received: Optional[str]) -> bool:
+    """Check the state echoed by a callback and burn it, so it is single-use.
+
+    Returns False when no flow is in flight, when the callback carries no state,
+    or when the values differ.
+    """
+    global _oauth_state
+    with _oauth_state_lock:
+        expected = _oauth_state
+        if not expected or not received:
+            return False
+        if not secrets.compare_digest(expected, received):
+            return False
+        _oauth_state = None
+        return True
 
 
 class CallbackHandler(BaseHTTPRequestHandler):
@@ -92,6 +134,23 @@ class CallbackHandler(BaseHTTPRequestHandler):
             </html>
             """
             logger.error(f"OAuth authorization failed: {error}")
+        elif code and not consume_oauth_state(state):
+            # The redirect does not belong to an authorization request this
+            # process started, so the code it carries is not ours to store.
+            logger.warning(
+                "OAuth callback rejected: state parameter is missing or does not "
+                "match the authorization request in flight"
+            )
+            html = """
+            <html>
+            <head><title>Authorization Rejected</title></head>
+            <body>
+                <h1>Authorization Rejected</h1>
+                <p>This response does not match the sign-in this application started.</p>
+                <p>Close this window and start the login again from your application.</p>
+            </body>
+            </html>
+            """
         elif code:
             # Success case - we have the authorization code
             logger.info(f"Received authorization code: {code[:10]}...")
@@ -103,6 +162,11 @@ class CallbackHandler(BaseHTTPRequestHandler):
                 "state": state,
                 "timestamp": time.monotonic()
             })
+
+            # The code is in hand, so stop listening. Deferred to a timer thread
+            # because shutdown() from the serving thread would deadlock, and so
+            # this response still reaches the browser.
+            threading.Timer(1.0, shutdown_callback_server).start()
             
             # The success page needs its own inline script, so allow just that
             # one script via a per-response nonce rather than loosening the CSP.
@@ -208,7 +272,7 @@ def start_callback_server() -> int:
             try:
                 # Test if port is available
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.bind(('localhost', port))
+                    s.bind((CALLBACK_SERVER_HOST, port))
                 break
             except OSError:
                 port += 1
@@ -216,6 +280,7 @@ def start_callback_server() -> int:
             raise Exception(f"Could not find an available port after {max_attempts} attempts")
         
         callback_server_port = port
+        new_oauth_state()
         
         # Start the server in a separate thread
         callback_server_thread = threading.Thread(target=server_thread, daemon=True)
@@ -244,7 +309,7 @@ def server_thread():
     global callback_server_running, callback_server_instance
     
     try:
-        callback_server_instance = HTTPServer(('localhost', callback_server_port), CallbackHandler)
+        callback_server_instance = HTTPServer((CALLBACK_SERVER_HOST, callback_server_port), CallbackHandler)
         callback_server_running = True
         print(f"Callback server thread started on port {callback_server_port}")
         callback_server_instance.serve_forever()
