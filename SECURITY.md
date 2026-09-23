@@ -380,3 +380,39 @@ directory the server was started in, which is where the documented default
   matching `*_<hash>.jpg` outside your image directory.
 - Credited to [@Gal3m](https://github.com/Gal3m) and
   [@mohammad228](https://github.com/mohammad228).
+
+### GHSA-prmg-4fr3-mm6x — cached Meta access token was group/world-readable on disk
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.126`
+- **Fixed in:** `1.0.127`
+- **Affected configurations:** Local installs that authenticate through the
+  OAuth flow and cache a token (`~/.config/meta-ads-mcp/token_cache.json`, or
+  `~/Library/Application Support/meta-ads-mcp/` on macOS). Matters most on
+  shared hosts — CI runners, bastion boxes, multi-UID containers. The hosted MCP
+  at `*.mcp.pipeboard.co` does not cache tokens to disk.
+
+**What went wrong.** The cache file was created with a bare `open(path, "w")`
+and its directory with `mkdir()` with no mode, so under the usual `0022` umask
+the long-lived Meta access token (~60 days) landed in a `0644` file inside a
+`0755` directory. Any other local user could read it and act as the operator
+against the Graph API.
+
+**Fix.** The file is created with `os.open(..., O_CREAT, 0o600)` and the
+directory with mode `0o700`. Because `O_CREAT`'s mode applies only at creation
+and `mkdir`'s mode is masked by the umask (and is a no-op for a directory that
+already exists), both are also narrowed explicitly afterwards — which repairs a
+cache written by an earlier version. The same narrowing runs when a cache is
+loaded, so an existing install stops being readable as soon as the server
+starts, with no need to re-authenticate. On Windows the chmod step is skipped:
+it cannot express "owner only" there, where access is governed by ACLs.
+
+**Action for operators.**
+- Upgrade to `1.0.127` or later; the permissions are repaired on the next load
+  or save.
+- If you ran an earlier version on a shared host, treat the cached token as
+  exposed: rotate it at
+  `https://developers.facebook.com/tools/debug/accesstoken/` and review Graph
+  API access logs.
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).
