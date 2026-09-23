@@ -8,7 +8,7 @@ from HTTP headers into the tool execution context.
 import asyncio
 import contextvars
 from typing import Optional
-from .utils import logger
+from .utils import logger, redact_secret
 import json
 
 # Use context variables instead of thread-local storage for better async support
@@ -296,12 +296,12 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
             )
 
         if auth_token:
-            logger.debug(f"HTTP Auth Middleware: Extracted auth token: {auth_token[:10]}...")
+            logger.debug(f"HTTP Auth Middleware: Extracted auth token: {redact_secret(auth_token)}")
             logger.debug("Injecting auth token into request context")
             FastMCPAuthIntegration.set_auth_token(auth_token)
 
         if pipeboard_token:
-            logger.debug(f"HTTP Auth Middleware: Extracted Pipeboard token: {pipeboard_token[:10]}...")
+            logger.debug(f"HTTP Auth Middleware: Extracted Pipeboard token: {redact_secret(pipeboard_token)}")
             logger.debug("Injecting Pipeboard token into request context")
             FastMCPAuthIntegration.set_pipeboard_token(pipeboard_token)
 

@@ -36,6 +36,61 @@ if not using_direct_token:
         print("WARNING: META_APP_SECRET environment variable is not set.", file=sys.stderr)
         print("NOTE: This is only needed to exchange a short-lived token for a long-lived one.", file=sys.stderr)
 
+# The log file sits next to the token cache and records request activity, so it
+# gets the same owner-only treatment. See GHSA-prmg-4fr3-mm6x for the cache.
+LOG_DIR_MODE = 0o700
+LOG_FILE_MODE = 0o600
+
+# Log level default. DEBUG used to be hard-coded, which (together with the root
+# handler below) wrote a great deal of request detail to a file that is never
+# rotated. Operators who need it set META_ADS_LOG_LEVEL=DEBUG.
+DEFAULT_LOG_LEVEL = "INFO"
+
+# httpx logs "HTTP Request: GET <url>" at INFO, and for the Graph API that URL
+# carries `access_token=<the operator's token>` in the query string. The old
+# logging.basicConfig() call installed a handler on the ROOT logger, so those
+# records landed in meta_ads_debug.log in full. The handler is now attached to
+# this package's logger only, and httpx is held at WARNING so the line is not
+# emitted into whatever logging the host application configures either.
+# See GHSA-r3r9-3mrh-x966.
+_URL_LOGGING_LIBRARIES = ("httpx", "httpcore")
+
+
+def restrict_permissions(path: pathlib.Path, mode: int) -> None:
+    """Narrow `path` to `mode` if it is wider, best effort.
+
+    POSIX only: on Windows chmod cannot express "owner only", and access is
+    governed by ACLs instead.
+    """
+    if platform.system() == "Windows":
+        return
+    try:
+        if (path.stat().st_mode & 0o777) != mode:
+            os.chmod(path, mode)
+    except OSError:
+        # Logging is not configured yet when this runs at import time, and a
+        # permissions failure must never stop the server from starting.
+        pass
+
+
+def redact_secret(value: Optional[str]) -> str:
+    """Render a credential for a log line or a tool response.
+
+    Returns the length only. Prefixes (`token[:10]`) were used before, which is
+    still credential material in a file that is never rotated, and long enough
+    to correlate one caller's requests across a shared deployment.
+    """
+    if not value:
+        return "<none>"
+    return f"<redacted:{len(value)} chars>"
+
+
+def _resolve_log_level() -> int:
+    requested = os.environ.get("META_ADS_LOG_LEVEL", DEFAULT_LOG_LEVEL).upper()
+    level = logging.getLevelName(requested)
+    return level if isinstance(level, int) else logging.INFO
+
+
 # Configure logging to file
 def setup_logging():
     """Set up logging to file for troubleshooting."""
@@ -49,21 +104,36 @@ def setup_logging():
     
     # Create directory if it doesn't exist
     log_dir = base_path / "meta-ads-mcp"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True, mode=LOG_DIR_MODE)
+    restrict_permissions(log_dir, LOG_DIR_MODE)
     
     log_file = log_dir / "meta_ads_debug.log"
-    
-    # Configure file logger
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        filename=str(log_file),
-        filemode='a'  # Append mode
-    )
+    # Create the file ourselves so it exists with 0600 before the handler opens
+    # it; narrow it afterwards in case an earlier version left it at 0644.
+    if not log_file.exists():
+        try:
+            os.close(os.open(log_file, os.O_CREAT | os.O_WRONLY | os.O_APPEND, LOG_FILE_MODE))
+        except OSError:
+            pass
+    restrict_permissions(log_file, LOG_FILE_MODE)
     
     # Create a logger
     logger = logging.getLogger("meta-ads-mcp")
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(_resolve_log_level())
+    
+    # Attach the file handler to this logger rather than the root logger, so
+    # third-party records (notably httpx's full request URLs) are not captured.
+    if not any(getattr(handler, "_meta_ads_mcp_handler", False) for handler in logger.handlers):
+        file_handler = logging.FileHandler(str(log_file))
+        file_handler._meta_ads_mcp_handler = True
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        )
+        logger.addHandler(file_handler)
+    logger.propagate = False
+    
+    for library in _URL_LOGGING_LIBRARIES:
+        logging.getLogger(library).setLevel(logging.WARNING)
     
     # Log startup information
     logger.info(f"Logging initialized. Log file: {log_file}")

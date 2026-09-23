@@ -36,7 +36,7 @@ from .api import meta_api_tool
 from . import auth
 from .auth import start_callback_server, shutdown_callback_server, auth_manager
 from .server import mcp_server
-from .utils import logger, META_APP_SECRET
+from .utils import logger, redact_secret, META_APP_SECRET
 
 # Only register the login link tool if not explicitly disabled
 ENABLE_LOGIN_LINK = not bool(os.environ.get("META_ADS_DISABLE_LOGIN_LINK", ""))
@@ -92,7 +92,7 @@ async def get_login_link(access_token: Optional[str] = None) -> str:
             return json.dumps({
                 "message": "✅ Already Authenticated", 
                 "status": "You're successfully authenticated with Meta Ads!",
-                "token_info": f"Token preview: {cached_token[:10]}...",
+                "token_info": f"Token: {redact_secret(cached_token)}",
                 "created_at": auth_manager.token_info.created_at if hasattr(auth_manager, "token_info") else None,
                 "expires_in": auth_manager.token_info.expires_in if hasattr(auth_manager, "token_info") else None,
                 "authentication_method": "meta_oauth",

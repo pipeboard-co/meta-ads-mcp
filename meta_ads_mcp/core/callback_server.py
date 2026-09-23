@@ -12,7 +12,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, Any, Optional
 
-from .utils import logger
+from .utils import logger, redact_secret
 
 # Global token container for communication between threads
 token_container = {"token": None, "expires_in": None, "user_id": None}
@@ -153,7 +153,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
             """
         elif code:
             # Success case - we have the authorization code
-            logger.info(f"Received authorization code: {code[:10]}...")
+            logger.info(f"Received authorization code: {redact_secret(code)}")
             
             # Store the authorization code temporarily
             # The auth module will exchange this for an access token
