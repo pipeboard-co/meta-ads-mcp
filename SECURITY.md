@@ -338,3 +338,45 @@ IPv6 addresses are still unwrapped first, so `::ffff:100.64.1.1` is rejected too
   review outbound request logs for fetches into that range.
 - Credited to [@Gal3m](https://github.com/Gal3m) and
   [@mohammad228](https://github.com/mohammad228).
+
+### GHSA-2h5x-4qc8-3x27 — `save_ad_image_locally` wrote to a caller-chosen path
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.125`, and only when the tool is enabled.
+- **Fixed in:** `1.0.126`
+- **Affected configurations:** Installs that set
+  `META_ADS_ENABLE_SAVE_AD_IMAGE_LOCALLY` — the tool is not registered without
+  it. The hosted MCP at `*.mcp.pipeboard.co` does not set it, so the tool has
+  never been exposed there.
+
+**What went wrong.** `save_ad_image_locally` built its destination from two
+caller-supplied tool arguments with no validation:
+
+```python
+filename = f"{ad_id}_{image_hashes[0]}.jpg"
+filepath = os.path.join(output_dir, filename)
+os.makedirs(output_dir)          # built whatever tree was needed
+```
+
+`os.path.join` returns an absolute second argument unchanged and does not
+neutralize `..`, so `output_dir="/etc/cron.d"`, `ad_id="/tmp/PWNED"` or
+`ad_id="../../../../tmp/evil"` all wrote the downloaded image outside the
+intended `ad_images` directory, with the server process's privileges, creating
+directories along the way. The bytes are an ad image, which a caller who
+controls the creative can influence.
+
+**Fix.** A new `resolve_ad_image_save_path()` decides the destination before
+anything touches the disk: `ad_id` must be a Meta object id (digits), the image
+hash must be filename-safe, and `output_dir` is resolved with `os.path.realpath`
+and must land on or under an allowed base directory — so absolute paths, `..`
+and symlinks pointing out of the base are all rejected. The base is the working
+directory the server was started in, which is where the documented default
+(`ad_images`) has always resolved; operators who want images elsewhere set
+`META_ADS_IMAGE_OUTPUT_DIR`. Directories are only created after the path passes.
+
+**Action for operators.**
+- Upgrade to `1.0.126` or later.
+- If you enabled the tool on an earlier version, check for unexpected files
+  matching `*_<hash>.jpg` outside your image directory.
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).
