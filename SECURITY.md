@@ -416,3 +416,55 @@ it cannot express "owner only" there, where access is governed by ACLs.
   API access logs.
 - Credited to [@Gal3m](https://github.com/Gal3m) and
   [@mohammad228](https://github.com/mohammad228).
+
+### GHSA-r3r9-3mrh-x966 — access token written to the debug log via third-party request logging
+
+- **Severity:** Medium
+- **Affected versions:** `<= 1.0.127`
+- **Fixed in:** `1.0.128`
+- **Affected configurations:** Any install that makes Graph API calls. The log
+  file lives at `~/.config/meta-ads-mcp/meta_ads_debug.log`
+  (`~/Library/Application Support/meta-ads-mcp/` on macOS) and is never rotated,
+  so records accumulate indefinitely. It matters most where logs are shipped
+  somewhere else — container stdout collection, a log aggregator, a SIEM — or on
+  a shared host.
+
+**What the report described, and what was still live.** The advisory cites
+`pipeboard_auth.py`, which put `PIPEBOARD_API_TOKEN` in a URL query string and
+logged the full URL. That module was removed in `1.0.121`, and no credential is
+placed in a query string by this package today, so that part no longer applies.
+
+The logging half did still apply, through a different route. `setup_logging()`
+called `logging.basicConfig(level=DEBUG, filename=...)`, which installs a handler
+on the **root** logger — so every third-party record was captured too, including
+httpx's INFO line:
+
+```
+httpx - INFO - HTTP Request: GET https://graph.facebook.com/v24.0/me/adaccounts?access_token=<the operator's token> "HTTP/1.1 200 OK"
+```
+
+The package masks the token in its own request logging, but the Graph API takes
+`access_token` as a query parameter, so httpx logged it in full on every call.
+The file was created at `0644`.
+
+**Fix.**
+1. The file handler is attached to this package's logger with `propagate = False`
+   instead of the root logger, so third-party records are no longer captured.
+2. `httpx` and `httpcore` are held at `WARNING`, so the URL line is not emitted
+   into logging the host application configures either.
+3. The default level is `INFO` rather than `DEBUG`; set `META_ADS_LOG_LEVEL=DEBUG`
+   to restore the old verbosity.
+4. The log file is created `0600` inside a `0700` directory, and both are
+   narrowed on startup if an earlier version left them wider.
+5. Credential prefixes (`token[:10]`) in log lines and in the `get_login_link`
+   response are replaced by `redact_secret()`, which reports the length only. Ten
+   characters is still credential material in a file that is never rotated, and
+   enough to correlate one caller's requests on a shared deployment.
+
+**Action for operators.**
+- Upgrade to `1.0.128` or later.
+- Existing `meta_ads_debug.log` files contain access tokens in full. Delete them,
+  and if the logs were shipped anywhere or the host is shared, rotate the token
+  at `https://developers.facebook.com/tools/debug/accesstoken/`.
+- Credited to [@Gal3m](https://github.com/Gal3m) and
+  [@mohammad228](https://github.com/mohammad228).

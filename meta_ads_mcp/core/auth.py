@@ -8,7 +8,7 @@ import os
 import webbrowser
 import asyncio
 import json
-from .utils import logger
+from .utils import logger, redact_secret, restrict_permissions
 import requests
 
 # Import from the new callback server module
@@ -130,20 +130,9 @@ TOKEN_CACHE_FILE_MODE = 0o600
 TOKEN_CACHE_DIR_MODE = 0o700
 
 
-def _restrict_permissions(path: pathlib.Path, mode: int) -> None:
-    """Narrow `path` to `mode` if it is wider, best effort.
-
-    Also repairs caches written by earlier versions, so an operator does not
-    have to re-authenticate to get a private file. POSIX only: on Windows chmod
-    cannot express "owner only", and access is governed by ACLs instead.
-    """
-    if platform.system() == "Windows":
-        return
-    try:
-        if (path.stat().st_mode & 0o777) != mode:
-            os.chmod(path, mode)
-    except OSError as e:
-        logger.warning(f"Could not restrict permissions on {path}: {e}")
+# Shared with the log file in utils; repairs caches written by earlier versions
+# so an operator does not have to re-authenticate to get a private file.
+_restrict_permissions = restrict_permissions
 
 
 class AuthManager:
@@ -329,7 +318,7 @@ class AuthManager:
     def invalidate_token(self) -> None:
         """Invalidate the current token, usually because it has expired or is invalid"""
         if self.token_info:
-            logger.info(f"Invalidating token: {self.token_info.access_token[:10]}...")
+            logger.info(f"Invalidating token: {redact_secret(self.token_info.access_token)}")
             self.token_info = None
             
             # Signal that authentication is needed
@@ -506,7 +495,7 @@ async def get_current_access_token() -> Optional[str]:
                 auth_manager.invalidate_token()
                 return None
                 
-            logger.debug(f"Access token found in auth_manager (starts with: {token[:10]}...)")
+            logger.debug(f"Access token found in auth_manager ({redact_secret(token)})")
             return token
         else:
             logger.warning("No valid access token available in auth_manager")
