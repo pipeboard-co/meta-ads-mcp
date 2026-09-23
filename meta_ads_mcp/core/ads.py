@@ -8,6 +8,7 @@ import io
 from PIL import Image as PILImage
 from mcp.server.fastmcp import Image
 import os
+import re
 import time
 
 logger = logging.getLogger(__name__)
@@ -439,6 +440,58 @@ from .server import mcp_server
 
 # Only register the save_ad_image_locally function if explicitly enabled via environment variable
 ENABLE_SAVE_AD_IMAGE_LOCALLY = bool(os.environ.get("META_ADS_ENABLE_SAVE_AD_IMAGE_LOCALLY", ""))
+
+
+class UnsafeSavePathError(Exception):
+    """Raised when a requested save path escapes the allowed base directory."""
+
+
+# `ad_id` and `output_dir` are caller-supplied tool arguments that used to be
+# joined into a destination path unchecked. os.path.join() returns an absolute
+# second argument unchanged and does not neutralize "..", so a caller could write
+# the downloaded image anywhere the process can reach — and os.makedirs() would
+# build the directory tree to get there. See GHSA-2h5x-4qc8-3x27.
+_AD_ID_PATTERN = re.compile(r"^[0-9]+$")
+_IMAGE_HASH_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _save_image_base_dir() -> str:
+    """Directory that saved ad images may never escape.
+
+    Defaults to the working directory the server was started in, which is where
+    the documented default (`ad_images`) has always resolved. Operators who want
+    images elsewhere set META_ADS_IMAGE_OUTPUT_DIR.
+    """
+    return os.path.realpath(os.environ.get("META_ADS_IMAGE_OUTPUT_DIR") or os.getcwd())
+
+
+def resolve_ad_image_save_path(ad_id: str, image_hash: str, output_dir: str) -> str:
+    """Build the destination path for a saved ad image, confined to the base dir.
+
+    Raises UnsafeSavePathError if `ad_id` is not a Meta object id, if the image
+    hash is not filename-safe, or if `output_dir` resolves outside the base
+    directory (absolute path, "..", or a symlink pointing out of it).
+    """
+    if not _AD_ID_PATTERN.match(ad_id or ""):
+        raise UnsafeSavePathError(
+            f"ad_id '{ad_id}' is not a Meta ad id; expected digits only"
+        )
+    if not _IMAGE_HASH_PATTERN.match(image_hash or ""):
+        raise UnsafeSavePathError(f"image hash '{image_hash}' is not a safe filename component")
+
+    base = _save_image_base_dir()
+    # An absolute output_dir makes join() discard the base, so realpath is what
+    # decides: the result must be the base itself or sit underneath it.
+    target_dir = os.path.realpath(os.path.join(base, output_dir or ""))
+    if target_dir != base and not target_dir.startswith(base + os.sep):
+        raise UnsafeSavePathError(
+            f"output_dir '{output_dir}' resolves outside the allowed directory "
+            f"({base}). Pass a path inside it, or set META_ADS_IMAGE_OUTPUT_DIR "
+            "to move the allowed directory."
+        )
+
+    filename = os.path.basename(f"{ad_id}_{image_hash}.jpg")
+    return os.path.join(target_dir, filename)
 
 
 @mcp_server.tool()
@@ -1203,16 +1256,15 @@ if ENABLE_SAVE_AD_IMAGE_LOCALLY:
         if not image_bytes:
             return json.dumps({"error": "Failed to download image"}, indent=2)
             
+        # Resolve and confine the destination before anything is created on disk.
         try:
-            # Ensure output directory exists
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-                
-            # Create a filename (e.g., using ad_id and image hash)
-            file_extension = ".jpg" # Default extension, could try to infer from headers later
-            filename = f"{ad_id}_{image_hashes[0]}{file_extension}"
-            filepath = os.path.join(output_dir, filename)
-            
+            filepath = resolve_ad_image_save_path(ad_id, image_hashes[0], output_dir)
+        except UnsafeSavePathError as e:
+            return json.dumps({"error": str(e)}, indent=2)
+
+        try:
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
             # Save the image bytes to the file
             with open(filepath, "wb") as f:
                 f.write(image_bytes)
