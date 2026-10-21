@@ -9,6 +9,7 @@ import asyncio
 import functools
 import os
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+import re
 from . import auth
 from .auth import needs_authentication, auth_manager, start_callback_server, shutdown_callback_server
 from .utils import logger
@@ -18,7 +19,140 @@ from .utils import logger
 # access_token is the operator credential; appsecret_proof is derived from
 # the app secret + access token via HMAC and is similarly sensitive.
 # See GHSA-9gw6-46qc-99vr.
-_SENSITIVE_QUERY_PARAMS = frozenset({"access_token", "appsecret_proof"})
+_SENSITIVE_QUERY_PARAMS = frozenset(
+    {
+        "access_token",
+        "appsecret_proof",
+        "client_secret",
+        "authorization",
+        "api_key",
+    }
+)
+_SENSITIVE_KEYS = _SENSITIVE_QUERY_PARAMS | frozenset(
+    {
+        "cookie",
+        "cookies",
+        "set_cookie",
+        "password",
+        "refresh_token",
+        "session_token",
+    }
+)
+_BEARER_RE = re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+")
+_RAW_QUERY_SECRET_RE = re.compile(
+    r"(?i)(\b(?:access_token|appsecret_proof|client_secret|authorization|api_key)=)"
+    r"([^&\s#\"'<>]+)"
+)
+_ENCODED_QUERY_SECRET_RE = re.compile(
+    r"(?i)((?:access_token|appsecret_proof|client_secret|authorization|api_key)%3d)"
+    r"(.+?)(?=%26|$)"
+)
+
+
+class _SecretValues(tuple):
+    """Iterable sentinels whose representation can never disclose a secret."""
+
+    def __new__(cls, values=()):
+        return super().__new__(
+            cls,
+            (str(value) for value in values if isinstance(value, str) and value),
+        )
+
+    def __repr__(self) -> str:
+        return f"<redacted-secret-values count={len(self)}>"
+
+
+def _is_sensitive_key(key: Any) -> bool:
+    normalized = str(key).strip().lower().replace("-", "_")
+    return (
+        normalized in _SENSITIVE_KEYS
+        or normalized.endswith("_access_token")
+        or normalized.endswith("_client_secret")
+        or normalized.endswith("_password")
+    )
+
+
+def _sanitize_string(value: str, secrets: tuple[str, ...]) -> str:
+    sanitized = value
+    for secret in secrets:
+        if secret:
+            sanitized = sanitized.replace(secret, "REDACTED")
+    sanitized = _BEARER_RE.sub("Bearer REDACTED", sanitized)
+    sanitized = _RAW_QUERY_SECRET_RE.sub(r"\1REDACTED", sanitized)
+    sanitized = _ENCODED_QUERY_SECRET_RE.sub(r"\1REDACTED", sanitized)
+    if "://" in sanitized and "?" in sanitized:
+        sanitized = _redact_url(sanitized)
+    return sanitized
+
+
+def _opaque_cursor(paging: Dict[str, Any], secrets: tuple[str, ...]) -> str | None:
+    cursors = paging.get("cursors")
+    cursor = cursors.get("after") if isinstance(cursors, dict) else None
+    if not isinstance(cursor, str) or not cursor:
+        return None
+    cursor = _sanitize_string(cursor, secrets)
+    if "://" in cursor or "?" in cursor or "&" in cursor:
+        return None
+    return cursor
+
+
+def _sanitize_mcp_payload(value: Any, secrets=()) -> Any:
+    """Recursively sanitize one value before it crosses the MCP boundary.
+
+    Provider pagination URLs are replaced with an opaque cursor envelope.  The
+    caller must pass only credentials already available to the process; they
+    are used as sentinels and are never retained in the returned object.
+    """
+
+    known_secrets = _SecretValues(secrets)
+    if isinstance(value, dict):
+        paging = value.get("paging")
+        data = value.get("data")
+        if isinstance(data, list) and isinstance(paging, dict):
+            cursor = _opaque_cursor(paging, known_secrets)
+            normalized = {
+                "items": _sanitize_mcp_payload(data, known_secrets),
+                "next_cursor": cursor,
+                "has_more": bool(paging.get("next") and cursor),
+            }
+            for key, nested in value.items():
+                if key not in {"data", "paging"}:
+                    normalized[key] = _sanitize_mcp_payload(nested, known_secrets)
+            return normalized
+        return {
+            key: (
+                "REDACTED"
+                if _is_sensitive_key(key)
+                else _sanitize_mcp_payload(nested, known_secrets)
+            )
+            for key, nested in value.items()
+        }
+    if isinstance(value, list):
+        return [_sanitize_mcp_payload(item, known_secrets) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_mcp_payload(item, known_secrets) for item in value)
+    if isinstance(value, str):
+        return _sanitize_string(value, known_secrets)
+    return value
+
+
+def _assert_no_secret(value: Any, secrets=()) -> None:
+    """Fail closed if a known secret or credential-shaped value remains."""
+
+    secrets = _SecretValues(secrets)
+    serialized = json.dumps(value, default=str, ensure_ascii=False)
+    for secret in secrets:
+        if isinstance(secret, str) and secret and secret in serialized:
+            raise McpToolError("unsafe_output_blocked")
+    for match in _BEARER_RE.finditer(serialized):
+        if not match.group(0).upper().endswith("REDACTED"):
+            raise McpToolError("unsafe_output_blocked")
+    raw_match = _RAW_QUERY_SECRET_RE.search(serialized)
+    if raw_match and raw_match.group(2).upper() != "REDACTED":
+        raise McpToolError("unsafe_output_blocked")
+    encoded_match = _ENCODED_QUERY_SECRET_RE.search(serialized)
+    if encoded_match and encoded_match.group(2).upper() != "REDACTED":
+        raise McpToolError("unsafe_output_blocked")
 
 
 def _redact_url(url: str) -> str:
@@ -34,7 +168,7 @@ def _redact_url(url: str) -> str:
         if not parts.query:
             return url
         scrubbed = [
-            (k, "REDACTED" if k in _SENSITIVE_QUERY_PARAMS else v)
+            (k, "REDACTED" if k.lower() in _SENSITIVE_QUERY_PARAMS else v)
             for k, v in parse_qsl(parts.query, keep_blank_values=True)
         ]
         return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(scrubbed), parts.fragment))
@@ -382,9 +516,12 @@ def meta_api_tool(func):
         try:
             # Log function call
             logger.debug(f"Function call: {func.__name__}")
-            logger.debug(f"Args: {args}")
+            logger.debug("Positional arg count: %d", len(args))
             # Log kwargs without sensitive info
-            safe_kwargs = {k: ('***TOKEN***' if k == 'access_token' else v) for k, v in kwargs.items()}
+            safe_kwargs = {
+                k: ("***REDACTED***" if _is_sensitive_key(k) else v)
+                for k, v in kwargs.items()
+            }
             logger.debug(f"Kwargs: {safe_kwargs}")
             
             # Log app ID information
@@ -468,13 +605,25 @@ def meta_api_tool(func):
                 
             # Call the original function
             result = await func(*args, **kwargs)
+            known_secrets = tuple(
+                secret
+                for secret in (
+                    kwargs.get("access_token"),
+                    os.environ.get("META_ACCESS_TOKEN"),
+                    os.environ.get("META_APP_SECRET"),
+                )
+                if isinstance(secret, str) and secret
+            )
             
             # If the result is a string (JSON), try to parse it to check for errors
             if isinstance(result, str):
                 try:
                     result_dict = json.loads(result)
                     if "error" in result_dict:
-                        logger.error(f"Error in API response: {result_dict['error']}")
+                        logger.error(
+                            "Error in API response: %s",
+                            _sanitize_mcp_payload(result_dict["error"], known_secrets),
+                        )
                         # If this is an app ID error, log more details
                         if isinstance(result_dict.get("details", {}).get("error", {}), dict):
                             error_obj = result_dict["details"]["error"]
@@ -482,7 +631,7 @@ def meta_api_tool(func):
                                 logger.error("Meta API authentication configuration issue")
                                 logger.error(f"Current app_id: {app_id}")
                                 # Replace the confusing error with a more user-friendly one
-                                return json.dumps({
+                                result_dict = {
                                     "error": {
                                         "message": "Meta API Configuration Issue",
                                         "details": {
@@ -492,20 +641,21 @@ def meta_api_tool(func):
                                             "original_error": error_obj.get("message")
                                         }
                                     }
-                                }, indent=2)
+                                }
+                    result = result_dict
                 except Exception:
                     # Not JSON or other parsing error, wrap it in a dictionary
-                    return json.dumps({"data": result}, indent=2)
+                    result = {"data": result}
             
-            # If result is already a dictionary, ensure it's properly serialized
-            if isinstance(result, dict):
-                return json.dumps(result, indent=2)
-            
-            return result
+            sanitized = _sanitize_mcp_payload(result, known_secrets)
+            _assert_no_secret(sanitized, known_secrets)
+            if isinstance(sanitized, (dict, list, tuple)):
+                return json.dumps(sanitized, indent=2)
+            return sanitized
         except McpToolError:
             raise  # Let FastMCP set isError: true and refund the usage credit
         except Exception as e:
             logger.error(f"Error in {func.__name__}: {str(e)}")
             return json.dumps({"error": str(e)}, indent=2)
 
-    return wrapper 
+    return wrapper
